@@ -190,22 +190,18 @@ local function quiet_notes()
   notes_pending = {}
 end
 
-local function start_playback()
-  playing = true
-end
-
-local function stop_playback()
-  playing = false
-  quiet_notes()
-end
-
-local function apply_transport_state(should_play)
-  if should_play then
-    start_playback()
-  else
-    stop_playback()
+local function apply_transport_message(msg_type)
+  if msg_type == "start" or msg_type == "continue" then
+    playing = true
+    redraw()
+    return true
+  elseif msg_type == "stop" then
+    playing = false
+    quiet_notes()
+    redraw()
+    return true
   end
-  redraw()
+  return false
 end
 
 local function handle_mx1_transport(data)
@@ -217,17 +213,13 @@ local function handle_mx1_transport(data)
   -- Prefer decoded transport message types when available.
   -- Some devices/firmware revisions may only expose raw realtime status bytes.
   if msg and msg.type then
-    if msg.type == "start" or msg.type == "continue" then
-      apply_transport_state(true)
-    elseif msg.type == "stop" then
-      apply_transport_state(false)
-    end
+    apply_transport_message(msg.type)
   else
     local status = data and data[1]
     if status == MIDI_START or status == MIDI_CONTINUE then
-      apply_transport_state(true)
+      apply_transport_message("start")
     elseif status == MIDI_STOP then
-      apply_transport_state(false)
+      apply_transport_message("stop")
     end
   end
 end
@@ -723,9 +715,10 @@ function key(n,z)
 
   if n == 2 then
     if playing then
-      stop_playback()
+      playing = false
+      quiet_notes()
     else
-      start_playback()
+      playing = true
     end
   elseif n == 3 then
     if playing then
