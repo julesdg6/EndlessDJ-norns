@@ -336,8 +336,9 @@ LAUNCHPAD / GRID
 Two Launchpad Mini MK3s are connected to the Norns.
 
 The first launchpad functions as a live drum step sequencer.
+The second launchpad is reserved for future functionality.
 
-Layout (8×8 grid, top row = row 8):
+Layout of the first launchpad (8×8 grid, top row = row 8):
 
   Row 8-7: Kick       (red)
   Row 6-5: Snare      (yellow)

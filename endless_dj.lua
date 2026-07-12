@@ -360,7 +360,7 @@ local function lp_load_pattern(genre)
   for i = 1, 16 do
     drum_steps[1][i] = hit(p.kick  or {}, i)
     drum_steps[2][i] = hit(p.snare or {}, i)
-    drum_steps[3][i] = false                   -- open hat lane starts empty
+    drum_steps[3][i] = false                   -- open hat has no base pattern entry; start empty for manual programming
     drum_steps[4][i] = hit(p.hats  or {}, i)
   end
 end
@@ -378,7 +378,10 @@ end
 -- Connect to the launchpad, enter programmer mode, and set up event handler
 local function lp_connect(dev)
   lp = midi.connect(dev)
-  pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
+  local ok = pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
+  if not ok then
+    print("launchpad: programmer mode SysEx failed on device " .. dev)
+  end
   lp_load_pattern(current_deck().genre)
   lp_redraw(step)
 
