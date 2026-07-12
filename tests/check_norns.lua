@@ -83,4 +83,37 @@ if source:match("local%s+CLAP%s*=%s*39") then
 end
 pass("No T-8 clap regression")
 
+if source:match("engine.name%s*=%s*\"None\"") then
+  fail("engine.name must not be None; PolyPerc or another engine should be selected")
+end
+if not source:find('"PolyPerc"', 1, true) then
+  fail("PolyPerc engine must be referenced as engine.name")
+end
+pass("PolyPerc engine selected")
+
+if not source:find("play_norns_instrument", 1, true) then
+  fail("Missing play_norns_instrument function")
+end
+if not source:find("norns_presets", 1, true) then
+  fail("Missing norns_presets definitions")
+end
+if not source:find("note_to_hz", 1, true) then
+  fail("Missing note_to_hz helper for PolyPerc frequency conversion")
+end
+pass("Norns instrument (PolyPerc) support exists")
+
+if not source:find("acapella_files", 1, true) then
+  fail("Missing acapella_files variable")
+end
+if not source:find("parse_acapella_filename", 1, true) then
+  fail("Missing parse_acapella_filename function for BPM/key parsing")
+end
+if not source:find("softcut", 1, true) then
+  fail("Missing softcut usage for acapella playback")
+end
+if not source:find("scan_acapellas", 1, true) then
+  fail("Missing scan_acapellas function")
+end
+pass("Acapella playback support exists")
+
 print("All Endless DJ checks passed")

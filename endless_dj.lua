@@ -16,7 +16,7 @@
 --   J-6 chords ch6  on j6 midi device  (default device 1 via MX-1)
 --   MX-1 Beat FX depth automated via CC during mix transitions
 
-engine.name = "None"
+engine.name = "PolyPerc"
 
 -- Optional midigrid support for Launchpad connected as HID
 -- Install via: https://github.com/jaggednz/midigrid
@@ -33,6 +33,33 @@ local mx1_midi_out
 local mdev = 1
 local chord_mdev = 1
 local mx1_mdev = 1
+
+-- ──────────────────────────────────────────────
+-- Norns instrument (PolyPerc SuperCollider engine)
+-- ──────────────────────────────────────────────
+local norns_inst_enabled = true
+local norns_inst_vol = 0.8
+
+-- Presets: pad, synth, pluck, strings.
+-- Fields: attack/release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
+local norns_presets = {
+  {name="pad",     attack=0.8,  release=2.0, cutoff=800,  gain=0.5, pw=0.5},
+  {name="synth",   attack=0.02, release=0.5, cutoff=3000, gain=0.3, pw=0.3},
+  {name="pluck",   attack=0.01, release=0.3, cutoff=5000, gain=0.2, pw=0.2},
+  {name="strings", attack=0.4,  release=1.5, cutoff=1500, gain=0.4, pw=0.5},
+}
+local norns_preset_idx = 1
+
+-- ──────────────────────────────────────────────
+-- Acapella playback via softcut
+-- ──────────────────────────────────────────────
+local acapella_enabled = false
+local acapella_vol = 0.7
+local acapella_files = {}   -- list of {path, filename, bpm, semitone, key}
+local acapella_index = 1
+local acapella_loaded = false
+local ACAPELLA_VOICE  = 1
+local ACAPELLA_BUFFER = 1
 local mx1_ch = 1
 local mx1_fx_enabled = true
 local mx1_fx_cc = 12
@@ -75,8 +102,8 @@ local genres = {
 
 local roots = {45,47,48,50,52,53,55}
 
-local deck_a = {name="A-001", genre="HOUSE", active=true, angle=0, root=45, pc=0}
-local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1}
+local deck_a = {name="A-001", genre="HOUSE",     active=true,  angle=0, root=45, pc=0, norns_preset=1}
+local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2}
 
 local notes_off = {}
 local notes_pending = {}
@@ -195,7 +222,8 @@ local function make_deck(letter)
     active = false,
     angle = math.random() * math.pi * 2,
     root = roots[math.random(#roots)],
-    pc = random_pc()
+    pc = random_pc(),
+    norns_preset = math.random(#norns_presets)
   }
 end
 
@@ -351,6 +379,118 @@ local function density_for_section(sec)
   if sec == "DROP" then return 0.95 end
   if sec == "MIX" then return 0.70 end
   return 0.70
+end
+
+-- ──────────────────────────────────────────────
+-- Norns instrument helpers
+-- ──────────────────────────────────────────────
+
+local function note_to_hz(note)
+  return 440 * 2 ^ ((note - 69) / 12)
+end
+
+-- ──────────────────────────────────────────────
+-- Acapella helpers
+-- ──────────────────────────────────────────────
+
+-- Map key-string pitch class → semitone 0-11.
+local KEY_SEMITONE = {
+  C=0,  ["C#"]=1, Cs=1, Db=1,
+  D=2,  ["D#"]=3, Ds=3, Eb=3,
+  E=4,
+  F=5,  ["F#"]=6, Fs=6, Gb=6,
+  G=7,  ["G#"]=8, Gs=8, Ab=8,
+  A=9,  ["A#"]=10, As=10, Bb=10,
+  B=11
+}
+
+-- Parse acapella filename. Expected format: {bpm}_{key}_{description}.{ext}
+-- e.g. 128_Am_House_Vocal.mp3  →  bpm=128, semitone=9 (A), key="Am"
+-- Returns bpm (number), semitone (0-11 or nil), key_str on success; nil on failure.
+local function parse_acapella_filename(filename)
+  local bpm_str, key_str = filename:match("^(%d+)_([A-Ga-g][b#]?[mM]?)_")
+  if not bpm_str then return nil end
+  local bpm_val = tonumber(bpm_str)
+  if not bpm_val or bpm_val < 40 or bpm_val > 250 then return nil end
+  -- Strip trailing 'm'/'M' to get pitch class then normalise capitalisation.
+  local key_base = key_str:gsub("[mM]$", "")
+  key_base = key_base:sub(1, 1):upper() .. key_base:sub(2)
+  local semitone = KEY_SEMITONE[key_base]
+  return bpm_val, semitone, key_str
+end
+
+-- Scan ~/dust/audio/endlessdj/ for audio files with BPM/key in the filename.
+local function scan_acapellas()
+  acapella_files = {}
+  if not (_path and _path.audio) then return end
+  local dir = _path.audio .. "endlessdj/"
+  local exts = {"mp3", "wav", "flac", "aif", "aiff"}
+  for _, ext in ipairs(exts) do
+    local cmd = 'find "' .. dir .. '" -maxdepth 1 -iname "*.' .. ext .. '" 2>/dev/null'
+    local ok, p = pcall(io.popen, cmd)
+    if ok and p then
+      for line in p:lines() do
+        line = line:match("^%s*(.-)%s*$") or ""
+        if line ~= "" then
+          local fname = line:match("([^/\\]+)$") or ""
+          local bpm_val, semitone, key_str = parse_acapella_filename(fname)
+          if bpm_val then
+            table.insert(acapella_files, {
+              path     = line,
+              filename = fname,
+              bpm      = bpm_val,
+              semitone = semitone,
+              key      = key_str,
+            })
+          end
+        end
+      end
+      p:close()
+    end
+  end
+  table.sort(acapella_files, function(a, b) return a.filename < b.filename end)
+end
+
+local function setup_softcut()
+  audio.level_cut(1.0)
+  softcut.reset()
+  softcut.buffer(ACAPELLA_VOICE, ACAPELLA_BUFFER)
+  softcut.loop(ACAPELLA_VOICE, 0)
+  softcut.loop_start(ACAPELLA_VOICE, 0)
+  softcut.loop_end(ACAPELLA_VOICE, 300)
+  softcut.position(ACAPELLA_VOICE, 0)
+  softcut.rate(ACAPELLA_VOICE, 1.0)
+  softcut.level(ACAPELLA_VOICE, acapella_vol)
+  softcut.fade_time(ACAPELLA_VOICE, 0.01)
+  softcut.enable(ACAPELLA_VOICE, 1)
+  softcut.play(ACAPELLA_VOICE, 0)
+end
+
+local function load_acapella(idx)
+  if #acapella_files == 0 then return end
+  acapella_index = ((idx - 1) % #acapella_files) + 1
+  local ac = acapella_files[acapella_index]
+  softcut.play(ACAPELLA_VOICE, 0)
+  softcut.buffer_clear()
+  softcut.buffer_read_mono(ac.path, 0, 0, -1, 1, ACAPELLA_BUFFER)
+  softcut.position(ACAPELLA_VOICE, 0)
+  acapella_loaded = true
+end
+
+local function start_acapella()
+  if not acapella_enabled then return end
+  if not acapella_loaded then return end
+  if #acapella_files == 0 then return end
+  local ac = acapella_files[acapella_index]
+  local rate = bpm / ac.bpm
+  softcut.rate(ACAPELLA_VOICE, rate)
+  softcut.level(ACAPELLA_VOICE, acapella_vol)
+  softcut.position(ACAPELLA_VOICE, 0)
+  softcut.play(ACAPELLA_VOICE, 1)
+end
+
+local function stop_acapella()
+  softcut.play(ACAPELLA_VOICE, 0)
 end
 
 local drum_patterns = {
@@ -747,11 +887,39 @@ local function play_chords(sec, s, deck, b, mix_amount)
   end
 end
 
+local function play_norns_instrument(sec, s, deck, b, mix_amount)
+  if not norns_inst_enabled then return end
+  if sec == "INTRO" or sec == "BREAK" then return end
+  if mix_amount and mix_amount < 0.50 then return end
+  if s ~= 1 then return end
+
+  local g = deck.genre
+  local preset = norns_presets[deck.norns_preset or norns_preset_idx]
+  local is_pad = (preset.name == "pad" or preset.name == "strings")
+  if is_pad and b % 2 ~= 1 then return end
+
+  engine.attack(preset.attack)
+  engine.release(preset.release)
+  engine.cutoff(preset.cutoff)
+  engine.gain(preset.gain)
+  engine.pw(preset.pw)
+  engine.amp(norns_inst_vol)
+
+  local prog = chord_progs[g] or chord_progs.HOUSE
+  local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
+  local base = deck.root + 24  -- two octaves above deck root
+
+  for _, interval in ipairs(triad) do
+    engine.hz(note_to_hz(base + interval))
+  end
+end
+
 local function play_deck(deck, b, s, mix_amount)
   local sec = section_for_bar(b)
   play_drums(sec, s, b, mix_amount, deck)
   play_bass(sec, s, deck, mix_amount)
   play_chords(sec, s, deck, b, mix_amount)
+  play_norns_instrument(sec, s, deck, b, mix_amount)
 end
 
 local function start_mix_if_needed()
@@ -884,6 +1052,9 @@ function init()
   chord_midi_out = midi.connect(chord_mdev)
   connect_mx1_midi()
 
+  scan_acapellas()
+  setup_softcut()
+
   local dev_names = midi_device_names()
 
   params:add_separator("endless_dj", "ENDLESS DJ")
@@ -956,6 +1127,58 @@ function init()
     lp_connect(lp_dev)
   end)
 
+  -- ── Norns instrument ──────────────────────────
+  params:add_separator("norns_inst_sep", "NORNS INSTRUMENT")
+
+  params:add_option("norns_inst_enabled", "norns inst enabled", {"off","on"}, 2)
+  params:set_action("norns_inst_enabled", function(v)
+    norns_inst_enabled = (v == 2)
+  end)
+
+  local preset_names = {}
+  for i, p in ipairs(norns_presets) do preset_names[i] = p.name end
+  params:add_option("norns_inst_preset", "norns inst sound", preset_names, norns_preset_idx)
+  params:set_action("norns_inst_preset", function(v)
+    norns_preset_idx = v
+    deck_a.norns_preset = v
+    deck_b.norns_preset = v
+  end)
+
+  params:add_number("norns_inst_vol", "norns inst vol", 0, 10, math.floor(norns_inst_vol * 10))
+  params:set_action("norns_inst_vol", function(v)
+    norns_inst_vol = v / 10
+  end)
+
+  -- ── Acapella ──────────────────────────────────
+  params:add_separator("acapella_sep", "ACAPELLA")
+
+  params:add_option("acapella_enabled", "acapella enabled", {"off","on"}, 1)
+  params:set_action("acapella_enabled", function(v)
+    acapella_enabled = (v == 2)
+    if not acapella_enabled then stop_acapella() end
+  end)
+
+  local ac_names = {}
+  if #acapella_files > 0 then
+    for _, ac in ipairs(acapella_files) do
+      table.insert(ac_names, ac.filename)
+    end
+  else
+    ac_names = {"no files in dust/audio/endlessdj/"}
+  end
+  params:add_option("acapella_file", "acapella file", ac_names, 1)
+  params:set_action("acapella_file", function(v)
+    if #acapella_files > 0 then
+      load_acapella(v)
+    end
+  end)
+
+  params:add_number("acapella_vol", "acapella vol", 0, 10, math.floor(acapella_vol * 10))
+  params:set_action("acapella_vol", function(v)
+    acapella_vol = v / 10
+    softcut.level(ACAPELLA_VOICE, acapella_vol)
+  end)
+
   update_clock()
   lp_connect(lp_dev)
   redraw()
@@ -964,6 +1187,7 @@ end
 function cleanup()
   quiet_notes()
   lp_clear()
+  stop_acapella()
   if metro_clock then metro_clock:stop() end
 end
 
@@ -972,7 +1196,12 @@ function key(n,z)
 
   if n == 2 then
     playing = not playing
-    if not playing then quiet_notes() end
+    if not playing then
+      quiet_notes()
+      stop_acapella()
+    else
+      start_acapella()
+    end
   elseif n == 3 then
     if playing then
       current_bar = 121
