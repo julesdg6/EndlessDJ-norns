@@ -18,6 +18,14 @@
 
 engine.name = "None"
 
+-- Optional midigrid support for Launchpad connected as HID
+-- Install via: https://github.com/jaggednz/midigrid
+local midigrid_lib
+local _mg_ok, _mg_err = pcall(function() midigrid_lib = include('midigrid/lib/midigrid') end)
+if not _mg_ok and _mg_err then
+  print("midigrid not loaded (direct MIDI mode): " .. tostring(_mg_err))
+end
+
 local midi_out
 local chord_midi_out
 local mx1_midi_out
@@ -85,6 +93,7 @@ local OHH = 46
 -- ──────────────────────────────────────────────
 local lp = nil
 local lp_dev = 3
+local lp_use_mg = false
 
 -- 4 lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
 local drum_steps = {}
@@ -99,6 +108,14 @@ local LP_COLORS = {
   {13, 14},  -- snare:      yellow
   {21, 23},  -- open hat:   green
   {45, 46},  -- closed hat: blue
+}
+
+-- Map Novation palette velocities → midigrid brightness levels
+local LP_VEL_TO_MG = {
+  [5]=3,  [7]=5,    -- kick
+  [13]=8, [14]=10,  -- snare
+  [21]=12,[23]=14,  -- open hat
+  [45]=6, [46]=9,   -- closed hat
 }
 
 -- SysEx to switch Launchpad Mini MK3 into programmer mode
@@ -420,7 +437,19 @@ end
 
 local function lp_led(note, vel)
   if not lp then return end
-  lp:note_on(note, vel, 1)
+  if lp_use_mg then
+    local row = math.floor(note / 10)
+    local col = note % 10
+    local x, y = col, 9 - row
+    local z = (vel == 0) and 0 or (LP_VEL_TO_MG[vel] or 1)
+    lp:led(x, y, z)
+  else
+    lp:note_on(note, vel, 1)
+  end
+end
+
+local function lp_refresh()
+  if lp_use_mg and lp then lp:refresh() end
 end
 
 -- Redraw the entire grid; s = the step currently being played (1-16)
@@ -441,6 +470,7 @@ local function lp_redraw(s)
       lp_led(n, vel)
     end
   end
+  lp_refresh()
 end
 
 -- Populate drum_steps from a genre's base drum pattern
@@ -457,15 +487,49 @@ end
 -- Turn off all launchpad LEDs
 local function lp_clear()
   if not lp then return end
-  for row = 1, 8 do
-    for col = 1, 8 do
-      lp:note_on(row * 10 + col, 0, 1)
+  if lp_use_mg then
+    lp:all(0)
+    lp:refresh()
+  else
+    for row = 1, 8 do
+      for col = 1, 8 do
+        lp:note_on(row * 10 + col, 0, 1)
+      end
     end
   end
 end
 
--- Connect to the launchpad, enter programmer mode, and set up event handler
+-- Connect to the launchpad; tries midigrid first (for HID-connected devices),
+-- then falls back to direct MIDI programmer mode.
 local function lp_connect(dev)
+  lp_use_mg = false
+
+  if midigrid_lib then
+    local mg = midigrid_lib.connect()
+    if mg then
+      lp = mg
+      lp_use_mg = true
+      lp_load_pattern(current_deck().genre)
+      lp_redraw(step)
+      mg.key = function(x, y, z)
+        if z > 0 then
+          -- Convert midigrid (x,y) to programmer-mode note: row = 9-y, col = x
+          local note = (9 - y) * 10 + x
+          local lane, s = lp_decode(note)
+          if lane then
+            drum_steps[lane][s] = not drum_steps[lane][s]
+            local brightness = drum_steps[lane][s]
+              and (LP_VEL_TO_MG[LP_COLORS[lane][1]] or 1) or 0
+            lp:led(x, y, brightness)
+            lp:refresh()
+          end
+        end
+      end
+      return
+    end
+  end
+
+  -- Fall back to direct MIDI (programmer mode SysEx + note_on LEDs)
   lp = midi.connect(dev)
   local ok = pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
   if not ok then
@@ -798,6 +862,21 @@ local function chord_test()
   chord_note_delayed(67, 110, 2, 8)
 end
 
+-- Build a list of MIDI device names for use in option params.
+-- Slots 1-8 map directly to midi.connect() device numbers.
+local function midi_device_names()
+  local names = {}
+  for i = 1, 8 do
+    local d = midi.devices[i]
+    if d and d.name then
+      names[i] = d.name
+    else
+      names[i] = "---"
+    end
+  end
+  return names
+end
+
 function init()
   math.randomseed(os.time())
 
@@ -805,15 +884,17 @@ function init()
   chord_midi_out = midi.connect(chord_mdev)
   connect_mx1_midi()
 
+  local dev_names = midi_device_names()
+
   params:add_separator("endless_dj", "ENDLESS DJ")
 
-  params:add_number("t8_midi_device", "t8 midi device", 1, 8, mdev)
+  params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
   params:set_action("t8_midi_device", function(v)
     mdev = v
     midi_out = midi.connect(mdev)
   end)
 
-  params:add_number("j6_midi_device", "j6 midi device", 1, 8, chord_mdev)
+  params:add_option("j6_midi_device", "j6 device", dev_names, chord_mdev)
   params:set_action("j6_midi_device", function(v)
     chord_mdev = v
     chord_midi_out = midi.connect(chord_mdev)
@@ -821,7 +902,7 @@ function init()
 
   params:add_separator("mx1", "ROLAND AIRA MX-1")
 
-  params:add_number("mx1_midi_device", "mx1 midi device", 1, 8, mx1_mdev)
+  params:add_option("mx1_midi_device", "mx1 device", dev_names, mx1_mdev)
   params:set_action("mx1_midi_device", function(v)
     mx1_mdev = v
     connect_mx1_midi()
@@ -869,7 +950,7 @@ function init()
   params:set_action("manual_xfade", function(v) manual_xfade = (v == 2) end)
 
   params:add_separator("launchpad_sep", "LAUNCHPAD")
-  params:add_number("lp_midi_device", "launchpad device", 1, 8, lp_dev)
+  params:add_option("lp_midi_device", "launchpad device", dev_names, lp_dev)
   params:set_action("lp_midi_device", function(v)
     lp_dev = v
     lp_connect(lp_dev)
@@ -1079,7 +1160,7 @@ function redraw()
   screen.text(bpm)
 
   draw_deck(34, 28, 14, deck_a.angle, deck_a.active or (mixing and deck_a == next_deck()), "A", deck_a, false)
-  draw_deck(94, 28, 14, deck_b.angle, deck_b.active or (mixing and deck_b == next_deck()), "B", deck_b, true)
+  draw_deck(94, 28, 14, deck_b.angle, deck_b.active or (mixing and deck_b == next_deck()), "B", deck_b, false)
 
   draw_xfader()
 
