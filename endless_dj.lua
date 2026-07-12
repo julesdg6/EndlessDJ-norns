@@ -230,8 +230,7 @@ local function handle_mx1_transport(data)
   end
 
   if transport_type then
-    local handled = apply_transport_message(transport_type)
-    if not handled then return end
+    apply_transport_message(transport_type)
   end
 end
 
@@ -727,12 +726,8 @@ function key(n,z)
   if z == 0 then return end
 
   if n == 2 then
-    if playing then
-      playing = false
-      quiet_notes()
-    else
-      playing = true
-    end
+    playing = not playing
+    if not playing then quiet_notes() end
   elseif n == 3 then
     if playing then
       current_bar = 121
