@@ -212,19 +212,26 @@ local function handle_mx1_transport(data)
     msg = midi.to_msg(data)
   end
 
+  local transport_type = nil
+
   -- Prefer decoded transport message types when available.
   -- Some devices/firmware revisions may only expose raw realtime status bytes.
   if msg and msg.type then
-    apply_transport_message(msg.type)
+    transport_type = msg.type
   else
     local status = data and data[1]
     if status == MIDI_START then
-      apply_transport_message("start")
+      transport_type = "start"
     elseif status == MIDI_CONTINUE then
-      apply_transport_message("continue")
+      transport_type = "continue"
     elseif status == MIDI_STOP then
-      apply_transport_message("stop")
+      transport_type = "stop"
     end
+  end
+
+  if transport_type then
+    local handled = apply_transport_message(transport_type)
+    if not handled then return end
   end
 end
 
@@ -232,6 +239,8 @@ local function connect_mx1_midi()
   mx1_midi_out = midi.connect(mx1_mdev)
   if mx1_midi_out then
     mx1_midi_out.event = handle_mx1_transport
+  else
+    print("Endless DJ: failed to connect mx1 midi device " .. mx1_mdev)
   end
 end
 
