@@ -20,9 +20,17 @@ Roland T-8:
 
 Roland J-6:
 - MIDI channel 6: chords/synth
-- Connected through a separate MIDI interface from the T-8
+- Connected through the Roland AIRA MX-1 USB hub
 - Program Change should optionally randomise J-6 sounds/pattern programs
 - Program Change channel must be configurable
+
+Roland AIRA MX-1:
+- Physical audio mixer and USB MIDI hub
+- All MIDI from Norns is routed via the MX-1 (Norns connects to MX-1; T-8 and J-6 plug into the MX-1 USB hub)
+- Because all devices share the same USB MIDI interface, the default MIDI device for T-8, J-6, and MX-1 FX control is all device 1
+- If the T-8/J-6 enumerate as separate USB MIDI devices through the hub, adjust the "t8 midi device" and "j6 midi device" params accordingly
+- Beat FX depth is automated via MIDI CC during mix transitions (sinusoidal ramp: zero → peak at mid-mix → zero)
+- Default Beat FX CC: 12 (Roland MX-1 Beat FX depth); default system channel: 1
 
 T-8 DRUM MIDI MAP
 
@@ -320,6 +328,10 @@ Norns params should expose at least:
 
 - T-8 MIDI device
 - J-6 MIDI device
+- MX-1 MIDI device
+- MX-1 Beat FX enabled
+- MX-1 system channel
+- MX-1 Beat FX depth CC
 - BPM
 - drum MIDI channel
 - bass MIDI channel
