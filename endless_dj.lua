@@ -80,9 +80,9 @@ local TOM = 47
 local CHH = 42
 local OHH = 46
 
-local MIDI_START = 250
-local MIDI_CONTINUE = 251
-local MIDI_STOP = 252
+local MIDI_START = 0xFA
+local MIDI_CONTINUE = 0xFB
+local MIDI_STOP = 0xFC
 
 local sections = {
   {name="INTRO", first=1, last=16},
@@ -199,37 +199,36 @@ local function stop_playback()
   quiet_notes()
 end
 
+local function apply_transport_state(should_play)
+  if should_play then
+    start_playback()
+  else
+    stop_playback()
+  end
+  redraw()
+end
+
 local function handle_mx1_transport(data)
-  local msg = nil
+  local msg
   if midi and midi.to_msg and data then
     msg = midi.to_msg(data)
   end
-
-  local transport_changed = false
 
   -- Prefer decoded transport message types when available.
   -- Some devices/firmware revisions may only expose raw realtime status bytes.
   if msg and msg.type then
     if msg.type == "start" or msg.type == "continue" then
-      start_playback()
-      transport_changed = true
+      apply_transport_state(true)
     elseif msg.type == "stop" then
-      stop_playback()
-      transport_changed = true
+      apply_transport_state(false)
     end
   else
     local status = data and data[1]
     if status == MIDI_START or status == MIDI_CONTINUE then
-      start_playback()
-      transport_changed = true
+      apply_transport_state(true)
     elseif status == MIDI_STOP then
-      stop_playback()
-      transport_changed = true
+      apply_transport_state(false)
     end
-  end
-
-  if transport_changed then
-    redraw()
   end
 end
 
