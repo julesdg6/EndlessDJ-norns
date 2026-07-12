@@ -206,6 +206,8 @@ end
 
 local function handle_mx1_transport(data)
   local msg
+  -- Keep this guard for compatibility with environments where midi.to_msg
+  -- may not be present for realtime transport callbacks.
   if midi and midi.to_msg and data then
     msg = midi.to_msg(data)
   end
@@ -216,8 +218,10 @@ local function handle_mx1_transport(data)
     apply_transport_message(msg.type)
   else
     local status = data and data[1]
-    if status == MIDI_START or status == MIDI_CONTINUE then
+    if status == MIDI_START then
       apply_transport_message("start")
+    elseif status == MIDI_CONTINUE then
+      apply_transport_message("continue")
     elseif status == MIDI_STOP then
       apply_transport_message("stop")
     end
