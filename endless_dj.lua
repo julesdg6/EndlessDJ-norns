@@ -110,15 +110,6 @@ local LP_COLORS = {
   {45, 46},  -- closed hat: blue
 }
 
--- midigrid brightness levels (0-15) per lane: {active, playhead cursor}
--- Used when midigrid is handling the Launchpad (HID mode)
-local LP_MG_LEVELS = {
-  {3,  5},   -- kick
-  {8,  10},  -- snare
-  {12, 14},  -- open hat
-  {6,  9},   -- closed hat
-}
-
 -- Map Novation palette velocities → midigrid brightness levels
 local LP_VEL_TO_MG = {
   [5]=3,  [7]=5,    -- kick
