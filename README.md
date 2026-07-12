@@ -341,6 +341,40 @@ Norns params should expose at least:
 - J-6 minimum program
 - J-6 maximum program
 - automatic/manual crossfader mode
+- Launchpad MIDI device
+
+LAUNCHPAD / GRID
+
+Two Launchpad Mini MK3s are connected to the Norns.
+
+The first launchpad functions as a live drum step sequencer.
+The second launchpad is reserved for future functionality.
+
+Layout of the first launchpad (8×8 grid, top row = row 8):
+
+  Row 8-7: Kick       (red)
+  Row 6-5: Snare      (yellow)
+  Row 4-3: Open Hat   (green)
+  Row 2-1: Closed Hat (blue)
+
+Each pair of rows covers 16 steps: the upper row holds steps 1-8, the lower
+row holds steps 9-16.
+
+Pressing a pad toggles that step on or off.
+
+A moving playhead cursor (brighter shade of the lane colour) shows the
+currently playing step.
+
+When a Launchpad is connected:
+- Kick, snare, open hat and closed hat are driven by the pad pattern.
+- Clap, tom and bar fills remain generative as before.
+
+On deck handover the launchpad pattern is reinitialised from the incoming
+deck's genre base pattern so the grid immediately reflects the new track.
+
+The launchpad MIDI device number is configurable via Norns params
+(default device 3).  If the device is absent the script falls back to
+fully generative drums.
 
 CODE QUALITY
 
