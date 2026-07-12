@@ -743,7 +743,6 @@ local function clock_tick()
   service_pending_notes()
   start_mix_if_needed()
   update_xfade()
-  lp_redraw(step)
   update_mx1_fx()
   lp_redraw(step)
 
