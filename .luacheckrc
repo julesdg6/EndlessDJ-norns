@@ -1,6 +1,8 @@
 std = "lua53"
 
 globals = {
+  "_path",
+  "audio",
   "cleanup",
   "enc",
   "engine",
@@ -12,4 +14,5 @@ globals = {
   "params",
   "redraw",
   "screen",
+  "softcut",
 }
