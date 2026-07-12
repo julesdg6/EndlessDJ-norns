@@ -74,6 +74,30 @@ local TOM = 47
 local CHH = 42
 local OHH = 46
 
+-- ──────────────────────────────────────────────
+-- Launchpad Mini MK3 drum step sequencer
+-- ──────────────────────────────────────────────
+local lp = nil
+local lp_dev = 3
+
+-- 4 lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
+local drum_steps = {}
+for i = 1, 4 do
+  drum_steps[i] = {}
+  for j = 1, 16 do drum_steps[i][j] = false end
+end
+
+-- Novation colour palette velocities per lane: {active, playhead cursor}
+local LP_COLORS = {
+  {5,  7},   -- kick:       red
+  {13, 14},  -- snare:      yellow
+  {21, 23},  -- open hat:   green
+  {45, 46},  -- closed hat: blue
+}
+
+-- SysEx to switch Launchpad Mini MK3 into programmer mode
+local LP_PROGRAMMER_SYSEX = {0xF0,0x00,0x20,0x29,0x02,0x0D,0x0E,0x01,0xF7}
+
 local sections = {
   {name="INTRO", first=1, last=16},
   {name="GROOVE", first=17, last=32},
@@ -275,6 +299,102 @@ local drum_patterns = {
   }
 }
 
+-- ──────────────────────────────────────────────
+-- Launchpad helper functions
+-- ──────────────────────────────────────────────
+
+-- Encode (lane, step) → programmer-mode MIDI note.
+-- Physical layout (top row of launchpad = row 8):
+--   lane 1 kick      rows 8/7  (steps 1-8 / 9-16)
+--   lane 2 snare     rows 6/5
+--   lane 3 open hat  rows 4/3
+--   lane 4 closed hat rows 2/1
+local function lp_note(lane, s)
+  local base_row = 8 - (lane - 1) * 2
+  local row = (s <= 8) and base_row or (base_row - 1)
+  local col = (s <= 8) and s or (s - 8)
+  return row * 10 + col
+end
+
+-- Decode a programmer-mode MIDI note → (lane, step); nil,nil if outside grid
+local function lp_decode(note)
+  local row = math.floor(note / 10)
+  local col = note % 10
+  if row < 1 or row > 8 or col < 1 or col > 8 then return nil, nil end
+  for lane = 1, 4 do
+    local base_row = 8 - (lane - 1) * 2
+    if row == base_row     then return lane, col     end
+    if row == base_row - 1 then return lane, col + 8 end
+  end
+  return nil, nil
+end
+
+local function lp_led(note, vel)
+  if not lp then return end
+  lp:note_on(note, vel, 1)
+end
+
+-- Redraw the entire grid; s = the step currently being played (1-16)
+local function lp_redraw(s)
+  if not lp then return end
+  for lane = 1, 4 do
+    local c = LP_COLORS[lane]
+    for i = 1, 16 do
+      local n   = lp_note(lane, i)
+      local vel
+      if i == s then
+        vel = c[2]
+      elseif drum_steps[lane][i] then
+        vel = c[1]
+      else
+        vel = 0
+      end
+      lp_led(n, vel)
+    end
+  end
+end
+
+-- Populate drum_steps from a genre's base drum pattern
+local function lp_load_pattern(genre)
+  local p = drum_patterns[genre] or drum_patterns.HOUSE
+  for i = 1, 16 do
+    drum_steps[1][i] = hit(p.kick  or {}, i)
+    drum_steps[2][i] = hit(p.snare or {}, i)
+    drum_steps[3][i] = false                   -- open hat lane starts empty
+    drum_steps[4][i] = hit(p.hats  or {}, i)
+  end
+end
+
+-- Turn off all launchpad LEDs
+local function lp_clear()
+  if not lp then return end
+  for row = 1, 8 do
+    for col = 1, 8 do
+      lp:note_on(row * 10 + col, 0, 1)
+    end
+  end
+end
+
+-- Connect to the launchpad, enter programmer mode, and set up event handler
+local function lp_connect(dev)
+  lp = midi.connect(dev)
+  pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
+  lp_load_pattern(current_deck().genre)
+  lp_redraw(step)
+
+  lp.event = function(data)
+    local msg = midi.to_msg(data)
+    if msg and msg.type == "note_on" and msg.vel > 0 then
+      local lane, s = lp_decode(msg.note)
+      if lane then
+        drum_steps[lane][s] = not drum_steps[lane][s]
+        lp_led(lp_note(lane, s),
+          drum_steps[lane][s] and LP_COLORS[lane][1] or 0)
+      end
+    end
+  end
+end
+
 local bass_patterns = {
   HOUSE={0,0,7,0, 0,10,7,0, 0,0,12,10, 7,0,3,0},
   FUNKY={0,7,0,10, 12,10,7,0, 5,0,7,10, 12,0,10,7},
@@ -316,45 +436,72 @@ local function play_drums(sec, s, b, mix_amount, deck)
   local g = deck.genre
   local p = drum_patterns[g] or drum_patterns.HOUSE
   local d = density_for_section(sec)
+  -- Use launchpad patterns only for the currently active deck
+  local use_lp = lp ~= nil and (deck == current_deck())
 
   local kick_prob = 1.0
   if sec == "INTRO" then kick_prob = 0.75 end
   if sec == "BREAK" then kick_prob = 0.45 end
   if mix_amount and mix_amount < 0.45 then kick_prob = 0.20 end
 
-  if hit(p.kick, s) and math.random() < kick_prob then
+  -- Kick
+  local kick_hit
+  if use_lp then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
+  if kick_hit and math.random() < kick_prob then
     local vel = 110
     if g == "TECHNO" then vel = 122 end
     if g == "DUBSTEP" then vel = 120 end
     t8_note(KICK, vel, drum_ch, 1)
   end
 
-  if p.snare and hit(p.snare, s) and sec ~= "INTRO" then
+  -- Snare
+  local snare_hit
+  if use_lp then
+    snare_hit = drum_steps[2][s]
+  else
+    snare_hit = p.snare and hit(p.snare, s)
+  end
+  if snare_hit and sec ~= "INTRO" then
     local vel = 100
     if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
     t8_note(SNARE, vel, drum_ch, 1)
   end
 
+  -- Clap (always generative; not on launchpad)
   if p.clap and hit(p.clap, s) and sec ~= "INTRO" then
     if g ~= "TECHNO" then
       t8_note(CLAP, 110, drum_ch, 1)
     end
   end
 
+  -- Tom (always generative)
   if p.tom and hit(p.tom, s) and math.random() < 0.45 then
     t8_note(TOM, 85, drum_ch, 1)
   end
 
-  if p.hats and hit(p.hats, s) and math.random() < (0.45 + d * 0.40) then
+  -- Closed hi-hat
+  local chh_hit
+  if use_lp then
+    chh_hit = drum_steps[4][s]
+  else
+    chh_hit = p.hats and hit(p.hats, s)
+  end
+  if chh_hit and math.random() < (0.45 + d * 0.40) then
     local vel = 70
     if g == "TECHNO" then vel = 88 end
     t8_note(CHH, vel, drum_ch, 1)
   end
 
-  if (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 then
+  -- Open hi-hat
+  if use_lp then
+    if drum_steps[3][s] then
+      t8_note(OHH, 70, drum_ch, 1)
+    end
+  elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 then
     t8_note(OHH, 70, drum_ch, 1)
   end
 
+  -- Bar fills (always generative)
   if b % 16 == 0 and s >= 13 then
     if s == 13 then t8_note(SNARE, 95, drum_ch, 1) end
     if s == 14 then t8_note(TOM, 90, drum_ch, 1) end
@@ -492,6 +639,8 @@ local function finish_handover()
   next_step = 1
   mixing = false
   quiet_notes()
+  lp_load_pattern(current_deck().genre)
+  lp_redraw(step)
 end
 
 local metro_clock
@@ -503,6 +652,7 @@ local function clock_tick()
   service_pending_notes()
   start_mix_if_needed()
   update_xfade()
+  lp_redraw(step)
 
   if mixing then
     local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
@@ -605,12 +755,21 @@ function init()
   params:add_option("manual_xfade", "manual crossfader", {"no","yes"}, 1)
   params:set_action("manual_xfade", function(v) manual_xfade = (v == 2) end)
 
+  params:add_separator("launchpad_sep", "LAUNCHPAD")
+  params:add_number("lp_midi_device", "launchpad device", 1, 8, lp_dev)
+  params:set_action("lp_midi_device", function(v)
+    lp_dev = v
+    lp_connect(lp_dev)
+  end)
+
   update_clock()
+  lp_connect(lp_dev)
   redraw()
 end
 
 function cleanup()
   quiet_notes()
+  lp_clear()
   if metro_clock then metro_clock:stop() end
 end
 
