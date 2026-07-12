@@ -21,7 +21,10 @@ engine.name = "None"
 -- Optional midigrid support for Launchpad connected as HID
 -- Install via: https://github.com/jaggednz/midigrid
 local midigrid_lib
-pcall(function() midigrid_lib = include('midigrid/lib/midigrid') end)
+local _mg_ok, _mg_err = pcall(function() midigrid_lib = include('midigrid/lib/midigrid') end)
+if not _mg_ok and _mg_err then
+  print("midigrid not loaded (direct MIDI mode): " .. tostring(_mg_err))
+end
 
 local midi_out
 local chord_midi_out
@@ -524,8 +527,9 @@ local function lp_connect(dev)
           local lane, s = lp_decode(note)
           if lane then
             drum_steps[lane][s] = not drum_steps[lane][s]
-            lp:led(x, y, drum_steps[lane][s]
-              and (LP_VEL_TO_MG[LP_COLORS[lane][1]] or 1) or 0)
+            local brightness = drum_steps[lane][s]
+              and (LP_VEL_TO_MG[LP_COLORS[lane][1]] or 1) or 0
+            lp:led(x, y, brightness)
             lp:refresh()
           end
         end
@@ -889,15 +893,17 @@ function init()
   chord_midi_out = midi.connect(chord_mdev)
   connect_mx1_midi()
 
+  local dev_names = midi_device_names()
+
   params:add_separator("endless_dj", "ENDLESS DJ")
 
-  params:add_option("t8_midi_device", "t8 device", midi_device_names(), mdev)
+  params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
   params:set_action("t8_midi_device", function(v)
     mdev = v
     midi_out = midi.connect(mdev)
   end)
 
-  params:add_option("j6_midi_device", "j6 device", midi_device_names(), chord_mdev)
+  params:add_option("j6_midi_device", "j6 device", dev_names, chord_mdev)
   params:set_action("j6_midi_device", function(v)
     chord_mdev = v
     chord_midi_out = midi.connect(chord_mdev)
@@ -905,7 +911,7 @@ function init()
 
   params:add_separator("mx1", "ROLAND AIRA MX-1")
 
-  params:add_option("mx1_midi_device", "mx1 device", midi_device_names(), mx1_mdev)
+  params:add_option("mx1_midi_device", "mx1 device", dev_names, mx1_mdev)
   params:set_action("mx1_midi_device", function(v)
     mx1_mdev = v
     connect_mx1_midi()
@@ -953,7 +959,7 @@ function init()
   params:set_action("manual_xfade", function(v) manual_xfade = (v == 2) end)
 
   params:add_separator("launchpad_sep", "LAUNCHPAD")
-  params:add_option("lp_midi_device", "launchpad device", midi_device_names(), lp_dev)
+  params:add_option("lp_midi_device", "launchpad device", dev_names, lp_dev)
   params:set_action("lp_midi_device", function(v)
     lp_dev = v
     lp_connect(lp_dev)
