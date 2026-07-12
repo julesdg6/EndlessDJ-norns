@@ -1,0 +1,19 @@
+name: Norns checks
+on: [push, pull_request]
+
+jobs:
+  norns-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua and Luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.3 luarocks
+          sudo luarocks install luacheck
+      - name: Lua syntax check
+        run: find . -type f -name '*.lua' -not -path './tests/*' -print0 | xargs -0 -r -n1 luac5.3 -p
+      - name: Luacheck
+        run: luacheck .
+      - name: Endless DJ project checks
+        run: lua5.3 tests/check_norns.lua
