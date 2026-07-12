@@ -186,6 +186,45 @@ local function quiet_notes()
   notes_pending = {}
 end
 
+local function start_playback()
+  playing = true
+end
+
+local function stop_playback()
+  playing = false
+  quiet_notes()
+end
+
+local function handle_mx1_transport(data)
+  local msg = (midi and midi.to_msg and data) and midi.to_msg(data) or nil
+  if msg and msg.type then
+    if msg.type == "start" or msg.type == "continue" then
+      start_playback()
+      redraw()
+    elseif msg.type == "stop" then
+      stop_playback()
+      redraw()
+    end
+    return
+  end
+
+  local status = data and data[1]
+  if status == 250 or status == 251 then
+    start_playback()
+    redraw()
+  elseif status == 252 then
+    stop_playback()
+    redraw()
+  end
+end
+
+local function connect_mx1_midi()
+  mx1_midi_out = midi.connect(mx1_mdev)
+  if mx1_midi_out then
+    mx1_midi_out.event = handle_mx1_transport
+  end
+end
+
 local function note_on_to(dev, note, vel, ch, len_ticks)
   if not dev then return end
   dev:note_on(note, vel, ch)
@@ -591,7 +630,7 @@ function init()
 
   midi_out = midi.connect(mdev)
   chord_midi_out = midi.connect(chord_mdev)
-  mx1_midi_out = midi.connect(mx1_mdev)
+  connect_mx1_midi()
 
   params:add_separator("endless_dj", "ENDLESS DJ")
 
@@ -612,7 +651,7 @@ function init()
   params:add_number("mx1_midi_device", "mx1 midi device", 1, 8, mx1_mdev)
   params:set_action("mx1_midi_device", function(v)
     mx1_mdev = v
-    mx1_midi_out = midi.connect(mx1_mdev)
+    connect_mx1_midi()
   end)
 
   params:add_option("mx1_fx_enabled", "mx1 beat fx", {"off","on"}, 2)
@@ -669,8 +708,11 @@ function key(n,z)
   if z == 0 then return end
 
   if n == 2 then
-    playing = not playing
-    if not playing then quiet_notes() end
+    if playing then
+      stop_playback()
+    else
+      start_playback()
+    end
   elseif n == 3 then
     if playing then
       current_bar = 121
