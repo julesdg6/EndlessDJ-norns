@@ -44,6 +44,10 @@ To avoid onboard sequencer patterns from fighting the generated MIDI:
 
 This gives Norns clean control when playing over MIDI.
 
+Exact clear/write button steps can vary by firmware, so follow the current pattern clear + write procedure in each device manual:
+- Roland J-6 (Chord Synthesizer) manual/reference
+- Roland T-8 (Beat Machine) manual/reference
+
 T-8 DRUM MIDI MAP
 
 Bass Drum:

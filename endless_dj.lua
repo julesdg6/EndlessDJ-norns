@@ -205,25 +205,30 @@ local function handle_mx1_transport(data)
     msg = midi.to_msg(data)
   end
 
+  local transport_changed = false
+
   -- Prefer decoded transport message types when available.
   -- Some devices/firmware revisions may only expose raw realtime status bytes.
   if msg and msg.type then
     if msg.type == "start" or msg.type == "continue" then
       start_playback()
-      redraw()
+      transport_changed = true
     elseif msg.type == "stop" then
       stop_playback()
-      redraw()
+      transport_changed = true
     end
-    return
+  else
+    local status = data and data[1]
+    if status == MIDI_START or status == MIDI_CONTINUE then
+      start_playback()
+      transport_changed = true
+    elseif status == MIDI_STOP then
+      stop_playback()
+      transport_changed = true
+    end
   end
 
-  local status = data and data[1]
-  if status == MIDI_START or status == MIDI_CONTINUE then
-    start_playback()
-    redraw()
-  elseif status == MIDI_STOP then
-    stop_playback()
+  if transport_changed then
     redraw()
   end
 end
