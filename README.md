@@ -27,11 +27,22 @@ Roland J-6:
 Roland AIRA MX-1:
 - Physical audio mixer and USB MIDI hub
 - All MIDI from Norns is routed via the MX-1 (Norns connects to MX-1; T-8 and J-6 plug into the MX-1 USB hub)
+- The MX-1 presents TWO USB MIDI ports to the host (Norns):
+    Port 1 ("Roland MX-1"): the MX-1's own control/FX channel — use this for mx1 device (Beat FX CC, transport)
+    Port 2 ("Roland MX-1 MIDI"): pass-through to the T-8/J-6 connected to the MX-1 hub — use this for t8 device and j6 device
+  Select each by name in the Norns params menu.
 - Because all devices share the same USB MIDI interface, the default MIDI device for T-8, J-6, and MX-1 FX control is all device 1
-- If the T-8/J-6 enumerate as separate USB MIDI devices through the hub, adjust the "t8 midi device" and "j6 midi device" params accordingly
+- If the T-8/J-6 enumerate as separate USB MIDI devices through the hub, adjust the "t8 device" and "j6 device" params accordingly
 - Beat FX depth is automated via MIDI CC during mix transitions (sinusoidal ramp: zero → peak at mid-mix → zero)
 - Default Beat FX CC: 12 (Roland MX-1 Beat FX depth); default system channel: 1
 - MX-1 transport is supported: START/PLAY and CONTINUE start Norns playback, STOP halts playback
+
+MX-1 MIDI THRU
+
+To pass MIDI from Norns through the MX-1 to the T-8 and J-6:
+1. On the MX-1, ensure USB MIDI mode is enabled (check MX-1 system settings / USB MIDI switch).
+2. Norns sends to Port 2 of the MX-1 (the pass-through port).  In the script params, set "t8 device" and "j6 device" to the port named "Roland MX-1 MIDI" (or whichever name shows the pass-through port on your system).
+3. The T-8 and J-6 must be connected to the MX-1's USB hub ports, not directly to Norns.
 
 LIVE SET PREP (CLEAR DEVICE PATTERNS)
 
@@ -388,9 +399,20 @@ When a Launchpad is connected:
 On deck handover the launchpad pattern is reinitialised from the incoming
 deck's genre base pattern so the grid immediately reflects the new track.
 
-The launchpad MIDI device number is configurable via Norns params
-(default device 3).  If the device is absent the script falls back to
-fully generative drums.
+LAUNCHPAD CONNECTION (MIDI vs HID)
+
+The script supports two ways to connect a Launchpad Mini MK3:
+
+1. Direct MIDI (default): The Launchpad appears as a MIDI device in Norns.
+   Select it by name using the "launchpad device" param.
+
+2. midigrid (HID or multi-device): If the Launchpad appears as an HID device
+   or you use the midigrid library, install midigrid first:
+     https://github.com/jaggednz/midigrid
+   When midigrid is installed, the script automatically uses it and the
+   "launchpad device" param is ignored (midigrid finds the device by name).
+
+If the launchpad is absent the script falls back to fully generative drums.
 
 CODE QUALITY
 
