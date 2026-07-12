@@ -31,6 +31,22 @@ Roland AIRA MX-1:
 - If the T-8/J-6 enumerate as separate USB MIDI devices through the hub, adjust the "t8 midi device" and "j6 midi device" params accordingly
 - Beat FX depth is automated via MIDI CC during mix transitions (sinusoidal ramp: zero → peak at mid-mix → zero)
 - Default Beat FX CC: 12 (Roland MX-1 Beat FX depth); default system channel: 1
+- MX-1 transport is supported: START/PLAY and CONTINUE start Norns playback, STOP halts playback
+
+LIVE SET PREP (CLEAR DEVICE PATTERNS)
+
+To avoid onboard sequencer patterns from fighting the generated MIDI:
+
+1. On the J-6, clear the currently selected pattern.
+2. On the T-8, clear the currently selected pattern.
+3. Save/write those cleared patterns on both devices so they persist after reboot/power-cycle.
+4. Confirm Endless DJ is driving notes from Norns and hardware patterns are silent.
+
+This gives Norns clean control when playing over MIDI.
+
+Exact clear/write button steps can vary by firmware, so follow the current pattern clear + write procedure in each device manual:
+- Roland J-6 (Chord Synthesizer) manual/reference
+- Roland T-8 (Beat Machine) manual/reference
 
 T-8 DRUM MIDI MAP
 

@@ -104,6 +104,10 @@ local LP_COLORS = {
 -- SysEx to switch Launchpad Mini MK3 into programmer mode
 local LP_PROGRAMMER_SYSEX = {0xF0,0x00,0x20,0x29,0x02,0x0D,0x0E,0x01,0xF7}
 
+local MIDI_START = 0xFA
+local MIDI_CONTINUE = 0xFB
+local MIDI_STOP = 0xFC
+
 local sections = {
   {name="INTRO", first=1, last=16},
   {name="GROOVE", first=17, last=32},
@@ -208,6 +212,61 @@ local function quiet_notes()
 
   notes_off = {}
   notes_pending = {}
+end
+
+local function apply_transport_message(msg_type)
+  if msg_type == "start" or msg_type == "continue" then
+    playing = true
+    redraw()
+    return true
+  elseif msg_type == "stop" then
+    playing = false
+    quiet_notes()
+    redraw()
+    return true
+  end
+  return false
+end
+
+local function handle_mx1_transport(data)
+  local msg = nil
+  -- Prefer decoded messages when midi.to_msg is available, otherwise
+  -- fall back to raw realtime status bytes below.
+  if midi and midi.to_msg and data then
+    msg = midi.to_msg(data)
+  end
+
+  local transport_type = msg and msg.type or nil
+
+  -- Prefer decoded transport message types when available.
+  -- Some devices/firmware revisions may only expose raw realtime status bytes.
+  if not transport_type then
+    local status = nil
+    if type(data) == "table" then
+      status = data[1]
+    end
+    if status == MIDI_START then
+      transport_type = "start"
+    elseif status == MIDI_CONTINUE then
+      transport_type = "continue"
+    elseif status == MIDI_STOP then
+      transport_type = "stop"
+    end
+  end
+
+  if transport_type then
+    apply_transport_message(transport_type)
+  end
+end
+
+local function connect_mx1_midi()
+  mx1_midi_out = midi.connect(mx1_mdev)
+  if mx1_midi_out then
+    mx1_midi_out.event = handle_mx1_transport
+  else
+    print("Endless DJ: failed to connect mx1 midi device " .. tostring(mx1_mdev)
+      .. " (check mx1_midi_device parameter and USB connection)")
+  end
 end
 
 local function note_on_to(dev, note, vel, ch, len_ticks)
@@ -685,11 +744,8 @@ local function clock_tick()
   service_pending_notes()
   start_mix_if_needed()
   update_xfade()
-<<<<<<< HEAD
-  lp_redraw(step)
-=======
   update_mx1_fx()
->>>>>>> origin/main
+  lp_redraw(step)
 
   if mixing then
     local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
@@ -747,7 +803,7 @@ function init()
 
   midi_out = midi.connect(mdev)
   chord_midi_out = midi.connect(chord_mdev)
-  mx1_midi_out = midi.connect(mx1_mdev)
+  connect_mx1_midi()
 
   params:add_separator("endless_dj", "ENDLESS DJ")
 
@@ -768,7 +824,7 @@ function init()
   params:add_number("mx1_midi_device", "mx1 midi device", 1, 8, mx1_mdev)
   params:set_action("mx1_midi_device", function(v)
     mx1_mdev = v
-    mx1_midi_out = midi.connect(mx1_mdev)
+    connect_mx1_midi()
   end)
 
   params:add_option("mx1_fx_enabled", "mx1 beat fx", {"off","on"}, 2)
