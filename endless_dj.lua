@@ -1,6 +1,6 @@
 -- endless_dj.lua
--- Endless DJ v0.9
--- Turntable-style animated decks + corrected T-8 drum map
+-- Endless DJ v1.0
+-- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
 --   kick  36
@@ -10,18 +10,24 @@
 --   chh   42
 --   ohh   46
 --
--- MIDI:
---   T-8 drums  ch10 on t8 midi device
+-- MIDI (all routed via Roland AIRA MX-1 as USB hub):
+--   T-8 drums  ch10 on t8 midi device  (default device 1 via MX-1)
 --   T-8 bass   ch8  on t8 midi device
---   J-6 chords ch6  on j6 midi device
+--   J-6 chords ch6  on j6 midi device  (default device 1 via MX-1)
+--   MX-1 Beat FX depth automated via CC during mix transitions
 
 engine.name = "None"
 
 local midi_out
 local chord_midi_out
+local mx1_midi_out
 
 local mdev = 1
-local chord_mdev = 2
+local chord_mdev = 1
+local mx1_mdev = 1
+local mx1_ch = 1
+local mx1_fx_enabled = true
+local mx1_fx_cc = 12
 
 local playing = false
 local bpm = 128
@@ -96,6 +102,27 @@ local function hit(list, s)
   return false
 end
 
+-- Send a MIDI CC to the Roland AIRA MX-1 (e.g. Beat FX depth).
+local function send_mx1_cc(cc_num, val)
+  if not mx1_midi_out then return end
+  if not mx1_fx_enabled then return end
+  mx1_midi_out:cc(cc_num, clamp(math.floor(val), 0, 127), mx1_ch)
+end
+
+-- Automate MX-1 Beat FX depth during mix transitions.
+-- The effect ramps up from zero to peak at mid-mix then back to zero,
+-- adding a natural DJ-style wash over the crossfade window.
+local function update_mx1_fx()
+  if not mx1_fx_enabled then return end
+  if mixing then
+    local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
+    local depth = math.sin(clamp(pos, 0, 1) * math.pi) * 100
+    send_mx1_cc(mx1_fx_cc, depth)
+  else
+    send_mx1_cc(mx1_fx_cc, 0)
+  end
+end
+
 local function section_for_bar(b)
   for _,s in ipairs(sections) do
     if b >= s.first and b <= s.last then
@@ -151,6 +178,9 @@ local function quiet_notes()
       end
     end
   end
+
+  -- Reset MX-1 Beat FX depth so no effect lingers after stopping.
+  send_mx1_cc(mx1_fx_cc, 0)
 
   notes_off = {}
   notes_pending = {}
@@ -503,6 +533,7 @@ local function clock_tick()
   service_pending_notes()
   start_mix_if_needed()
   update_xfade()
+  update_mx1_fx()
 
   if mixing then
     local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
@@ -560,6 +591,7 @@ function init()
 
   midi_out = midi.connect(mdev)
   chord_midi_out = midi.connect(chord_mdev)
+  mx1_midi_out = midi.connect(mx1_mdev)
 
   params:add_separator("endless_dj", "ENDLESS DJ")
 
@@ -574,6 +606,25 @@ function init()
     chord_mdev = v
     chord_midi_out = midi.connect(chord_mdev)
   end)
+
+  params:add_separator("mx1", "ROLAND AIRA MX-1")
+
+  params:add_number("mx1_midi_device", "mx1 midi device", 1, 8, mx1_mdev)
+  params:set_action("mx1_midi_device", function(v)
+    mx1_mdev = v
+    mx1_midi_out = midi.connect(mx1_mdev)
+  end)
+
+  params:add_option("mx1_fx_enabled", "mx1 beat fx", {"off","on"}, 2)
+  params:set_action("mx1_fx_enabled", function(v) mx1_fx_enabled = (v == 2) end)
+
+  params:add_number("mx1_ch", "mx1 system channel", 1, 16, mx1_ch)
+  params:set_action("mx1_ch", function(v) mx1_ch = v end)
+
+  params:add_number("mx1_fx_cc", "mx1 fx depth cc", 1, 127, mx1_fx_cc)
+  params:set_action("mx1_fx_cc", function(v) mx1_fx_cc = v end)
+
+  params:add_separator("transport", "TRANSPORT")
 
   params:add_number("bpm", "bpm", 60, 180, bpm)
   params:set_action("bpm", function(v)
