@@ -80,6 +80,10 @@ local TOM = 47
 local CHH = 42
 local OHH = 46
 
+local MIDI_START = 250
+local MIDI_CONTINUE = 251
+local MIDI_STOP = 252
+
 local sections = {
   {name="INTRO", first=1, last=16},
   {name="GROOVE", first=17, last=32},
@@ -196,7 +200,13 @@ local function stop_playback()
 end
 
 local function handle_mx1_transport(data)
-  local msg = (midi and midi.to_msg and data) and midi.to_msg(data) or nil
+  local msg = nil
+  if midi and midi.to_msg and data then
+    msg = midi.to_msg(data)
+  end
+
+  -- Prefer decoded transport message types when available.
+  -- Some devices/firmware revisions may only expose raw realtime status bytes.
   if msg and msg.type then
     if msg.type == "start" or msg.type == "continue" then
       start_playback()
@@ -209,10 +219,10 @@ local function handle_mx1_transport(data)
   end
 
   local status = data and data[1]
-  if status == 250 or status == 251 then
+  if status == MIDI_START or status == MIDI_CONTINUE then
     start_playback()
     redraw()
-  elseif status == 252 then
+  elseif status == MIDI_STOP then
     stop_playback()
     redraw()
   end
