@@ -385,6 +385,7 @@ end
 -- Norns instrument helpers
 -- ──────────────────────────────────────────────
 
+-- Convert a MIDI note number to frequency in Hz (A440 tuning; note 69 = 440 Hz).
 local function note_to_hz(note)
   return 440 * 2 ^ ((note - 69) / 12)
 end
@@ -406,11 +407,13 @@ local KEY_SEMITONE = {
 
 -- Parse acapella filename. Expected format: {bpm}_{key}_{description}.{ext}
 -- e.g. 128_Am_House_Vocal.mp3  →  bpm=128, semitone=9 (A), key="Am"
+-- key: note letter (A-G), optional accidental (b/#), optional minor suffix (m/M)
 -- Returns bpm (number), semitone (0-11 or nil), key_str on success; nil on failure.
 local function parse_acapella_filename(filename)
   local bpm_str, key_str = filename:match("^(%d+)_([A-Ga-g][b#]?[mM]?)_")
   if not bpm_str then return nil end
   local bpm_val = tonumber(bpm_str)
+  -- Reject implausible BPM values (valid music range: 40–250)
   if not bpm_val or bpm_val < 40 or bpm_val > 250 then return nil end
   -- Strip trailing 'm'/'M' to get pitch class then normalise capitalisation.
   local key_base = key_str:gsub("[mM]$", "")
@@ -424,6 +427,8 @@ local function scan_acapellas()
   acapella_files = {}
   if not (_path and _path.audio) then return end
   local dir = _path.audio .. "endlessdj/"
+  -- Reject paths containing shell-unsafe characters to prevent command injection.
+  if dir:find('[\'"`$\\;|&<>]') then return end
   local exts = {"mp3", "wav", "flac", "aif", "aiff"}
   for _, ext in ipairs(exts) do
     local cmd = 'find "' .. dir .. '" -maxdepth 1 -iname "*.' .. ext .. '" 2>/dev/null'
@@ -472,6 +477,9 @@ local function load_acapella(idx)
   local ac = acapella_files[acapella_index]
   softcut.play(ACAPELLA_VOICE, 0)
   softcut.buffer_clear()
+  -- buffer_read_mono(path, src_start, dst_start, duration, src_ch, buf)
+  -- src_start=0: read from file beginning; dst_start=0: write to buffer start;
+  -- duration=-1: read entire file; src_ch=1: left/mono channel; buf=buffer index
   softcut.buffer_read_mono(ac.path, 0, 0, -1, 1, ACAPELLA_BUFFER)
   softcut.position(ACAPELLA_VOICE, 0)
   acapella_loaded = true
@@ -907,7 +915,7 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
 
   local prog = chord_progs[g] or chord_progs.HOUSE
   local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
-  local base = deck.root + 24  -- two octaves above deck root
+  local base = deck.root + 24  -- +24 semitones = two octaves above deck root
 
   for _, interval in ipairs(triad) do
     engine.hz(note_to_hz(base + interval))

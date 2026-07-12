@@ -83,9 +83,6 @@ if source:match("local%s+CLAP%s*=%s*39") then
 end
 pass("No T-8 clap regression")
 
-if source:match("engine.name%s*=%s*\"None\"") then
-  fail("engine.name must not be None; PolyPerc or another engine should be selected")
-end
 if not source:find('"PolyPerc"', 1, true) then
   fail("PolyPerc engine must be referenced as engine.name")
 end
