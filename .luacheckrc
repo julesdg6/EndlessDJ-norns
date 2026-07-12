@@ -12,5 +12,3 @@ globals = {
   "redraw",
   "screen",
 }
-
-max_line_length = 140

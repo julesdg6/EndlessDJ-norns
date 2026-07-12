@@ -264,7 +264,8 @@ local function connect_mx1_midi()
   if mx1_midi_out then
     mx1_midi_out.event = handle_mx1_transport
   else
-    print("Endless DJ: failed to connect mx1 midi device " .. tostring(mx1_mdev) .. " (check mx1_midi_device parameter and USB connection)")
+    print("Endless DJ: failed to connect mx1 midi device " .. tostring(mx1_mdev)
+      .. " (check mx1_midi_device parameter and USB connection)")
   end
 end
 
