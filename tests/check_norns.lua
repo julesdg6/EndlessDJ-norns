@@ -113,4 +113,18 @@ if not source:find("scan_acapellas", 1, true) then
 end
 pass("Acapella playback support exists")
 
+if not source:find("lp2_midi_device", 1, true) then
+  fail("Missing lp2_midi_device parameter for second Launchpad")
+end
+if not source:find("lp2_redraw", 1, true) then
+  fail("Missing lp2_redraw function for LP2 display")
+end
+if not source:find("lp2_connect", 1, true) then
+  fail("Missing lp2_connect function")
+end
+if not source:find("LP2_COLORS", 1, true) then
+  fail("Missing LP2_COLORS palette table")
+end
+pass("Second Launchpad (LP2) support exists")
+
 print("All Endless DJ checks passed")
