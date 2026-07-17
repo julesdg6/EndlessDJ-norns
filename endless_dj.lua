@@ -813,6 +813,8 @@ local function lp2_connect(dev)
   end
   lp2_clear()
 end
+
+local bass_patterns = {
   HOUSE={0,0,7,0, 0,10,7,0, 0,0,12,10, 7,0,3,0},
   FUNKY={0,7,0,10, 12,10,7,0, 5,0,7,10, 12,0,10,7},
   DIRTY={0,0,0,3, 0,0,7,10, 0,0,12,10, 7,3,0,0},
@@ -1023,7 +1025,7 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
 
   local g = deck.genre
   local preset = norns_presets[deck.norns_preset or norns_preset_idx]
-  -- If no preset could be found no notes are sent, so keep LP2 dark.
+  -- If no preset could be found, no notes are sent, so keep LP2 dark.
   if not preset then return end
   local is_pad = (preset.name == "pad" or preset.name == "strings")
   if is_pad and b % 2 ~= 1 then return end
