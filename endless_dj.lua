@@ -146,7 +146,39 @@ local LP_VEL_TO_MG = {
 }
 
 -- SysEx to switch Launchpad Mini MK3 into programmer mode
+-- NOTE: must be sent via the MIDI port (not DAW port) of the Launchpad.
+-- LP_COLORS palette indices only produce distinct colours in programmer mode;
+-- in the default live layout all velocities appear as shades of yellow.
+-- The SysEx is re-sent periodically inside lp_redraw to keep the device in
+-- programmer mode after power-cycles or reconnections.
 local LP_PROGRAMMER_SYSEX = {0xF0,0x00,0x20,0x29,0x02,0x0D,0x0E,0x01,0xF7}
+local lp_sysex_tick = 0   -- counter used to throttle SysEx re-sends
+
+-- ──────────────────────────────────────────────
+-- Second Launchpad – monitoring display for T-8, J-6 and norns instrument
+-- ──────────────────────────────────────────────
+local lp2 = nil
+local lp2_dev = 4
+
+-- Per-instrument activity levels: set to a positive integer when triggered;
+-- decremented each tick so the LEDs fade naturally.
+local lp2_kick_level  = 0
+local lp2_snare_level = 0
+local lp2_hat_level   = 0
+local lp2_bass_level  = 0
+local lp2_j6_level    = 0
+local lp2_norns_level = 0
+
+-- Novation static palette velocities for each instrument on LP2.
+-- Row 8: T-8 drums  Row 7: T-8 bass  Row 6: J-6 chord  Row 5: Norns inst
+local LP2_COLORS = {
+  kick  = 5,   -- red
+  snare = 13,  -- yellow
+  hat   = 21,  -- green
+  bass  = 9,   -- amber / orange
+  j6    = 53,  -- purple
+  norns = 25,  -- cyan
+}
 
 local MIDI_START = 0xFA
 local MIDI_CONTINUE = 0xFB
@@ -603,6 +635,18 @@ end
 -- Redraw the entire grid; s = the step currently being played (1-16)
 local function lp_redraw(s)
   if not lp then return end
+  -- Re-send programmer mode SysEx once per bar (every 16 ticks) so the device
+  -- stays in programmer mode even after a reconnect or power-cycle.  Without
+  -- this the Launchpad falls back to its live layout and all pads appear as
+  -- different shades of yellow rather than the distinct red/yellow/green/blue
+  -- lane colours.
+  if not lp_use_mg then
+    lp_sysex_tick = lp_sysex_tick + 1
+    if lp_sysex_tick >= 16 then
+      lp_sysex_tick = 0
+      pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
+    end
+  end
   for lane = 1, 4 do
     local c = LP_COLORS[lane]
     for i = 1, 16 do
@@ -699,6 +743,77 @@ local function lp_connect(dev)
   end
 end
 
+-- ──────────────────────────────────────────────
+-- Second Launchpad helper functions
+-- ──────────────────────────────────────────────
+
+-- Send a single LED message to lp2.
+local function lp2_led(note, vel)
+  if not lp2 then return end
+  lp2:note_on(note, vel, 1)
+end
+
+-- Clear all LEDs on lp2.
+local function lp2_clear()
+  if not lp2 then return end
+  for row = 1, 8 do
+    for col = 1, 8 do
+      lp2:note_on(row * 10 + col, 0, 1)
+    end
+  end
+end
+
+-- Redraw the LP2 monitoring display and decay activity levels.
+--
+-- Physical layout (programmer mode, top = row 8):
+--   Row 8 (top)  T-8 drums:  cols 1-2 kick  3-4 snare  5-6 hi-hat  (all red/yellow/green)
+--   Row 7        T-8 bass:   all 8 cols (amber)
+--   Row 6        J-6 chord:  all 8 cols (purple)
+--   Row 5        Norns inst: all 8 cols (cyan)
+--   Rows 4-1     reserved / off
+local function lp2_redraw()
+  if not lp2 then return end
+
+  -- Row 8: T-8 drum activity (per-instrument colours, pairs of columns)
+  local kv = lp2_kick_level  > 0 and LP2_COLORS.kick  or 0
+  local sv = lp2_snare_level > 0 and LP2_COLORS.snare or 0
+  local hv = lp2_hat_level   > 0 and LP2_COLORS.hat   or 0
+  lp2_led(81, kv) lp2_led(82, kv)   -- kick:  cols 1-2
+  lp2_led(83, sv) lp2_led(84, sv)   -- snare: cols 3-4
+  lp2_led(85, hv) lp2_led(86, hv)   -- hat:   cols 5-6
+  lp2_led(87, 0)  lp2_led(88, 0)    -- cols 7-8 reserved
+
+  -- Row 7: T-8 bass
+  local bv = lp2_bass_level > 0 and LP2_COLORS.bass or 0
+  for col = 1, 8 do lp2_led(70 + col, bv) end
+
+  -- Row 6: J-6 chord
+  local jv = lp2_j6_level > 0 and LP2_COLORS.j6 or 0
+  for col = 1, 8 do lp2_led(60 + col, jv) end
+
+  -- Row 5: Norns instrument (PolyPerc)
+  local nv = lp2_norns_level > 0 and LP2_COLORS.norns or 0
+  for col = 1, 8 do lp2_led(50 + col, nv) end
+
+  -- Decay activity levels (1 step per redraw call)
+  lp2_kick_level  = math.max(0, lp2_kick_level  - 1)
+  lp2_snare_level = math.max(0, lp2_snare_level - 1)
+  lp2_hat_level   = math.max(0, lp2_hat_level   - 1)
+  lp2_bass_level  = math.max(0, lp2_bass_level  - 1)
+  lp2_j6_level    = math.max(0, lp2_j6_level    - 1)
+  lp2_norns_level = math.max(0, lp2_norns_level - 1)
+end
+
+-- Connect the second Launchpad (direct MIDI only, no midigrid needed).
+local function lp2_connect(dev)
+  lp2 = midi.connect(dev)
+  local ok = pcall(function() lp2:send(LP_PROGRAMMER_SYSEX) end)
+  if not ok then
+    print("lp2: programmer mode SysEx failed on device " .. dev)
+  end
+  lp2_clear()
+end
+
 local bass_patterns = {
   HOUSE={0,0,7,0, 0,10,7,0, 0,0,12,10, 7,0,3,0},
   FUNKY={0,7,0,10, 12,10,7,0, 5,0,7,10, 12,0,10,7},
@@ -756,6 +871,7 @@ local function play_drums(sec, s, b, mix_amount, deck)
     if g == "TECHNO" then vel = 122 end
     if g == "DUBSTEP" then vel = 120 end
     t8_note(KICK, vel, drum_ch, 1)
+    lp2_kick_level = 4
   end
 
   -- Snare
@@ -769,6 +885,7 @@ local function play_drums(sec, s, b, mix_amount, deck)
     local vel = 100
     if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
     t8_note(SNARE, vel, drum_ch, 1)
+    lp2_snare_level = 4
   end
 
   -- Clap (always generative; not on launchpad)
@@ -794,15 +911,18 @@ local function play_drums(sec, s, b, mix_amount, deck)
     local vel = 70
     if g == "TECHNO" then vel = 88 end
     t8_note(CHH, vel, drum_ch, 1)
+    lp2_hat_level = 4
   end
 
   -- Open hi-hat
   if use_lp then
     if drum_steps[3][s] then
       t8_note(OHH, 70, drum_ch, 1)
+      lp2_hat_level = 4
     end
   elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 then
     t8_note(OHH, 70, drum_ch, 1)
+    lp2_hat_level = 4
   end
 
   -- Bar fills (always generative)
@@ -835,6 +955,7 @@ local function play_bass(sec, s, deck, mix_amount)
       len = 3
     end
     t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len)
+    lp2_bass_level = 4
   end
 end
 
@@ -893,6 +1014,7 @@ local function play_chords(sec, s, deck, b, mix_amount)
       chord_note_delayed(n, vel, 2, 4)
     end
   end
+  lp2_j6_level = 8
 end
 
 local function play_norns_instrument(sec, s, deck, b, mix_amount)
@@ -903,23 +1025,32 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
 
   local g = deck.genre
   local preset = norns_presets[deck.norns_preset or norns_preset_idx]
+  -- If no preset could be found, no notes are sent, so keep LP2 dark.
+  if not preset then return end
   local is_pad = (preset.name == "pad" or preset.name == "strings")
   if is_pad and b % 2 ~= 1 then return end
 
-  engine.attack(preset.attack)
-  engine.release(preset.release)
-  engine.cutoff(preset.cutoff)
-  engine.gain(preset.gain)
-  engine.pw(preset.pw)
-  engine.amp(norns_inst_vol)
+  local ok, err = pcall(function()
+    engine.attack(preset.attack)
+    engine.release(preset.release)
+    engine.cutoff(preset.cutoff)
+    engine.gain(preset.gain)
+    engine.pw(preset.pw)
+    engine.amp(norns_inst_vol)
 
-  local prog = chord_progs[g] or chord_progs.HOUSE
-  local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
-  local base = deck.root + 24  -- +24 semitones = two octaves above deck root
+    local prog = chord_progs[g] or chord_progs.HOUSE
+    local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
+    local base = deck.root + 24  -- +24 semitones = two octaves above deck root
 
-  for _, interval in ipairs(triad) do
-    engine.hz(note_to_hz(base + interval))
+    for _, interval in ipairs(triad) do
+      engine.hz(note_to_hz(base + interval))
+    end
+  end)
+  if not ok then
+    print("Endless DJ: norns instrument error: " .. tostring(err))
+    return
   end
+  lp2_norns_level = 8
 end
 
 local function play_deck(deck, b, s, mix_amount)
@@ -986,19 +1117,28 @@ local function clock_tick()
   update_xfade()
   update_mx1_fx()
   lp_redraw(step)
+  lp2_redraw()
 
-  if mixing then
-    local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
-    local old_amount = 1 - pos
-    local new_amount = pos
+  -- Wrap musical playback in pcall so any unexpected engine or MIDI error
+  -- (e.g. the norns instrument first firing at bar 17 where the GROOVE
+  -- section begins) cannot stop the metro clock.
+  local play_ok, play_err = pcall(function()
+    if mixing then
+      local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
+      local old_amount = 1 - pos
+      local new_amount = pos
 
-    if old_amount > 0.35 then
+      if old_amount > 0.35 then
+        play_deck(current_deck(), current_bar, step, nil)
+      end
+
+      play_deck(next_deck(), next_bar, next_step, new_amount)
+    else
       play_deck(current_deck(), current_bar, step, nil)
     end
-
-    play_deck(next_deck(), next_bar, next_step, new_amount)
-  else
-    play_deck(current_deck(), current_bar, step, nil)
+  end)
+  if not play_ok then
+    print("Endless DJ: playback error: " .. tostring(play_err))
   end
 
   step = step + 1
@@ -1135,6 +1275,12 @@ function init()
     lp_connect(lp_dev)
   end)
 
+  params:add_option("lp2_midi_device", "lp2 device", dev_names, lp2_dev)
+  params:set_action("lp2_midi_device", function(v)
+    lp2_dev = v
+    lp2_connect(lp2_dev)
+  end)
+
   -- ── Norns instrument ──────────────────────────
   params:add_separator("norns_inst_sep", "NORNS INSTRUMENT")
 
@@ -1189,12 +1335,14 @@ function init()
 
   update_clock()
   lp_connect(lp_dev)
+  lp2_connect(lp2_dev)
   redraw()
 end
 
 function cleanup()
   quiet_notes()
   lp_clear()
+  lp2_clear()
   stop_acapella()
   if metro_clock then metro_clock:stop() end
 end

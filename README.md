@@ -375,7 +375,7 @@ LAUNCHPAD / GRID
 Two Launchpad Mini MK3s are connected to the Norns.
 
 The first launchpad functions as a live drum step sequencer.
-The second launchpad is reserved for future functionality.
+The second launchpad is a real-time instrument activity monitor.
 
 Layout of the first launchpad (8×8 grid, top row = row 8):
 
@@ -398,6 +398,29 @@ When a Launchpad is connected:
 
 On deck handover the launchpad pattern is reinitialised from the incoming
 deck's genre base pattern so the grid immediately reflects the new track.
+
+Layout of the second launchpad (8×8 grid, programmer mode):
+
+  Row 8 (top) T-8 drums:
+    Cols 1-2  Kick    (red)
+    Cols 3-4  Snare   (yellow)
+    Cols 5-6  Hi-hat  (green)
+
+  Row 7       T-8 bass (amber / orange) — all 8 cols
+
+  Row 6       J-6 chord (purple) — all 8 cols
+
+  Row 5       Norns PolyPerc instrument (cyan) — all 8 cols
+
+  Rows 4-1    Off / reserved
+
+Each row flashes when the corresponding instrument fires and then fades out
+over the following ticks, giving a natural activity-meter feel.
+
+Both Launchpads must be in programmer mode (sent automatically on connect via
+SysEx).  The LAUNCHPAD section in PARAMS lets you choose which MIDI device
+number is assigned to each pad ("launchpad device" for LP1, "lp2 device" for
+LP2).
 
 LAUNCHPAD CONNECTION (MIDI vs HID)
 
