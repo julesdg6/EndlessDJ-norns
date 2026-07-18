@@ -1022,7 +1022,6 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
-<<<<<<< HEAD
 -- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
 -- Harder/darker styles push higher; broken-beat styles push slightly lower.
 local kick_vel = {
@@ -1079,10 +1078,7 @@ local chord_allow_house = {
   ELECTRO=true, AFRO=true, MELODIC=true, HARDSTYLE=true, JUNGLE=true
 }
 
-local function play_drums(sec, s, b, mix_amount, deck)
-=======
 local function play_drums(sec, s, b, mix_fades, deck)
->>>>>>> origin/main
   local g = deck.genre
   local p = drum_patterns[g] or drum_patterns.HOUSE
   local d = density_for_section(sec)
@@ -1117,15 +1113,8 @@ local function play_drums(sec, s, b, mix_fades, deck)
   else
     snare_hit = p.snare and hit(p.snare, s)
   end
-<<<<<<< HEAD
-  if snare_hit and sec ~= "INTRO" then
-    t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
-=======
   if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
-    local vel = 100
-    if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
-    t8_note(SNARE, vel, drum_ch, 1)
->>>>>>> origin/main
+    t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
     lp2_snare_level = 4
   end
 
@@ -1148,15 +1137,8 @@ local function play_drums(sec, s, b, mix_fades, deck)
   else
     chh_hit = p.hats and hit(p.hats, s)
   end
-<<<<<<< HEAD
-  if chh_hit and math.random() < (0.45 + d * 0.40) then
-    t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
-=======
   if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
-    local vel = 70
-    if g == "TECHNO" then vel = 88 end
-    t8_note(CHH, vel, drum_ch, 1)
->>>>>>> origin/main
+    t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
     lp2_hat_level = 4
   end
 
