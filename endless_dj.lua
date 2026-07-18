@@ -180,7 +180,7 @@ local LP_PROGRAMMER_SYSEX = {0xF0,0x00,0x20,0x29,0x02,0x0D,0x0E,0x01,0xF7}
 local lp_sysex_tick = 0   -- counter used to throttle SysEx re-sends
 
 -- ──────────────────────────────────────────────
--- Second Launchpad – monitoring display for T-8, J-6 and norns instrument
+-- Second Launchpad – dedicated bass/chord display (split in two 4-row blocks)
 -- ──────────────────────────────────────────────
 local lp2 = nil
 local lp2_dev = 4
@@ -195,15 +195,22 @@ local lp2_j6_level    = 0
 local lp2_norns_level = 0
 
 -- Novation static palette velocities for each instrument on LP2.
--- Row 8: T-8 drums  Row 7: T-8 bass  Row 6: J-6 chord  Row 5: Norns inst
+-- Top block (rows 8-5): bass pattern + bass activity
+-- Bottom block (rows 4-1): chord trigger pattern + chord activity
 local LP2_COLORS = {
   kick  = 5,   -- red
   snare = 13,  -- yellow
   hat   = 21,  -- green
   bass  = 9,   -- amber / orange
+  bass_cursor = 11,
   j6    = 53,  -- purple
+  j6_cursor = 55,
   norns = 25,  -- cyan
 }
+local lp2_sysex_tick = 0
+-- Forward declarations used by lp2_redraw (defined later in file).
+local bass_patterns
+local chord_allow_house
 
 local MIDI_START = 0xFA
 local MIDI_CONTINUE = 0xFB
@@ -876,6 +883,14 @@ local function lp2_led(note, vel)
   lp2:note_on(note, vel, 1)
 end
 
+-- Convert a 1-16 step index into a Launchpad programmer note using a 2-row band.
+-- Steps 1-8 map to top_row, steps 9-16 map to top_row-1.
+local function lp2_step_note(top_row, step_index)
+  local row = (step_index <= 8) and top_row or (top_row - 1)
+  local col = (step_index <= 8) and step_index or (step_index - 8)
+  return row * 10 + col
+end
+
 -- Clear all LEDs on lp2.
 local function lp2_clear()
   if not lp2 then return end
@@ -886,37 +901,68 @@ local function lp2_clear()
   end
 end
 
--- Redraw the LP2 monitoring display and decay activity levels.
---
--- Physical layout (programmer mode, top = row 8):
---   Row 8 (top)  T-8 drums:  cols 1-2 kick  3-4 snare  5-6 hi-hat  (all red/yellow/green)
---   Row 7        T-8 bass:   all 8 cols (amber)
---   Row 6        J-6 chord:  all 8 cols (purple)
---   Row 5        Norns inst: all 8 cols (cyan)
---   Rows 4-1     reserved / off
-local function lp2_redraw()
+-- Redraw LP2 with a bass/chord split view:
+--   Rows 8-7: bass 16-step pattern
+--   Rows 6-5: bass current-step activity
+--   Rows 4-3: chord trigger pattern
+--   Rows 2-1: chord/norns current-step activity
+local function lp2_redraw(current_step)
   if not lp2 then return end
+  if not bass_patterns or not chord_allow_house then return end
 
-  -- Row 8: T-8 drum activity (per-instrument colours, pairs of columns)
-  local kv = lp2_kick_level  > 0 and LP2_COLORS.kick  or 0
-  local sv = lp2_snare_level > 0 and LP2_COLORS.snare or 0
-  local hv = lp2_hat_level   > 0 and LP2_COLORS.hat   or 0
-  lp2_led(81, kv) lp2_led(82, kv)   -- kick:  cols 1-2
-  lp2_led(83, sv) lp2_led(84, sv)   -- snare: cols 3-4
-  lp2_led(85, hv) lp2_led(86, hv)   -- hat:   cols 5-6
-  lp2_led(87, 0)  lp2_led(88, 0)    -- cols 7-8 reserved
+  -- Keep LP2 in programmer mode (prevents all-yellow fallback/live layout).
+  lp2_sysex_tick = lp2_sysex_tick + 1
+  if lp2_sysex_tick >= 16 then
+    lp2_sysex_tick = 0
+    pcall(function() lp2:send(LP_PROGRAMMER_SYSEX) end)
+  end
 
-  -- Row 7: T-8 bass
-  local bv = lp2_bass_level > 0 and LP2_COLORS.bass or 0
-  for col = 1, 8 do lp2_led(70 + col, bv) end
+  local deck = current_deck()
+  local pat = bass_patterns[deck.genre] or bass_patterns.HOUSE or {}
+  local chord_activity = math.max(lp2_j6_level, lp2_norns_level)
+  local bass_activity = lp2_bass_level
 
-  -- Row 6: J-6 chord
-  local jv = lp2_j6_level > 0 and LP2_COLORS.j6 or 0
-  for col = 1, 8 do lp2_led(60 + col, jv) end
+  for s = 1, 16 do
+    local bass_on = (pat[s] ~= nil and pat[s] ~= 0)
+    local chord_on = false
+    local g = deck.genre
+    if chord_allow_house[g] then
+      chord_on = (s == 1 or s == 9)
+    elseif g == "TWO_STEP" then
+      chord_on = (s == 4 or s == 10)
+    elseif g == "BREAKS" then
+      chord_on = (s == 1 or s == 11)
+    elseif g == "TECHNO" then
+      chord_on = (s == 1)
+    elseif g == "DUBSTEP" then
+      chord_on = (s == 1 or s == 9)
+    elseif g == "TRANCE" then
+      chord_on = (s == 1)
+    elseif g == "PROG" or g == "HARDTECHNO" then
+      chord_on = (s == 1)
+    elseif g == "JUKE" then
+      chord_on = (s == 1 or s == 5 or s == 9 or s == 13)
+    elseif g == "MINIMAL" then
+      chord_on = (s == 1)
+    elseif g == "SPEED" or g == "BASSLINE" then
+      chord_on = (s == 4 or s == 12)
+    end
 
-  -- Row 5: Norns instrument (PolyPerc)
-  local nv = lp2_norns_level > 0 and LP2_COLORS.norns or 0
-  for col = 1, 8 do lp2_led(50 + col, nv) end
+    local bass_pat_vel = bass_on and LP2_COLORS.bass or 0
+    local chord_pat_vel = chord_on and LP2_COLORS.j6 or 0
+    if s == current_step then
+      if bass_on then bass_pat_vel = LP2_COLORS.bass_cursor end
+      if chord_on then chord_pat_vel = LP2_COLORS.j6_cursor end
+    end
+
+    lp2_led(lp2_step_note(8, s), bass_pat_vel)
+    lp2_led(lp2_step_note(4, s), chord_pat_vel)
+
+    local bass_act_vel = (s == current_step and bass_activity > 0) and LP2_COLORS.bass_cursor or 0
+    local chord_act_vel = (s == current_step and chord_activity > 0) and LP2_COLORS.j6_cursor or 0
+    lp2_led(lp2_step_note(6, s), bass_act_vel)
+    lp2_led(lp2_step_note(2, s), chord_act_vel)
+  end
 
   -- Decay activity levels (1 step per redraw call)
   lp2_kick_level  = math.max(0, lp2_kick_level  - 1)
@@ -937,7 +983,7 @@ local function lp2_connect(dev)
   lp2_clear()
 end
 
-local bass_patterns = {
+bass_patterns = {
   HOUSE={0,0,7,0, 0,10,7,0, 0,0,12,10, 7,0,3,0},
   FUNKY={0,7,0,10, 12,10,7,0, 5,0,7,10, 12,0,10,7},
   DIRTY={0,0,0,3, 0,0,7,10, 0,0,12,10, 7,3,0,0},
@@ -1072,7 +1118,7 @@ local bass_len    = { DUBSTEP=3 }             -- DUBSTEP uses long, sustained ba
 -- Genres that share the default house-style chord timing (every 8 steps, at step 1 and 9).
 -- Original genres: HOUSE, FUNKY, DIRTY, GARAGE4
 -- New genres:      DEEP, ACID, DNB, LIQUID, ELECTRO, AFRO, MELODIC, HARDSTYLE, JUNGLE
-local chord_allow_house = {
+chord_allow_house = {
   HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
   DEEP=true, ACID=true, DNB=true, LIQUID=true,
   ELECTRO=true, AFRO=true, MELODIC=true, HARDSTYLE=true, JUNGLE=true
@@ -1352,7 +1398,7 @@ local function clock_tick()
   update_xfade()
   update_mx1_fx()
   lp_redraw(step)
-  lp2_redraw()
+  lp2_redraw(step)
 
   -- Wrap musical playback in pcall so any unexpected engine or MIDI error
   -- (e.g. the norns instrument first firing at bar 17 where the GROOVE

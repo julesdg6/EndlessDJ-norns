@@ -401,21 +401,15 @@ deck's genre base pattern so the grid immediately reflects the new track.
 
 Layout of the second launchpad (8×8 grid, programmer mode):
 
-  Row 8 (top) T-8 drums:
-    Cols 1-2  Kick    (red)
-    Cols 3-4  Snare   (yellow)
-    Cols 5-6  Hi-hat  (green)
+  Top 4-row block (rows 8-5): BASS
+    Rows 8-7: bass 16-step display (row 8 = steps 1-8, row 7 = steps 9-16)
+    Rows 6-5: bass activity on the current step
 
-  Row 7       T-8 bass (amber / orange) — all 8 cols
+  Bottom 4-row block (rows 4-1): CHORDS
+    Rows 4-3: chord trigger-step display (row 4 = steps 1-8, row 3 = steps 9-16)
+    Rows 2-1: chord/norns activity on the current step
 
-  Row 6       J-6 chord (purple) — all 8 cols
-
-  Row 5       Norns PolyPerc instrument (cyan) — all 8 cols
-
-  Rows 4-1    Off / reserved
-
-Each row flashes when the corresponding instrument fires and then fades out
-over the following ticks, giving a natural activity-meter feel.
+Current step uses brighter colours (amber for bass, purple for chords).
 
 Both Launchpads must be in programmer mode (sent automatically on connect via
 SysEx).  The LAUNCHPAD section in PARAMS lets you choose which MIDI device
