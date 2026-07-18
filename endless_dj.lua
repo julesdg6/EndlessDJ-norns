@@ -41,12 +41,13 @@ local norns_inst_enabled = true
 local norns_inst_vol = 0.8
 
 -- Presets: pad, synth, pluck, strings.
--- Fields: attack/release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
+-- Fields: release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
+-- Note: PolyPerc uses Env.perc with a fixed default attack; there is no engine.attack command.
 local norns_presets = {
-  {name="pad",     attack=0.8,  release=2.0, cutoff=800,  gain=0.5, pw=0.5},
-  {name="synth",   attack=0.02, release=0.5, cutoff=3000, gain=0.3, pw=0.3},
-  {name="pluck",   attack=0.01, release=0.3, cutoff=5000, gain=0.2, pw=0.2},
-  {name="strings", attack=0.4,  release=1.5, cutoff=1500, gain=0.4, pw=0.5},
+  {name="pad",     release=2.0, cutoff=800,  gain=0.5, pw=0.5},
+  {name="synth",   release=0.5, cutoff=3000, gain=0.3, pw=0.3},
+  {name="pluck",   release=0.3, cutoff=5000, gain=0.2, pw=0.2},
+  {name="strings", release=1.5, cutoff=1500, gain=0.4, pw=0.5},
 }
 local norns_preset_idx = 1
 
@@ -1031,7 +1032,6 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
   if is_pad and b % 2 ~= 1 then return end
 
   local ok, err = pcall(function()
-    engine.attack(preset.attack)
     engine.release(preset.release)
     engine.cutoff(preset.cutoff)
     engine.gain(preset.gain)

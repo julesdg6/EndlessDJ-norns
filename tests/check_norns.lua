@@ -97,6 +97,9 @@ end
 if not source:find("note_to_hz", 1, true) then
   fail("Missing note_to_hz helper for PolyPerc frequency conversion")
 end
+if source:find("engine%.attack", 1, true) then
+  fail("Regression: engine.attack does not exist in PolyPerc (Env.perc has no attack command)")
+end
 pass("Norns instrument (PolyPerc) support exists")
 
 if not source:find("acapella_files", 1, true) then
