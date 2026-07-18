@@ -1034,6 +1034,10 @@ local block_chord_dur = {
   DUBSTEP=4, DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
 }
 
+-- Per-genre bass note octave offset (default 0) and note length in ticks (default 1)
+local bass_octave = { DUBSTEP=-12, DNB=-12 }
+local bass_len    = { DUBSTEP=3 }
+
 -- Genres that share the default house-style chord timing (every 8 steps)
 local chord_allow_house = {
   HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
@@ -1129,13 +1133,8 @@ local function play_bass(sec, s, deck, mix_amount)
   local prob = bass_prob[deck.genre] or 0.55
 
   if degree ~= 0 or math.random() < prob then
-    local octave = 0
-    local len = 1
-    if deck.genre == "DUBSTEP" then
-      octave = -12
-      len = 3
-    end
-    if deck.genre == "DNB" then octave = -12 end
+    local octave = bass_octave[deck.genre] or 0
+    local len    = bass_len[deck.genre]    or 1
     t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len)
     lp2_bass_level = 4
   end
