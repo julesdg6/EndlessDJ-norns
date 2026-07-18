@@ -1013,32 +1013,56 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
+-- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
+-- Harder/darker styles push higher; broken-beat styles push slightly lower.
 local kick_vel = {
-  TECHNO=122, DUBSTEP=120, HARDTECHNO=124, HARDSTYLE=125, DNB=118, JUNGLE=118
+  -- original genres
+  TECHNO=122, DUBSTEP=120,
+  -- new genres
+  HARDTECHNO=124, HARDSTYLE=125, DNB=118, JUNGLE=118
 }
+-- Per-genre snare velocity (default 100). Only genres deviating from the default are listed.
 local snare_vel = {
-  DUBSTEP=122, BREAKS=122, DNB=122, JUNGLE=122, HARDTECHNO=122, HARDSTYLE=122
+  -- original genres
+  DUBSTEP=122, BREAKS=122,
+  -- new genres
+  DNB=122, JUNGLE=122, HARDTECHNO=122, HARDSTYLE=122
 }
+-- Per-genre closed hi-hat velocity (default 70). Only genres deviating from the default are listed.
 local hat_vel = {
-  TECHNO=88, HARDTECHNO=85, TRANCE=85
+  -- original genres
+  TECHNO=88,
+  -- new genres
+  HARDTECHNO=85, TRANCE=85
 }
 
--- Per-genre bass note trigger probability (default 0.55)
+-- Per-genre bass note trigger probability (default 0.55).
+-- Only genres deviating from the default are listed.
 local bass_prob = {
-  DUBSTEP=0.90, TECHNO=0.65, DEEP=0.40, MINIMAL=0.35, PROG=0.45,
+  -- original genres
+  DUBSTEP=0.90, TECHNO=0.65,
+  -- new genres
+  DEEP=0.40, MINIMAL=0.35, PROG=0.45,
   ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85
 }
 
--- Per-genre block-chord sustain duration in ticks (default 10)
+-- Per-genre block-chord sustain duration in ticks (default 10).
+-- Only genres deviating from the default are listed.
 local block_chord_dur = {
-  DUBSTEP=4, DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
+  -- original genres
+  DUBSTEP=4,
+  -- new genres: ambient/melodic styles hold chords longer
+  DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
 }
 
--- Per-genre bass note octave offset (default 0) and note length in ticks (default 1)
-local bass_octave = { DUBSTEP=-12, DNB=-12 }
-local bass_len    = { DUBSTEP=3 }
+-- Per-genre bass note octave offset (default 0) and note length in ticks (default 1).
+-- Only genres deviating from the default are listed.
+local bass_octave = { DUBSTEP=-12, DNB=-12 }  -- sub-bass register
+local bass_len    = { DUBSTEP=3 }             -- DUBSTEP uses long, sustained bass notes
 
--- Genres that share the default house-style chord timing (every 8 steps)
+-- Genres that share the default house-style chord timing (every 8 steps, at step 1 and 9).
+-- Original genres: HOUSE, FUNKY, DIRTY, GARAGE4
+-- New genres:      DEEP, ACID, DNB, LIQUID, ELECTRO, AFRO, MELODIC, HARDSTYLE, JUNGLE
 local chord_allow_house = {
   HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
   DEEP=true, ACID=true, DNB=true, LIQUID=true,
