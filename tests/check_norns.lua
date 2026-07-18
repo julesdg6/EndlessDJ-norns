@@ -56,7 +56,11 @@ pass("T-8 MIDI map is correct")
 
 for _, genre in ipairs({
   "HOUSE","FUNKY","DIRTY","TECHNO",
-  "GARAGE4","TWO_STEP","BREAKS","DUBSTEP"
+  "GARAGE4","TWO_STEP","BREAKS","DUBSTEP",
+  "DEEP","ACID","TRANCE","PROG",
+  "JUNGLE","DNB","LIQUID","HARDTECHNO",
+  "ELECTRO","JUKE","AFRO","MINIMAL",
+  "MELODIC","SPEED","BASSLINE","HARDSTYLE"
 }) do
   if not source:find('"' .. genre .. '"', 1, true) then
     fail("Missing genre: " .. genre)

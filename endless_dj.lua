@@ -106,7 +106,23 @@ local genres = {
   "GARAGE4",
   "TWO_STEP",
   "BREAKS",
-  "DUBSTEP"
+  "DUBSTEP",
+  "DEEP",
+  "ACID",
+  "TRANCE",
+  "PROG",
+  "JUNGLE",
+  "DNB",
+  "LIQUID",
+  "HARDTECHNO",
+  "ELECTRO",
+  "JUKE",
+  "AFRO",
+  "MINIMAL",
+  "MELODIC",
+  "SPEED",
+  "BASSLINE",
+  "HARDSTYLE"
 }
 
 local roots = {45,47,48,50,52,53,55}
@@ -591,6 +607,104 @@ local drum_patterns = {
     snare={9},
     clap={9},
     hats={3,7,11,15}
+  },
+  DEEP = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={7,15}
+  },
+  ACID = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={3,7,11,15}
+  },
+  TRANCE = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}
+  },
+  PROG = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={1,3,5,7,9,11,13,15}
+  },
+  JUNGLE = {
+    kick={1,3,7,11,13},
+    snare={5,9,13},
+    clap={},
+    hats={2,4,6,8,10,12,14,16}
+  },
+  DNB = {
+    kick={1,7,11},
+    snare={5,9,13},
+    clap={},
+    hats={2,4,6,8,10,12,14,16}
+  },
+  LIQUID = {
+    kick={1,7,11},
+    snare={5,9,13},
+    clap={9},
+    hats={3,6,9,12,15}
+  },
+  HARDTECHNO = {
+    kick={1,5,9,13},
+    snare={},
+    clap={5,13},
+    tom={3,7,11,15},
+    hats={2,4,6,8,10,12,14,16}
+  },
+  ELECTRO = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={3,7,10,14}
+  },
+  JUKE = {
+    kick={1,5,7,9,11,13,15},
+    snare={5,9,13},
+    clap={},
+    hats={1,3,5,7,9,11,13,15}
+  },
+  AFRO = {
+    kick={1,5,9,13},
+    snare={7,15},
+    clap={5,11},
+    tom={3,8,12},
+    hats={2,4,7,10,12,15}
+  },
+  MINIMAL = {
+    kick={1,9},
+    snare={},
+    clap={9},
+    hats={5,13}
+  },
+  MELODIC = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={3,7,11,15}
+  },
+  SPEED = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={3,9},
+    hats={3,7,10,14}
+  },
+  BASSLINE = {
+    kick={1,5,9,13},
+    snare={5,13},
+    clap={5,13},
+    hats={4,8,12,16}
+  },
+  HARDSTYLE = {
+    kick={1,5,9,13},
+    snare={9},
+    clap={},
+    hats={3,7,11,15}
   }
 }
 
@@ -831,7 +945,23 @@ local bass_patterns = {
   GARAGE4={0,0,7,0, 10,0,7,0, 0,12,0,10, 7,0,3,0},
   TWO_STEP={0,0,0,7, 0,10,0,0, 12,0,0,10, 0,7,3,0},
   BREAKS={0,0,7,0, 0,0,10,0, 12,0,7,0, 3,0,0,10},
-  DUBSTEP={0,0,0,0, -12,0,0,0, 0,0,0,-5, -12,0,0,0}
+  DUBSTEP={0,0,0,0, -12,0,0,0, 0,0,0,-5, -12,0,0,0},
+  DEEP={0,0,0,0, 0,0,0,0, 5,0,0,0, 7,0,0,0},
+  ACID={0,0,12,0, 5,0,7,10, 0,0,12,0, 5,7,0,0},
+  TRANCE={0,0,5,7, 0,10,5,0, 0,0,7,10, 5,0,7,0},
+  PROG={0,0,0,0, 7,0,0,0, 0,0,0,0, 5,0,0,0},
+  JUNGLE={0,0,0,7, 0,12,0,0, 5,0,0,7, 0,0,12,0},
+  DNB={0,0,7,0, 0,0,10,0, 0,7,0,0, 12,0,5,0},
+  LIQUID={0,5,0,7, 0,10,0,5, 7,0,12,0, 5,0,7,10},
+  HARDTECHNO={0,0,0,0, 0,0,0,0, 7,0,0,0, 0,0,0,0},
+  ELECTRO={0,0,7,0, 0,0,5,0, 0,7,0,10, 0,5,0,0},
+  JUKE={0,7,0,5, 0,7,10,0, 0,5,0,7, 12,0,7,0},
+  AFRO={0,0,5,0, 0,7,0,10, 0,0,5,7, 0,10,0,0},
+  MINIMAL={0,0,0,0, 0,0,0,0, 0,0,7,0, 0,0,0,0},
+  MELODIC={0,0,5,7, 10,0,7,5, 0,5,0,7, 10,7,5,0},
+  SPEED={0,0,7,0, 0,10,0,7, 0,0,12,0, 7,0,5,0},
+  BASSLINE={0,7,0,10, 0,12,7,0, 5,0,7,0, 10,0,7,5},
+  HARDSTYLE={0,0,0,0, 7,0,0,0, 0,0,0,0, 5,0,7,0}
 }
 
 local chord_progs = {
@@ -842,7 +972,23 @@ local chord_progs = {
   GARAGE4={{0,3,7},{5,8,12},{10,14,17},{7,10,14}},
   TWO_STEP={{0,3,7},{10,14,17},{5,8,12},{7,10,14}},
   BREAKS={{0,3,7},{7,10,14},{5,8,12},{3,7,10}},
-  DUBSTEP={{0,3,7},{0,3,7},{-5,-2,2},{-7,-4,0}}
+  DUBSTEP={{0,3,7},{0,3,7},{-5,-2,2},{-7,-4,0}},
+  DEEP={{0,3,7},{5,8,12},{7,10,14},{5,8,12}},
+  ACID={{0,3,7},{0,3,7},{5,8,12},{0,3,7}},
+  TRANCE={{0,4,7},{5,9,12},{9,12,16},{7,11,14}},
+  PROG={{0,3,7},{0,3,7},{7,10,14},{5,8,12}},
+  JUNGLE={{0,3,7},{10,13,17},{5,8,12},{7,10,14}},
+  DNB={{0,3,7},{3,7,10},{7,10,14},{5,8,12}},
+  LIQUID={{0,4,7},{5,9,12},{7,11,14},{3,7,10}},
+  HARDTECHNO={{0,3,7},{-5,-2,2},{0,3,7},{0,3,7}},
+  ELECTRO={{0,3,7},{5,8,12},{3,7,10},{7,10,14}},
+  JUKE={{0,3,7},{0,3,7},{5,8,12},{5,8,12}},
+  AFRO={{0,4,7},{5,9,12},{7,11,14},{10,14,17}},
+  MINIMAL={{0,3,7},{0,3,7},{0,3,7},{-2,1,5}},
+  MELODIC={{0,4,7},{9,12,16},{5,9,12},{7,11,14}},
+  SPEED={{0,3,7},{5,8,12},{10,14,17},{7,10,14}},
+  BASSLINE={{0,3,7},{7,10,14},{5,8,12},{10,14,17}},
+  HARDSTYLE={{0,4,7},{0,4,7},{5,9,12},{7,11,14}}
 }
 
 local chord_styles = {
@@ -853,12 +999,84 @@ local chord_styles = {
   GARAGE4={"offbeat","stab","up"},
   TWO_STEP={"offbeat","updown","stab"},
   BREAKS={"stab","strum"},
-  DUBSTEP={"stab","block"}
+  DUBSTEP={"stab","block"},
+  DEEP={"block","offbeat"},
+  ACID={"stab"},
+  TRANCE={"up","updown"},
+  PROG={"block","offbeat"},
+  JUNGLE={"stab"},
+  DNB={"stab","block"},
+  LIQUID={"up","strum"},
+  HARDTECHNO={"stab"},
+  ELECTRO={"offbeat","stab"},
+  JUKE={"stab","offbeat"},
+  AFRO={"block","up"},
+  MINIMAL={"stab"},
+  MELODIC={"up","updown"},
+  SPEED={"offbeat","stab"},
+  BASSLINE={"offbeat","stab","up"},
+  HARDSTYLE={"block","stab"}
 }
 
 local function choose(t)
   return t[math.random(#t)]
 end
+
+-- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
+-- Harder/darker styles push higher; broken-beat styles push slightly lower.
+local kick_vel = {
+  -- original genres
+  TECHNO=122, DUBSTEP=120,
+  -- new genres
+  HARDTECHNO=124, HARDSTYLE=125, DNB=118, JUNGLE=118
+}
+-- Per-genre snare velocity (default 100). Only genres deviating from the default are listed.
+local snare_vel = {
+  -- original genres
+  DUBSTEP=122, BREAKS=122,
+  -- new genres
+  DNB=122, JUNGLE=122, HARDTECHNO=122, HARDSTYLE=122
+}
+-- Per-genre closed hi-hat velocity (default 70). Only genres deviating from the default are listed.
+local hat_vel = {
+  -- original genres
+  TECHNO=88,
+  -- new genres
+  HARDTECHNO=85, TRANCE=85
+}
+
+-- Per-genre bass note trigger probability (default 0.55).
+-- Only genres deviating from the default are listed.
+local bass_prob = {
+  -- original genres
+  DUBSTEP=0.90, TECHNO=0.65,
+  -- new genres
+  DEEP=0.40, MINIMAL=0.35, PROG=0.45,
+  ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85
+}
+
+-- Per-genre block-chord sustain duration in ticks (default 10).
+-- Only genres deviating from the default are listed.
+local block_chord_dur = {
+  -- original genres
+  DUBSTEP=4,
+  -- new genres: ambient/melodic styles hold chords longer
+  DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
+}
+
+-- Per-genre bass note octave offset (default 0) and note length in ticks (default 1).
+-- Only genres deviating from the default are listed.
+local bass_octave = { DUBSTEP=-12, DNB=-12 }  -- sub-bass register
+local bass_len    = { DUBSTEP=3 }             -- DUBSTEP uses long, sustained bass notes
+
+-- Genres that share the default house-style chord timing (every 8 steps, at step 1 and 9).
+-- Original genres: HOUSE, FUNKY, DIRTY, GARAGE4
+-- New genres:      DEEP, ACID, DNB, LIQUID, ELECTRO, AFRO, MELODIC, HARDSTYLE, JUNGLE
+local chord_allow_house = {
+  HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
+  DEEP=true, ACID=true, DNB=true, LIQUID=true,
+  ELECTRO=true, AFRO=true, MELODIC=true, HARDSTYLE=true, JUNGLE=true
+}
 
 local function play_drums(sec, s, b, mix_fades, deck)
   local g = deck.genre
@@ -884,10 +1102,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local kick_hit
   if use_lp then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
   if kick_hit and math.random() < kick_prob then
-    local vel = 110
-    if g == "TECHNO" then vel = 122 end
-    if g == "DUBSTEP" then vel = 120 end
-    t8_note(KICK, vel, drum_ch, 1)
+    t8_note(KICK, kick_vel[g] or 110, drum_ch, 1)
     lp2_kick_level = 4
   end
 
@@ -899,9 +1114,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
     snare_hit = p.snare and hit(p.snare, s)
   end
   if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
-    local vel = 100
-    if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
-    t8_note(SNARE, vel, drum_ch, 1)
+    t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
     lp2_snare_level = 4
   end
 
@@ -925,9 +1138,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
     chh_hit = p.hats and hit(p.hats, s)
   end
   if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
-    local vel = 70
-    if g == "TECHNO" then vel = 88 end
-    t8_note(CHH, vel, drum_ch, 1)
+    t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
     lp2_hat_level = 4
   end
 
@@ -961,17 +1172,11 @@ local function play_bass(sec, s, deck, mix_fades)
   local degree = pat[((s-1)%16)+1]
   if degree == nil then return end
 
-  local prob = 0.55
-  if deck.genre == "DUBSTEP" then prob = 0.90 end
-  if deck.genre == "TECHNO" then prob = 0.65 end
+  local prob = bass_prob[deck.genre] or 0.55
 
   if degree ~= 0 or math.random() < prob then
-    local octave = 0
-    local len = 1
-    if deck.genre == "DUBSTEP" then
-      octave = -12
-      len = 3
-    end
+    local octave = bass_octave[deck.genre] or 0
+    local len    = bass_len[deck.genre]    or 1
     t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len)
     lp2_bass_level = 4
   end
@@ -985,7 +1190,7 @@ local function play_chords(sec, s, deck, b, mix_fades)
   local g = deck.genre
   local allow = false
 
-  if g=="HOUSE" or g=="FUNKY" or g=="DIRTY" or g=="GARAGE4" then
+  if chord_allow_house[g] then
     allow = (s==1 or s==9)
   elseif g=="TWO_STEP" then
     allow = (s==4 or s==10)
@@ -995,6 +1200,16 @@ local function play_chords(sec, s, deck, b, mix_fades)
     allow = (s==1 and b%4==1)
   elseif g=="DUBSTEP" then
     allow = (s==1 or s==9)
+  elseif g=="TRANCE" then
+    allow = (s==1 and b%2==1)
+  elseif g=="PROG" or g=="HARDTECHNO" then
+    allow = (s==1 and b%4==1)
+  elseif g=="JUKE" then
+    allow = (s==1 or s==5 or s==9 or s==13)
+  elseif g=="MINIMAL" then
+    allow = (s==1 and b%8==1)
+  elseif g=="SPEED" or g=="BASSLINE" then
+    allow = (s==4 or s==12)
   end
 
   if not allow then return end
@@ -1008,8 +1223,9 @@ local function play_chords(sec, s, deck, b, mix_fades)
   local vel = sec=="DROP" and 98 or 78
 
   if style == "block" then
+    local dur = block_chord_dur[g] or 10
     for _,n in ipairs(notes) do
-      chord_note(n, vel, g=="DUBSTEP" and 4 or 10)
+      chord_note(n, vel, dur)
     end
   elseif style == "up" then
     for i,n in ipairs(notes) do
