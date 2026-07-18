@@ -203,18 +203,18 @@ ENDLESS DJ MIXING
 
 The next deck must start BEFORE the current track finishes.
 
-The incoming deck currently begins 8 bars before handover.
+The incoming deck begins 32 bars before handover, split into four 8-bar phases.
 
-During those 8 bars:
+During those 32 bars each group of elements is swapped one phase at a time:
 
-- outgoing track continues
-- incoming track starts at bar 1
-- crossfader moves gradually
-- incoming musical elements should be introduced progressively
+- Phase 1 (bars 1-8 of mix):  kick drum fades out on outgoing deck, fades in on incoming deck
+- Phase 2 (bars 9-16 of mix): bass fades out on outgoing deck, fades in on incoming deck
+- Phase 3 (bars 17-24 of mix): remaining drums (snare, hats, clap, tom) swap between decks
+- Phase 4 (bars 25-32 of mix): chords and melody swap between decks
 
 At handover the incoming track MUST NOT restart at bar 1.
 
-If it has already played bars 1-8 during the mix, it should continue from bar 9.
+It has already played 32 bars during the mix, so it continues from bar 33.
 
 This is essential.
 
