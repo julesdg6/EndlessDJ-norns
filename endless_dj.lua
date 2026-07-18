@@ -1023,6 +1023,17 @@ local hat_vel = {
   TECHNO=88, HARDTECHNO=85, TRANCE=85
 }
 
+-- Per-genre bass note trigger probability (default 0.55)
+local bass_prob = {
+  DUBSTEP=0.90, TECHNO=0.65, DEEP=0.40, MINIMAL=0.35, PROG=0.45,
+  ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85
+}
+
+-- Per-genre block-chord sustain duration in ticks (default 10)
+local block_chord_dur = {
+  DUBSTEP=4, DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
+}
+
 -- Genres that share the default house-style chord timing (every 8 steps)
 local chord_allow_house = {
   HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
@@ -1115,17 +1126,7 @@ local function play_bass(sec, s, deck, mix_amount)
   local degree = pat[((s-1)%16)+1]
   if degree == nil then return end
 
-  local prob = 0.55
-  if deck.genre == "DUBSTEP" then prob = 0.90 end
-  if deck.genre == "TECHNO" then prob = 0.65 end
-  if deck.genre == "DEEP" then prob = 0.40 end
-  if deck.genre == "MINIMAL" then prob = 0.35 end
-  if deck.genre == "PROG" then prob = 0.45 end
-  if deck.genre == "ACID" then prob = 0.75 end
-  if deck.genre == "TRANCE" then prob = 0.70 end
-  if deck.genre == "DNB" then prob = 0.85 end
-  if deck.genre == "BASSLINE" then prob = 0.90 end
-  if deck.genre == "JUKE" then prob = 0.85 end
+  local prob = bass_prob[deck.genre] or 0.55
 
   if degree ~= 0 or math.random() < prob then
     local octave = 0
@@ -1180,10 +1181,7 @@ local function play_chords(sec, s, deck, b, mix_amount)
   local vel = sec=="DROP" and 98 or 78
 
   if style == "block" then
-    local dur = 10
-    if g == "DUBSTEP" then dur = 4 end
-    if g == "DEEP" or g == "MINIMAL" then dur = 14 end
-    if g == "PROG" or g == "MELODIC" or g == "TRANCE" then dur = 12 end
+    local dur = block_chord_dur[g] or 10
     for _,n in ipairs(notes) do
       chord_note(n, vel, dur)
     end
