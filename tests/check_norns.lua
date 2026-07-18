@@ -132,6 +132,12 @@ end
 if not source:find("LP2_COLORS", 1, true) then
   fail("Missing LP2_COLORS palette table")
 end
+if not source:find("lp2_step_note", 1, true) then
+  fail("Missing lp2_step_note helper for LP2 step-grid layout")
+end
+if not source:find("lp2_sysex_tick", 1, true) then
+  fail("Missing LP2 programmer-mode keepalive tick")
+end
 pass("Second Launchpad (LP2) support exists")
 
 print("All Endless DJ checks passed")
