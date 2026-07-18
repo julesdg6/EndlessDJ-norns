@@ -1013,6 +1013,23 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
+local kick_vel = {
+  TECHNO=122, DUBSTEP=120, HARDTECHNO=124, HARDSTYLE=125, DNB=118, JUNGLE=118
+}
+local snare_vel = {
+  DUBSTEP=122, BREAKS=122, DNB=122, JUNGLE=122, HARDTECHNO=122, HARDSTYLE=122
+}
+local hat_vel = {
+  TECHNO=88, HARDTECHNO=85, TRANCE=85
+}
+
+-- Genres that share the default house-style chord timing (every 8 steps)
+local chord_allow_house = {
+  HOUSE=true, FUNKY=true, DIRTY=true, GARAGE4=true,
+  DEEP=true, ACID=true, DNB=true, LIQUID=true,
+  ELECTRO=true, AFRO=true, MELODIC=true, HARDSTYLE=true, JUNGLE=true
+}
+
 local function play_drums(sec, s, b, mix_amount, deck)
   local g = deck.genre
   local p = drum_patterns[g] or drum_patterns.HOUSE
@@ -1029,13 +1046,7 @@ local function play_drums(sec, s, b, mix_amount, deck)
   local kick_hit
   if use_lp then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
   if kick_hit and math.random() < kick_prob then
-    local vel = 110
-    if g == "TECHNO" then vel = 122 end
-    if g == "DUBSTEP" then vel = 120 end
-    if g == "HARDTECHNO" then vel = 124 end
-    if g == "HARDSTYLE" then vel = 125 end
-    if g == "DNB" or g == "JUNGLE" then vel = 118 end
-    t8_note(KICK, vel, drum_ch, 1)
+    t8_note(KICK, kick_vel[g] or 110, drum_ch, 1)
     lp2_kick_level = 4
   end
 
@@ -1047,10 +1058,7 @@ local function play_drums(sec, s, b, mix_amount, deck)
     snare_hit = p.snare and hit(p.snare, s)
   end
   if snare_hit and sec ~= "INTRO" then
-    local vel = 100
-    if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
-    if g == "DNB" or g == "JUNGLE" or g == "HARDTECHNO" or g == "HARDSTYLE" then vel = 122 end
-    t8_note(SNARE, vel, drum_ch, 1)
+    t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
     lp2_snare_level = 4
   end
 
@@ -1074,10 +1082,7 @@ local function play_drums(sec, s, b, mix_amount, deck)
     chh_hit = p.hats and hit(p.hats, s)
   end
   if chh_hit and math.random() < (0.45 + d * 0.40) then
-    local vel = 70
-    if g == "TECHNO" then vel = 88 end
-    if g == "HARDTECHNO" or g == "TRANCE" then vel = 85 end
-    t8_note(CHH, vel, drum_ch, 1)
+    t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
     lp2_hat_level = 4
   end
 
@@ -1142,7 +1147,7 @@ local function play_chords(sec, s, deck, b, mix_amount)
   local g = deck.genre
   local allow = false
 
-  if g=="HOUSE" or g=="FUNKY" or g=="DIRTY" or g=="GARAGE4" then
+  if chord_allow_house[g] then
     allow = (s==1 or s==9)
   elseif g=="TWO_STEP" then
     allow = (s==4 or s==10)
@@ -1152,15 +1157,10 @@ local function play_chords(sec, s, deck, b, mix_amount)
     allow = (s==1 and b%4==1)
   elseif g=="DUBSTEP" then
     allow = (s==1 or s==9)
-  elseif g=="DEEP" or g=="ACID" or g=="DNB" or g=="LIQUID" or g=="ELECTRO"
-      or g=="AFRO" or g=="MELODIC" or g=="HARDSTYLE" then
-    allow = (s==1 or s==9)
   elseif g=="TRANCE" then
     allow = (s==1 and b%2==1)
   elseif g=="PROG" or g=="HARDTECHNO" then
     allow = (s==1 and b%4==1)
-  elseif g=="JUNGLE" then
-    allow = (s==1 or s==9)
   elseif g=="JUKE" then
     allow = (s==1 or s==5 or s==9 or s==13)
   elseif g=="MINIMAL" then
