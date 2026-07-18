@@ -41,12 +41,13 @@ local norns_inst_enabled = true
 local norns_inst_vol = 0.8
 
 -- Presets: pad, synth, pluck, strings.
--- Fields: attack/release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
+-- Fields: release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
+-- Note: PolyPerc uses Env.perc with a fixed default attack; there is no engine.attack command.
 local norns_presets = {
-  {name="pad",     attack=0.8,  release=2.0, cutoff=800,  gain=0.5, pw=0.5},
-  {name="synth",   attack=0.02, release=0.5, cutoff=3000, gain=0.3, pw=0.3},
-  {name="pluck",   attack=0.01, release=0.3, cutoff=5000, gain=0.2, pw=0.2},
-  {name="strings", attack=0.4,  release=1.5, cutoff=1500, gain=0.4, pw=0.5},
+  {name="pad",     release=2.0, cutoff=800,  gain=0.5, pw=0.5},
+  {name="synth",   release=0.5, cutoff=3000, gain=0.3, pw=0.3},
+  {name="pluck",   release=0.3, cutoff=5000, gain=0.2, pw=0.2},
+  {name="strings", release=1.5, cutoff=1500, gain=0.4, pw=0.5},
 }
 local norns_preset_idx = 1
 
@@ -70,6 +71,14 @@ local ppqn = 4
 local tick = 0
 local phrase_bars = 128
 local step = 1
+
+-- Mixing spans the last 32 bars of the phrase, split into four 8-bar phases:
+--   Phase 1 (bars 97-104):  fade kick between decks
+--   Phase 2 (bars 105-112): fade bass between decks
+--   Phase 3 (bars 113-120): fade other drums between decks
+--   Phase 4 (bars 121-128): fade chords/melody between decks
+local MIX_START_BAR = 97
+local MIX_BARS = 32
 
 local current_bar = 1
 local next_bar = nil
@@ -235,7 +244,7 @@ end
 local function update_mx1_fx()
   if not mx1_fx_enabled then return end
   if mixing then
-    local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
+    local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
     local depth = math.sin(clamp(pos, 0, 1) * math.pi) * 100
     send_mx1_cc(mx1_fx_cc, depth)
   else
@@ -1013,6 +1022,7 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
+<<<<<<< HEAD
 -- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
 -- Harder/darker styles push higher; broken-beat styles push slightly lower.
 local kick_vel = {
@@ -1070,16 +1080,27 @@ local chord_allow_house = {
 }
 
 local function play_drums(sec, s, b, mix_amount, deck)
+=======
+local function play_drums(sec, s, b, mix_fades, deck)
+>>>>>>> origin/main
   local g = deck.genre
   local p = drum_patterns[g] or drum_patterns.HOUSE
   local d = density_for_section(sec)
   -- Use launchpad patterns only for the currently active deck
   local use_lp = lp ~= nil and (deck == current_deck())
 
+  local kick_amount  = mix_fades and mix_fades.kick  or 1
+  local drums_amount = mix_fades and mix_fades.drums or 1
+
   local kick_prob = 1.0
   if sec == "INTRO" then kick_prob = 0.75 end
   if sec == "BREAK" then kick_prob = 0.45 end
-  if mix_amount and mix_amount < 0.45 then kick_prob = 0.20 end
+  kick_prob = kick_prob * kick_amount
+
+  -- Snare and clap always fire when pattern calls for them (base prob 1.0);
+  -- scale by drums_amount for a consistent probabilistic fade with kick.
+  local snare_prob = 1.0 * drums_amount
+  local clap_prob  = 1.0 * drums_amount
 
   -- Kick
   local kick_hit
@@ -1096,20 +1117,27 @@ local function play_drums(sec, s, b, mix_amount, deck)
   else
     snare_hit = p.snare and hit(p.snare, s)
   end
+<<<<<<< HEAD
   if snare_hit and sec ~= "INTRO" then
     t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
+=======
+  if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
+    local vel = 100
+    if g == "DUBSTEP" or g == "BREAKS" then vel = 122 end
+    t8_note(SNARE, vel, drum_ch, 1)
+>>>>>>> origin/main
     lp2_snare_level = 4
   end
 
   -- Clap (always generative; not on launchpad)
-  if p.clap and hit(p.clap, s) and sec ~= "INTRO" then
+  if p.clap and hit(p.clap, s) and sec ~= "INTRO" and math.random() < clap_prob then
     if g ~= "TECHNO" then
       t8_note(CLAP, 110, drum_ch, 1)
     end
   end
 
   -- Tom (always generative)
-  if p.tom and hit(p.tom, s) and math.random() < 0.45 then
+  if p.tom and hit(p.tom, s) and math.random() < 0.45 * drums_amount then
     t8_note(TOM, 85, drum_ch, 1)
   end
 
@@ -1120,24 +1148,31 @@ local function play_drums(sec, s, b, mix_amount, deck)
   else
     chh_hit = p.hats and hit(p.hats, s)
   end
+<<<<<<< HEAD
   if chh_hit and math.random() < (0.45 + d * 0.40) then
     t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
+=======
+  if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
+    local vel = 70
+    if g == "TECHNO" then vel = 88 end
+    t8_note(CHH, vel, drum_ch, 1)
+>>>>>>> origin/main
     lp2_hat_level = 4
   end
 
   -- Open hi-hat
   if use_lp then
-    if drum_steps[3][s] then
+    if drum_steps[3][s] and math.random() < drums_amount then
       t8_note(OHH, 70, drum_ch, 1)
       lp2_hat_level = 4
     end
-  elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 then
+  elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 * drums_amount then
     t8_note(OHH, 70, drum_ch, 1)
     lp2_hat_level = 4
   end
 
   -- Bar fills (always generative)
-  if b % 16 == 0 and s >= 13 then
+  if b % 16 == 0 and s >= 13 and math.random() < drums_amount then
     if s == 13 then t8_note(SNARE, 95, drum_ch, 1) end
     if s == 14 then t8_note(TOM, 90, drum_ch, 1) end
     if s == 15 then t8_note(SNARE, 105, drum_ch, 1) end
@@ -1145,10 +1180,11 @@ local function play_drums(sec, s, b, mix_amount, deck)
   end
 end
 
-local function play_bass(sec, s, deck, mix_amount)
+local function play_bass(sec, s, deck, mix_fades)
   if sec == "INTRO" then return end
   if sec == "BREAK" and math.random() < 0.55 then return end
-  if mix_amount and mix_amount < 0.62 then return end
+  local bass_amount = mix_fades and mix_fades.bass or 1
+  if math.random() >= bass_amount then return end
 
   local pat = bass_patterns[deck.genre] or bass_patterns.HOUSE
   local degree = pat[((s-1)%16)+1]
@@ -1164,9 +1200,10 @@ local function play_bass(sec, s, deck, mix_amount)
   end
 end
 
-local function play_chords(sec, s, deck, b, mix_amount)
+local function play_chords(sec, s, deck, b, mix_fades)
   if sec == "INTRO" then return end
-  if mix_amount and mix_amount < 0.50 then return end
+  local melody_amount = mix_fades and mix_fades.melody or 1
+  if math.random() >= melody_amount then return end
 
   local g = deck.genre
   local allow = false
@@ -1233,10 +1270,11 @@ local function play_chords(sec, s, deck, b, mix_amount)
   lp2_j6_level = 8
 end
 
-local function play_norns_instrument(sec, s, deck, b, mix_amount)
+local function play_norns_instrument(sec, s, deck, b, mix_fades)
   if not norns_inst_enabled then return end
   if sec == "INTRO" or sec == "BREAK" then return end
-  if mix_amount and mix_amount < 0.50 then return end
+  local melody_amount = mix_fades and mix_fades.melody or 1
+  if math.random() >= melody_amount then return end
   if s ~= 1 then return end
 
   local g = deck.genre
@@ -1247,7 +1285,6 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
   if is_pad and b % 2 ~= 1 then return end
 
   local ok, err = pcall(function()
-    engine.attack(preset.attack)
     engine.release(preset.release)
     engine.cutoff(preset.cutoff)
     engine.gain(preset.gain)
@@ -1269,16 +1306,16 @@ local function play_norns_instrument(sec, s, deck, b, mix_amount)
   lp2_norns_level = 8
 end
 
-local function play_deck(deck, b, s, mix_amount)
+local function play_deck(deck, b, s, mix_fades)
   local sec = section_for_bar(b)
-  play_drums(sec, s, b, mix_amount, deck)
-  play_bass(sec, s, deck, mix_amount)
-  play_chords(sec, s, deck, b, mix_amount)
-  play_norns_instrument(sec, s, deck, b, mix_amount)
+  play_drums(sec, s, b, mix_fades, deck)
+  play_bass(sec, s, deck, mix_fades)
+  play_chords(sec, s, deck, b, mix_fades)
+  play_norns_instrument(sec, s, deck, b, mix_fades)
 end
 
 local function start_mix_if_needed()
-  if current_bar == 121 and step == 1 and not mixing then
+  if current_bar == MIX_START_BAR and step == 1 and not mixing then
     mixing = true
     next_bar = 1
     next_step = 1
@@ -1290,7 +1327,7 @@ local function update_xfade()
   if manual_xfade then return end
 
   if mixing then
-    local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
+    local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
     if deck_a.active then
       xfade = clamp(pos * 100, 0, 100)
     else
@@ -1312,7 +1349,7 @@ local function finish_handover()
     deck_b = make_deck("B")
   end
 
-  current_bar = 9
+  current_bar = MIX_BARS + 1
   step = 1
   next_bar = nil
   next_step = 1
@@ -1340,15 +1377,36 @@ local function clock_tick()
   -- section begins) cannot stop the metro clock.
   local play_ok, play_err = pcall(function()
     if mixing then
-      local pos = ((current_bar - 121) * 16 + (step - 1)) / (8 * 16)
-      local old_amount = 1 - pos
-      local new_amount = pos
+      -- Position within the 32-bar mix (0.0 = start, 1.0 = end).
+      -- The mix is divided into four 8-bar phases, each responsible for
+      -- cross-fading one group of components:
+      --   Phase 1 (0.00-0.25): kick drum
+      --   Phase 2 (0.25-0.50): bass
+      --   Phase 3 (0.50-0.75): other drums (snare, hats, clap, tom)
+      --   Phase 4 (0.75-1.00): chords / melody
+      local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
+      pos = clamp(pos, 0, 1)
 
-      if old_amount > 0.35 then
-        play_deck(current_deck(), current_bar, step, nil)
-      end
+      -- Fade amount for each phase: 1→0 for outgoing, 0→1 for incoming.
+      -- Phase index is 0-based so the formula maps: phase 1→0, 2→1, 3→2, 4→3.
+      local function phase_out(p) return clamp(1 - (pos - p * 0.25) * 4, 0, 1) end
+      local function phase_in(p)  return clamp(    (pos - p * 0.25) * 4, 0, 1) end
 
-      play_deck(next_deck(), next_bar, next_step, new_amount)
+      local out_fades = {
+        kick   = phase_out(0),
+        bass   = phase_out(1),
+        drums  = phase_out(2),
+        melody = phase_out(3),
+      }
+      local in_fades = {
+        kick   = phase_in(0),
+        bass   = phase_in(1),
+        drums  = phase_in(2),
+        melody = phase_in(3),
+      }
+
+      play_deck(current_deck(), current_bar, step, out_fades)
+      play_deck(next_deck(), next_bar, next_step, in_fades)
     else
       play_deck(current_deck(), current_bar, step, nil)
     end

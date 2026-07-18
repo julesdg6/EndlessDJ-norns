@@ -77,10 +77,10 @@ if not source:find("j6_midi_device", 1, true) then
 end
 pass("Separate J-6 MIDI routing exists")
 
-if not source:find("current_bar = 9", 1, true) then
-  fail("Incoming deck should continue at bar 9 after the 8-bar mix")
+if not source:find("current_bar = MIX_BARS + 1", 1, true) then
+  fail("Incoming deck should continue from bar MIX_BARS+1 after the 32-bar mix")
 end
-pass("8-bar mix handover continues at bar 9")
+pass("32-bar mix handover continues at bar MIX_BARS+1")
 
 if source:match("local%s+CLAP%s*=%s*39") then
   fail("Regression: T-8 clap must be note 50, not 39")
@@ -100,6 +100,9 @@ if not source:find("norns_presets", 1, true) then
 end
 if not source:find("note_to_hz", 1, true) then
   fail("Missing note_to_hz helper for PolyPerc frequency conversion")
+end
+if source:find("engine%.attack", 1, true) then
+  fail("Regression: engine.attack does not exist in PolyPerc (Env.perc has no attack command)")
 end
 pass("Norns instrument (PolyPerc) support exists")
 
