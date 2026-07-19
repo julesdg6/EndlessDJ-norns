@@ -1382,7 +1382,14 @@ local function finish_handover()
   next_bar = nil
   next_step = 1
   mixing = false
-  quiet_notes()
+  -- Do NOT call quiet_notes() here.  Sending 4096 note-off messages (128
+  -- notes × 16 channels × 2 MIDI devices) in a tight Lua loop blocks the
+  -- metro callback thread, causing several bars of silence followed by a
+  -- rapid "catch-up" burst — exactly the symptom reported in issue #24.
+  -- Every note_on is already paired with a scheduled note_off in the
+  -- notes_off queue (via note_on_to), so no hanging notes can occur.
+  -- The MX-1 effect depth is reset to 0 automatically on the next tick by
+  -- update_mx1_fx() once mixing is false.
   lp_load_pattern(current_deck().genre)
   lp_redraw(step)
 end
