@@ -82,6 +82,29 @@ if not source:find("current_bar = MIX_BARS + 1", 1, true) then
 end
 pass("32-bar mix handover continues at bar MIX_BARS+1")
 
+-- Calling quiet_notes() inside finish_handover() sends 4096 MIDI note-off
+-- messages (128 notes × 16 channels × 2 devices) in a tight Lua loop,
+-- blocking the metro callback thread for several seconds.  This is exactly
+-- what caused the "quiet for a few bars / catches up" symptom (issue #24).
+-- Every note_on is already paired with a scheduled note_off via note_on_to(),
+-- so quiet_notes() is not needed here and must not be re-introduced.
+do
+  local _, fh_start = source:find("local function finish_handover", 1, true)
+  if not fh_start then
+    fail("finish_handover function not found")
+  end
+  -- Find the closing 'end' that terminates finish_handover.
+  local fh_end = source:find("\nlocal ", fh_start)
+  local fh_body = source:sub(fh_start, fh_end)
+  -- Strip line comments (--...) before searching for actual function calls.
+  local fh_no_comments = fh_body:gsub("%-%-[^\n]*", "")
+  if fh_no_comments:find("quiet_notes%s*%(") then
+    fail("Regression: finish_handover must not call quiet_notes() -- " ..
+         "it floods MIDI with 4096 note-off messages, causing a quiet period at handover (issue #24)")
+  end
+end
+pass("finish_handover does not call quiet_notes()")
+
 if source:match("local%s+CLAP%s*=%s*39") then
   fail("Regression: T-8 clap must be note 50, not 39")
 end
