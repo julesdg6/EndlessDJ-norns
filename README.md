@@ -165,6 +165,10 @@ MIDI routing
     nts1 device  – select the USB MIDI port that corresponds to the NTS-1 ("NTS-1 digital kit" or similar)
     nts1 channel – default 1.  Must match the NTS-1's MIDI channel setting (see below).
     nts1 enabled – set to "on" to activate.
+    nts1 variation – controls phrase-boundary motif mutation amount.
+    nts1 motif density – controls rhythmic hit density.
+    nts1 register – shifts melodic register up/down.
+    nts1 cc automation – enables/disables timbre CC scene automation.
 
 Required NTS-1 settings
 1. On the NTS-1, hold SHIFT and press OSC to enter the MIDI settings screen.
@@ -176,14 +180,16 @@ Required NTS-1 settings
    directly on the device.
 
 How it plays
-- Silent during INTRO and BREAK sections; sparse (every second bar) during GROOVE
-  and MAIN; full in BUILD and DROP.
-- Motifs are generated from the active deck's root note, genre, and chord
-  progression, so every note is key-safe.
-- Each 8-bar phrase gets its own motif; the motif changes at phrase boundaries
-  rather than every note, giving the melody a recognisable character.
-- During a mix the NTS-1 follows the melody group (phase 4, bars 25-32 of the
-  32-bar crossfade) and fades in/out with the chords.
+- Each deck gets a stable NTS-1 identity: scale-safe base motif, rhythm pattern,
+  note lengths, density, register, timbre scene, and variation seed.
+- Motifs are monophonic and chord-compatible; mutations are controlled and only
+  applied on 4/8/16-bar phrase boundaries (never mid-phrase).
+- INTRO/BREAK stay sparse; GROOVE/MAIN establish motif; BUILD increases density,
+  register, and timbral movement; DROP returns a strong motif variant.
+- During MIX/OUTRO the outgoing deck simplifies while the incoming deck starts to
+  introduce its motif in the melody transition phase.
+- The NTS-1 does not use Program Change. Timbre evolution uses bounded MIDI CC
+  scene automation with change-threshold caching and CC rate limiting.
 
 Test procedure
 1. Enable "nts1 enabled" and confirm the device is selected.
@@ -206,30 +212,32 @@ MIDI routing
     mpx8 channel – default 10.  Must match the MPX8's MIDI receive channel.
     mpx8 enabled – set to "on" to activate.
 
-Pad note numbers
-The eight MPX8 pads trigger samples by MIDI note number.  The defaults are:
+Factory kit defaults (Internal Kit i01)
+Use the MPX8's first factory Internal Kit (`i01`) for plug-and-play defaults.
+Endless DJ does not select kits over MIDI; select `i01` on the MPX8 itself.
 
-  Pad  Role                  Default note
-  ───  ────────────────────  ────────────
-  1    Percussion accent     36
-  2    Alternate percussion  38
-  3    Short fill            42
-  4    Long fill             46
-  5    Impact                48
-  6    Riser                 50
-  7    Vocal / FX stab       60
-  8    Drop accent           62
+The eight MPX8 pads trigger samples by MIDI note number. Endless DJ defaults
+to the `i01` factory pad notes:
 
-To match Norns to your MPX8 kit:
-1. In the MPX8 editor (or on-device), note which MIDI note each pad is assigned.
-2. Set the corresponding "mpx8 padN …" params in the Norns params menu to match.
-   Alternatively, reassign the pads on the MPX8 to match the Norns defaults above.
+ Pad  i01 sample (factory)  Default note  Endless DJ role
+ ───  ────────────────────  ────────────  ────────────────────
+ 1    Kick                  36            Percussion accent
+ 2    Snare                 38            Alternate percussion
+ 3    Closed hi-hat         42            Short fill
+ 4    Open hi-hat           46            Long fill
+ 5    Low tom               43            Impact
+ 6    Mid tom               47            Riser
+ 7    Crash                 49            Vocal / FX stab
+ 8    Ride                  51            Drop accent
+
+You can still customize all eight pad notes with the `mpx8 padN ...` params.
+This keeps custom/user kits fully supported.
 
 Required MPX8 settings
 - Set the MPX8 MIDI receive channel to match the "mpx8 channel" param (default 10).
-- Ensure pads are in "one-shot" / "momentary" trigger mode so a short note-on
-  fires the complete sample.
-- Load the desired samples onto each pad slot via the MPX8 SD card / editor.
+- Select Internal Kit `i01` on the MPX8 hardware.
+- Tuning, reverb, trigger mode, level, panning, and sample assignment remain
+ under MPX8 control.
 
 How it plays
 - Riser (pad 6) fires once at the first bar of the BUILD section.
@@ -246,9 +254,11 @@ How it plays
 
 Test procedure
 1. Enable "mpx8 enabled" and confirm the device is selected.
-2. Open the params menu and press "mpx8 test pads" to fire all 8 pads in
-   sequence (4-tick gap between each).  You should hear each sample trigger.
-3. Start playback; confirm samples fire at the appropriate section boundaries.
+2. In params, press each "mpx8 test padN" trigger and verify the corresponding
+   `i01` pad plays.
+3. Optionally press "mpx8 test all pads" to fire all 8 pads in sequence
+   (4-tick gap between each).
+4. Start playback; confirm samples fire at the appropriate section boundaries.
 
 CORE CONCEPT
 
