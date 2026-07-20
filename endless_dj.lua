@@ -1127,7 +1127,8 @@ local function make_nts1_motif(genre, root, variation_seed)
   table.sort(scale)
   if #scale == 0 then scale = {0, 3, 7} end
 
-  -- Seeded LCG so the same deck always produces the same motif phrase
+  -- Seeded LCG (glibc parameters: multiplier 1103515245, increment 12345,
+  -- modulus 65536) so the same deck always produces the same motif phrase.
   local rng = math.max(1, variation_seed or 1)
   local motif = {}
   for _ = 1, 4 do
@@ -1450,7 +1451,7 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   local phrase_idx = math.floor((b - 1) / 8)
   if not deck.nts1_motif or deck.nts1_phrase ~= phrase_idx then
     deck.nts1_phrase = phrase_idx
-    local seed = (deck.variation_seed or deck.pc or 1) + phrase_idx * 37
+    local seed = (deck.variation_seed or 1) + phrase_idx * 37
     deck.nts1_motif = make_nts1_motif(deck.genre, deck.root, seed)
   end
 
@@ -1918,6 +1919,9 @@ function init()
     "mpx8 pad8 drop accent",
   }
   for i = 1, 8 do
+    -- Capture loop index in a local so each closure writes the correct pad slot
+    -- (Lua closures capture variables by reference; without `pad_i` all eight
+    -- closures would share the same `i` after the loop ends.)
     local pad_i = i
     params:add_number("mpx8_pad" .. i, pad_labels[i], 0, 127, mpx8_pads[i])
     params:set_action("mpx8_pad" .. i, function(v) mpx8_pads[pad_i] = v end)
