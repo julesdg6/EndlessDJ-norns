@@ -144,7 +144,7 @@ Factory kit defaults (Internal Kit i01)
 Use the MPX8's first factory Internal Kit (`i01`) for plug-and-play defaults.
 Endless DJ does not select kits over MIDI; select `i01` on the MPX8 itself.
 
-The eight MPX8 pads trigger samples by MIDI note number.  Endless DJ defaults
+The eight MPX8 pads trigger samples by MIDI note number. Endless DJ defaults
 to the `i01` factory pad notes:
 
  Pad  i01 sample (factory)  Default note  Endless DJ role
