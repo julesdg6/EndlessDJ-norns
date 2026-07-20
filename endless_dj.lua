@@ -93,6 +93,21 @@ local NTS1_RHYTHM_MAX_OFFSET = 15
 local NTS1_MUTATION_SEED_OFFSET = 7
 local NTS1_MUTATION_OP_COUNT = 7
 local NTS1_MOTIF_INDEX_BASE_OFFSET = 2
+local ACID_SEED_MAX = 2147483646
+local acid_cfg = {
+  generator_enabled = true,
+  pattern_length = 16,
+  complexity = 0.55,
+  note_density = 0.65,
+  pitch_variety = 0.50,
+  repeat_bias = 0.40,
+  slide_amount = 0.20,
+  accent_amount = 0.18,
+  octave_amount = 0.15,
+  evolution_amount = 0.25,
+  seed_lock = false,
+  seed_value = 314159265
+}
 
 -- ──────────────────────────────────────────────
 -- Akai MPX8 (optional one-shot / sample layer)
@@ -241,6 +256,10 @@ local LEVEL = {
 -- Forward declarations (tables defined after drum/chord pattern tables below)
 local bass_patterns
 local chord_allow_house
+local acid_build_deck_state
+local acid_refresh_phrase
+local acid_regenerate_deck
+local acid_sync_seed_param
 
 local MIDI_START = 0xFA
 local MIDI_CONTINUE = 0xFB
@@ -312,7 +331,7 @@ end
 
 local function make_deck(letter)
   generation = generation + 1
-  return {
+  local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genres[math.random(#genres)],
     active = false,
@@ -331,6 +350,10 @@ local function make_deck(letter)
     mpx8_impact_fired = false,
     mpx8_drop_accent_fired = false,
   }
+  if acid_build_deck_state then
+    deck.acid = acid_build_deck_state(deck)
+  end
+  return deck
 end
 
 local function current_deck()
@@ -1194,6 +1217,509 @@ local function nts1_collect_scale(genre)
   return scale
 end
 
+acid_cfg.profiles = {
+  ACID={root_weight=1.35,syncopation=0.22,gate_anchor=0.24,slide_bias=1.0,accent_bias=1.0,octave_bias=1.0},
+  TECHNO={root_weight=1.50,syncopation=0.10,gate_anchor=0.30,slide_bias=0.45,accent_bias=0.70,octave_bias=0.45},
+  HOUSE={root_weight=1.15,syncopation=0.18,gate_anchor=0.20,slide_bias=0.35,accent_bias=0.70,octave_bias=0.55},
+  HARDTECHNO={root_weight=1.45,syncopation=0.14,gate_anchor=0.28,slide_bias=0.55,accent_bias=1.10,octave_bias=0.55},
+  BASSLINE={root_weight=1.05,syncopation=0.28,gate_anchor=0.18,slide_bias=0.85,accent_bias=0.95,octave_bias=1.10},
+  TRANCE={root_weight=0.95,syncopation=0.16,gate_anchor=0.16,slide_bias=0.35,accent_bias=0.80,octave_bias=0.90}
+}
+
+acid_cfg.lcg = function(seed)
+  return (math.max(1, seed or 1) * 1103515245 + 12345) % NTS1_LCG_MOD
+end
+
+acid_cfg.make_rng = function(seed)
+  local state = math.max(1, math.floor(seed or 1)) % ACID_SEED_MAX
+  if state == 0 then state = 1 end
+  return function(limit)
+    state = acid_cfg.lcg(state + 97)
+    if limit then
+      return (state % limit) + 1
+    end
+    return state / NTS1_LCG_MOD
+  end
+end
+
+acid_cfg.copy_pattern = function(pattern)
+  local out = {}
+  for i, step_data in ipairs(pattern or {}) do
+    out[i] = {
+      degree = step_data.degree or 0,
+      gate = step_data.gate == true,
+      accent = step_data.accent == true,
+      slide = step_data.slide == true,
+      octave = step_data.octave or 0,
+      length = step_data.length or 1
+    }
+  end
+  return out
+end
+
+acid_cfg.new_seed = function()
+  local hi = math.random(0, 32767)
+  local lo = math.random(0, 65535)
+  local seed = ((hi * 65536) + lo + generation * 1103515245) % ACID_SEED_MAX
+  if seed < 1 then seed = seed + 1 end
+  return seed
+end
+
+acid_cfg.profile_for_genre = function(genre)
+  return acid_cfg.profiles[genre] or acid_cfg.profiles.ACID
+end
+
+acid_cfg.settings_for_genre = function(genre)
+  local profile = acid_cfg.profile_for_genre(genre)
+  return {
+    length = acid_cfg.pattern_length,
+    density = clamp(acid_cfg.note_density, 0.12, 1),
+    pitch_variety = clamp(acid_cfg.pitch_variety, 0, 1),
+    repeat_bias = clamp(acid_cfg.repeat_bias, 0, 1),
+    slide_amount = clamp(acid_cfg.slide_amount, 0, 1),
+    accent_amount = clamp(acid_cfg.accent_amount, 0, 1),
+    octave_amount = clamp(acid_cfg.octave_amount * profile.octave_bias, 0, 1),
+    evolution_amount = clamp(acid_cfg.evolution_amount, 0, 1),
+    profile = profile
+  }
+end
+
+acid_cfg.order_scale = function(scale)
+  local ordered = {}
+  local seen = {}
+  local root_idx = 1
+  for i, pc in ipairs(scale) do
+    if pc == 0 then root_idx = i break end
+  end
+  for offset = 0, #scale - 1 do
+    local right = ((root_idx - 1 + offset) % #scale) + 1
+    local left = ((root_idx - 1 - offset) % #scale) + 1
+    local right_pc = scale[right]
+    if not seen[right_pc] then
+      seen[right_pc] = true
+      table.insert(ordered, right_pc)
+    end
+    local left_pc = scale[left]
+    if not seen[left_pc] then
+      seen[left_pc] = true
+      table.insert(ordered, left_pc)
+    end
+  end
+  if not seen[0] then table.insert(ordered, 1, 0) end
+  return ordered
+end
+
+acid_cfg.pitch_pool = function(scale, settings)
+  local ordered = acid_cfg.order_scale(scale)
+  local max_count = math.max(2, #ordered)
+  local count = clamp(2 + math.floor(settings.pitch_variety * math.max(1, max_count - 1) + 0.5), 2, max_count)
+  local pool = {}
+  for i = 1, count do pool[i] = ordered[i] end
+  if pool[1] ~= 0 then table.insert(pool, 1, 0) end
+  return pool
+end
+
+acid_cfg.step_weight = function(step_index, gate_anchor)
+  local phase = ((step_index - 1) % 16) + 1
+  local weight = 1.0
+  if phase == 1 then
+    weight = weight + 1.40 * gate_anchor
+  elseif phase == 9 then
+    weight = weight + 0.55 * gate_anchor
+  elseif phase == 5 or phase == 13 then
+    weight = weight + 0.25 * gate_anchor
+  elseif phase == 4 or phase == 8 or phase == 12 or phase == 16 then
+    weight = weight - 0.18
+  end
+  return weight
+end
+
+acid_cfg.target_gate_count = function(length, density)
+  local full_ok = density >= 0.98
+  local max_count = full_ok and length or math.max(2, length - 1)
+  return clamp(math.floor(length * density + 0.5), 2, max_count)
+end
+
+acid_cfg.generate_pitch_steps = function(length, scale, root, settings, rng, existing)
+  local pool = acid_cfg.pitch_pool(scale, settings)
+  local steps = {}
+  local pool_idx = 1
+  local repeat_chance = clamp(settings.repeat_bias * (1.15 - settings.pitch_variety * 0.65), 0.12, 0.92)
+  for i = 1, length do
+    local degree
+    local octave
+    if existing and existing[i] then
+      degree = existing[i].degree or 0
+      octave = existing[i].octave or 0
+    else
+      if i > 1 and rng() < repeat_chance then
+        degree = steps[i - 1].degree
+      else
+        local move = rng()
+        if i == 1 then
+          pool_idx = 1
+        elseif move < 0.65 then
+          local delta = (rng(2) == 1) and -1 or 1
+          pool_idx = clamp(pool_idx + delta, 1, #pool)
+        elseif move < 0.88 then
+          pool_idx = clamp(pool_idx + ((rng(2) == 1) and -2 or 2), 1, #pool)
+        else
+          pool_idx = rng(#pool)
+        end
+        degree = pool[pool_idx]
+      end
+      if not degree then degree = 0 end
+      octave = 0
+      local octave_prob = settings.octave_amount * (0.45 + settings.pitch_variety * 0.70)
+      if rng() < octave_prob then
+        octave = (rng() < 0.72) and 1 or -1
+      end
+      local note = root + degree + octave * 12
+      while note < 36 do
+        octave = octave + 1
+        note = note + 12
+      end
+      while note > 60 do
+        octave = octave - 1
+        note = note - 12
+      end
+    end
+    steps[i] = {
+      degree = degree,
+      gate = false,
+      accent = false,
+      slide = false,
+      octave = octave,
+      length = 1
+    }
+  end
+  return steps
+end
+
+acid_cfg.generate_gates = function(steps, settings, rng)
+  local length = #steps
+  local target = acid_cfg.target_gate_count(length, settings.density)
+  local gate_anchor = settings.profile.gate_anchor or 0.2
+  for i = 1, length do
+    local weight = acid_cfg.step_weight(i, gate_anchor)
+    local prob = clamp((settings.density * weight) - 0.08, 0.05, 0.98)
+    steps[i].gate = rng() < prob
+  end
+  steps[1].gate = true
+  local count = 0
+  for _, step_data in ipairs(steps) do
+    if step_data.gate then count = count + 1 end
+  end
+  while count < target do
+    local best_i
+    local best_score = -999
+    for i = 1, length do
+      if not steps[i].gate then
+        local score = acid_cfg.step_weight(i, gate_anchor) + rng() * 0.2
+        if score > best_score then
+          best_i = i
+          best_score = score
+        end
+      end
+    end
+    if not best_i then break end
+    steps[best_i].gate = true
+    count = count + 1
+  end
+  while count > target do
+    local worst_i
+    local worst_score = 999
+    for i = 2, length do
+      if steps[i].gate then
+        local score = acid_cfg.step_weight(i, gate_anchor) + rng() * 0.2
+        if score < worst_score then
+          worst_i = i
+          worst_score = score
+        end
+      end
+    end
+    if not worst_i then break end
+    steps[worst_i].gate = false
+    count = count - 1
+  end
+  local max_gate_run = (settings.density >= 0.82) and 6 or 4
+  local max_rest_run = (settings.density <= 0.40) and 7 or 5
+  local gate_run = 0
+  local rest_run = 0
+  for i = 1, length do
+    if steps[i].gate then
+      gate_run = gate_run + 1
+      rest_run = 0
+      if gate_run > max_gate_run then
+        steps[i].gate = false
+        gate_run = 0
+      end
+    else
+      rest_run = rest_run + 1
+      gate_run = 0
+      if rest_run > max_rest_run then
+        steps[i].gate = true
+        rest_run = 0
+      end
+    end
+  end
+end
+
+acid_cfg.generate_accents = function(steps, settings, rng)
+  local prev_accent = false
+  for i, step_data in ipairs(steps) do
+    local phase = ((i - 1) % 16) + 1
+    if step_data.gate then
+      local prob = settings.accent_amount * (settings.profile.accent_bias or 1)
+      if phase == 1 then prob = prob + 0.06 end
+      if phase == 4 or phase == 7 or phase == 11 or phase == 15 then
+        prob = prob + (settings.profile.syncopation or 0.15)
+      end
+      if prev_accent then prob = prob * 0.35 end
+      step_data.accent = rng() < clamp(prob, 0.02, 0.85)
+      prev_accent = step_data.accent
+    else
+      step_data.accent = false
+      prev_accent = false
+    end
+  end
+end
+
+acid_cfg.generate_slides = function(steps, settings, rng)
+  local prev_slide = false
+  for i, step_data in ipairs(steps) do
+    local following_step = steps[(i % #steps) + 1]
+    if step_data.gate and following_step and following_step.gate and
+        (step_data.degree ~= following_step.degree or step_data.octave ~= following_step.octave) then
+      local prob = settings.slide_amount * (settings.profile.slide_bias or 1)
+      if prev_slide then prob = prob * 0.25 end
+      step_data.slide = rng() < clamp(prob + 0.05, 0.02, 0.70)
+      prev_slide = step_data.slide
+    else
+      step_data.slide = false
+      prev_slide = false
+    end
+    step_data.length = step_data.slide and 2 or 1
+  end
+end
+
+acid_cfg.build_pattern = function(deck, seed, settings, existing)
+  local scale = nts1_collect_scale(deck.genre)
+  local saw_root = false
+  for _, pc in ipairs(scale) do
+    if pc == 0 then saw_root = true break end
+  end
+  if not saw_root then table.insert(scale, 1, 0) end
+  table.sort(scale)
+  local rng = acid_cfg.make_rng(seed)
+  local steps = acid_cfg.generate_pitch_steps(settings.length, scale, deck.root, settings, rng, existing)
+  acid_cfg.generate_gates(steps, settings, rng)
+  acid_cfg.generate_accents(steps, settings, rng)
+  acid_cfg.generate_slides(steps, settings, rng)
+  return steps, scale
+end
+
+acid_cfg.mutation_interval = function(settings)
+  if settings.evolution_amount >= 0.67 then return 4 end
+  if settings.evolution_amount >= 0.34 then return 8 end
+  return 16
+end
+
+acid_cfg.apply_section_mask = function(base_pattern, seed, density_scale)
+  local pattern = acid_cfg.copy_pattern(base_pattern)
+  local base_gate_count = 0
+  for _, step_data in ipairs(base_pattern) do
+    if step_data.gate then base_gate_count = base_gate_count + 1 end
+  end
+  local target = clamp(math.floor(base_gate_count * density_scale + 0.5), 1, base_gate_count)
+  local rng = acid_cfg.make_rng(seed)
+  for i, step_data in ipairs(pattern) do
+    if base_pattern[i].gate then
+      local keep_prob = clamp(density_scale + acid_cfg.step_weight(i, 0.18) * 0.06, 0.05, 1)
+      step_data.gate = rng() < keep_prob
+    end
+  end
+  pattern[1].gate = base_pattern[1].gate
+  local count = 0
+  for _, step_data in ipairs(pattern) do
+    if step_data.gate then count = count + 1 end
+  end
+  while count < target do
+    local add_i
+    for i, step_data in ipairs(pattern) do
+      if base_pattern[i].gate and not step_data.gate then
+        add_i = i
+        break
+      end
+    end
+    if not add_i then break end
+    pattern[add_i].gate = true
+    count = count + 1
+  end
+  while count > target do
+    local drop_i
+    for i = #pattern, 2, -1 do
+      if pattern[i].gate then
+        drop_i = i
+        break
+      end
+    end
+    if not drop_i then break end
+    pattern[drop_i].gate = false
+    count = count - 1
+  end
+  for _, step_data in ipairs(pattern) do
+    if not step_data.gate then
+      step_data.accent = false
+      step_data.slide = false
+      step_data.length = 1
+    end
+  end
+  return pattern
+end
+
+acid_cfg.mutate_pattern = function(deck, sec, variation)
+  local acid = deck.acid
+  local settings = acid_cfg.settings_for_genre(deck.genre)
+  local section_density = {
+    INTRO = 0.45,
+    GROOVE = 0.80,
+    MAIN = 0.92,
+    BREAK = 0.42,
+    BUILD = 0.88,
+    DROP = 1.00,
+    MIX = 0.70
+  }
+  local density_scale = section_density[sec] or 1
+  local pattern = acid_cfg.apply_section_mask(
+    acid.base_pattern,
+    acid.seed + variation * 17 + #sec,
+    density_scale
+  )
+  local section_boost = ({GROOVE=0.35, MAIN=0.55, BUILD=0.80, DROP=1.00, MIX=0.20})[sec] or 0
+  local op_count = math.floor(
+    clamp(settings.evolution_amount * section_boost * 4 + ((sec == "DROP") and 0.8 or 0), 0, 3.2)
+  )
+  local rng = acid_cfg.make_rng(acid.seed + variation * 131 + #pattern * 29)
+  local scale = acid_cfg.pitch_pool(acid.scale, settings)
+  for _ = 1, op_count do
+    local idx = rng(#pattern)
+    local op = rng(5)
+    local step_data = pattern[idx]
+    if op == 1 and idx ~= 1 then
+      step_data.gate = not step_data.gate
+      if not step_data.gate then
+        step_data.accent = false
+        step_data.slide = false
+      end
+    elseif op == 2 then
+      local pos = 1
+      for j, pc in ipairs(scale) do
+        if pc == step_data.degree then pos = j break end
+      end
+      local delta = (rng(2) == 1) and -1 or 1
+      pos = clamp(pos + delta, 1, #scale)
+      step_data.degree = scale[pos]
+    elseif op == 3 and step_data.gate then
+      step_data.accent = not step_data.accent
+    elseif op == 4 then
+      local following_step = pattern[(idx % #pattern) + 1]
+      step_data.slide = step_data.gate and following_step.gate and
+        (step_data.degree ~= following_step.degree or step_data.octave ~= following_step.octave) and
+        (not step_data.slide) or false
+      step_data.length = step_data.slide and 2 or 1
+    elseif op == 5 then
+      step_data.octave = clamp(step_data.octave + ((rng(2) == 1) and -1 or 1), -1, 1)
+    end
+  end
+  return pattern
+end
+
+acid_build_deck_state = function(deck, existing)
+  local seed = acid_cfg.seed_lock and acid_cfg.seed_value or acid_cfg.new_seed()
+  local settings = acid_cfg.settings_for_genre(deck.genre)
+  local base_pattern, scale = acid_cfg.build_pattern(deck, seed, settings, existing and existing.base_pattern)
+  local acid = {
+    seed = seed,
+    variation = 0,
+    variation_interval = acid_cfg.mutation_interval(settings),
+    length = settings.length,
+    density = settings.density,
+    pitch_variety = settings.pitch_variety,
+    repeat_bias = settings.repeat_bias,
+    slide_amount = settings.slide_amount,
+    accent_amount = settings.accent_amount,
+    octave_amount = settings.octave_amount,
+    evolution_amount = settings.evolution_amount,
+    scale = scale,
+    base_pattern = acid_cfg.copy_pattern(base_pattern),
+    pattern = acid_cfg.copy_pattern(base_pattern),
+    last_section = "GROOVE",
+    last_bar = 0
+  }
+  if deck.genre == "ACID" then
+    print("Endless DJ: acid seed " .. tostring(acid.seed) .. " for deck " .. tostring(deck.name))
+  end
+  return acid
+end
+
+acid_refresh_phrase = function(deck, sec, b)
+  if deck.genre ~= "ACID" then return end
+  if not deck.acid then
+    deck.acid = acid_build_deck_state(deck)
+  end
+  local acid = deck.acid
+  local interval = acid.variation_interval or 8
+  local variation = math.floor((b - 1) / interval)
+  if acid.variation ~= variation or acid.last_section ~= sec then
+    acid.variation = variation
+    acid.pattern = acid_cfg.mutate_pattern(deck, sec, variation)
+    acid.last_section = sec
+  end
+  acid.last_bar = b
+end
+
+acid_regenerate_deck = function(deck, opts)
+  opts = opts or {}
+  local existing = nil
+  if opts.keep_pitch and deck.acid and deck.acid.length == acid_cfg.pattern_length then
+    existing = deck.acid
+  end
+  if opts.seed then
+    acid_cfg.seed_value = clamp(math.floor(opts.seed), 1, ACID_SEED_MAX)
+  end
+  local original_lock = acid_cfg.seed_lock
+  if opts.seed then acid_cfg.seed_lock = true end
+  deck.acid = acid_build_deck_state(deck, existing)
+  acid_cfg.seed_lock = original_lock
+  if opts.seed then
+    deck.acid.seed = acid_cfg.seed_value
+    local settings = acid_cfg.settings_for_genre(deck.genre)
+    local base_pattern, scale = acid_cfg.build_pattern(
+      deck,
+      deck.acid.seed,
+      settings,
+      existing and existing.base_pattern
+    )
+    deck.acid.length = settings.length
+    deck.acid.scale = scale
+    deck.acid.base_pattern = acid_cfg.copy_pattern(base_pattern)
+    deck.acid.pattern = acid_cfg.copy_pattern(base_pattern)
+    deck.acid.variation_interval = acid_cfg.mutation_interval(settings)
+  end
+end
+
+acid_sync_seed_param = function(deck)
+  if not deck or not deck.acid then return end
+  acid_cfg.seed_value = deck.acid.seed
+  if params and params.set then
+    params:set("acid_seed_value", acid_cfg.seed_value)
+  end
+end
+
+deck_a.acid = deck_a.acid or acid_build_deck_state(deck_a)
+deck_b.acid = deck_b.acid or acid_build_deck_state(deck_b)
+
 local function nts1_snap_to_pcs(note, root, pcs, min_note, max_note)
   if #pcs == 0 then return clamp(note, min_note, max_note) end
   local best = nil
@@ -1495,6 +2021,47 @@ local block_chord_dur = {
 local bass_octave = { DUBSTEP=-12, DNB=-12 }  -- sub-bass register
 local bass_len    = { DUBSTEP=3 }             -- DUBSTEP uses long, sustained bass notes
 
+acid_cfg.step_index = function(acid, b, s)
+  return (((b - 1) * 16) + (s - 1)) % acid.length + 1
+end
+
+acid_cfg.mix_gate = function(seed, step_index, amount)
+  if amount >= 0.999 then return true end
+  if amount <= 0 then return false end
+  local value = acid_cfg.lcg(seed + step_index * 53)
+  return ((value % 1000) / 1000) < amount
+end
+
+acid_cfg.velocity = function(step_data, sec)
+  local accent_scale = {
+    INTRO = 0.70,
+    GROOVE = 0.90,
+    MAIN = 1.00,
+    BREAK = 0.78,
+    BUILD = 1.08,
+    DROP = 1.15,
+    MIX = 0.88
+  }
+  local base = step_data.accent and 110 or 92
+  return clamp(math.floor(base * (accent_scale[sec] or 1) + 0.5), 36, 127)
+end
+
+local function play_acid_bass(sec, s, deck, b, mix_fades)
+  acid_refresh_phrase(deck, sec, b)
+  local acid = deck.acid
+  if not acid or not acid.pattern or #acid.pattern == 0 then return false end
+  local step_index = acid_cfg.step_index(acid, b, s)
+  local step_data = acid.pattern[step_index]
+  if not step_data or not step_data.gate then return false end
+  local bass_amount = mix_fades and mix_fades.bass or 1
+  if not acid_cfg.mix_gate(acid.seed + acid.variation * 17, step_index, bass_amount) then return false end
+  local note = deck.root + step_data.degree + ((step_data.octave or 0) * 12)
+  while note < 36 do note = note + 12 end
+  while note > 60 do note = note - 12 end
+  t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1)
+  return true
+end
+
 -- Genres that share the default house-style chord timing (every 8 steps, at step 1 and 9).
 -- Original genres: HOUSE, FUNKY, DIRTY, GARAGE4
 -- New genres:      DEEP, ACID, DNB, LIQUID, ELECTRO, AFRO, MELODIC, HARDSTYLE, JUNGLE
@@ -1583,7 +2150,11 @@ local function play_drums(sec, s, b, mix_fades, deck)
   end
 end
 
-local function play_bass(sec, s, deck, mix_fades)
+local function play_bass(sec, s, deck, b, mix_fades)
+  if deck.genre == "ACID" and acid_cfg.generator_enabled then
+    play_acid_bass(sec, s, deck, b, mix_fades)
+    return
+  end
   if sec == "INTRO" then return end
   if sec == "BREAK" and math.random() < 0.55 then return end
   local bass_amount = mix_fades and mix_fades.bass or 1
@@ -1886,7 +2457,7 @@ end
 local function play_deck(deck, b, s, mix_fades)
   local sec = section_for_bar(b)
   play_drums(sec, s, b, mix_fades, deck)
-  play_bass(sec, s, deck, mix_fades)
+  play_bass(sec, s, deck, b, mix_fades)
   play_chords(sec, s, deck, b, mix_fades)
   play_norns_instrument(sec, s, deck, b, mix_fades)
   play_nts1(sec, s, deck, b, mix_fades)
@@ -1933,6 +2504,7 @@ local function finish_handover()
   next_bar = nil
   next_step = 1
   mixing = false
+  acid_sync_seed_param(current_deck())
   -- Do NOT call quiet_notes() here.  Sending 4096 note-off messages (128
   -- notes × 16 channels × 2 MIDI devices) in a tight Lua loop blocks the
   -- metro callback thread, causing several bars of silence followed by a
@@ -2147,6 +2719,122 @@ function init()
   params:add_option("manual_xfade", "manual crossfader", {"no","yes"}, 1)
   params:set_action("manual_xfade", function(v) manual_xfade = (v == 2) end)
 
+  params:add_separator("acid_sep", "ACID GENERATOR")
+
+  params:add_option("acid_generator_enabled", "acid generator", {"off","on"}, acid_cfg.generator_enabled and 2 or 1)
+  params:set_action("acid_generator_enabled", function(v)
+    acid_cfg.generator_enabled = (v == 2)
+  end)
+
+  params:add_option("acid_pattern_length", "acid pattern length", {"16","24","32"},
+    acid_cfg.pattern_length == 24 and 2 or (acid_cfg.pattern_length == 32 and 3 or 1))
+  params:set_action("acid_pattern_length", function(v)
+    acid_cfg.pattern_length = ({16, 24, 32})[v] or 16
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck)
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_complexity", "acid complexity", 0, 100, math.floor(acid_cfg.complexity * 100))
+  params:set_action("acid_complexity", function(v)
+    acid_cfg.complexity = clamp(v / 100, 0, 1)
+    params:set("acid_note_density", math.floor(clamp(45 + acid_cfg.complexity * 35, 15, 100) + 0.5))
+    params:set("acid_pitch_variety", math.floor(clamp(20 + acid_cfg.complexity * 55, 0, 100) + 0.5))
+    params:set("acid_repeat_bias", math.floor(clamp(70 - acid_cfg.complexity * 40, 0, 100) + 0.5))
+    params:set("acid_slide_amount", math.floor(clamp(10 + acid_cfg.complexity * 28, 0, 100) + 0.5))
+    params:set("acid_accent_amount", math.floor(clamp(10 + acid_cfg.complexity * 18, 0, 100) + 0.5))
+    params:set("acid_octave_amount", math.floor(clamp(5 + acid_cfg.complexity * 24, 0, 100) + 0.5))
+    params:set("acid_evolution_amount", math.floor(clamp(8 + acid_cfg.complexity * 35, 0, 100) + 0.5))
+  end)
+
+  params:add_number("acid_note_density", "acid note density", 5, 100, math.floor(acid_cfg.note_density * 100))
+  params:set_action("acid_note_density", function(v)
+    acid_cfg.note_density = clamp(v / 100, 0.05, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck, {keep_pitch=true})
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_pitch_variety", "acid pitch variety", 0, 100, math.floor(acid_cfg.pitch_variety * 100))
+  params:set_action("acid_pitch_variety", function(v)
+    acid_cfg.pitch_variety = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck)
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_repeat_bias", "acid repeat bias", 0, 100, math.floor(acid_cfg.repeat_bias * 100))
+  params:set_action("acid_repeat_bias", function(v)
+    acid_cfg.repeat_bias = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck, {keep_pitch=true})
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_slide_amount", "acid slide amount", 0, 100, math.floor(acid_cfg.slide_amount * 100))
+  params:set_action("acid_slide_amount", function(v)
+    acid_cfg.slide_amount = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck, {keep_pitch=true})
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_accent_amount", "acid accent amount", 0, 100, math.floor(acid_cfg.accent_amount * 100))
+  params:set_action("acid_accent_amount", function(v)
+    acid_cfg.accent_amount = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck, {keep_pitch=true})
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number("acid_octave_amount", "acid octave amount", 0, 100, math.floor(acid_cfg.octave_amount * 100))
+  params:set_action("acid_octave_amount", function(v)
+    acid_cfg.octave_amount = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck)
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_number(
+    "acid_evolution_amount",
+    "acid evolution amount",
+    0,
+    100,
+    math.floor(acid_cfg.evolution_amount * 100)
+  )
+  params:set_action("acid_evolution_amount", function(v)
+    acid_cfg.evolution_amount = clamp(v / 100, 0, 1)
+    for _, deck in ipairs({deck_a, deck_b}) do
+      acid_regenerate_deck(deck, {keep_pitch=true})
+    end
+    acid_sync_seed_param(current_deck())
+  end)
+
+  params:add_option("acid_seed_lock", "acid seed lock", {"off","on"}, acid_cfg.seed_lock and 2 or 1)
+  params:set_action("acid_seed_lock", function(v)
+    acid_cfg.seed_lock = (v == 2)
+  end)
+
+  params:add_number("acid_seed_value", "acid seed", 1, ACID_SEED_MAX, acid_cfg.seed_value)
+  params:set_action("acid_seed_value", function(v)
+    acid_cfg.seed_value = clamp(math.floor(v), 1, ACID_SEED_MAX)
+  end)
+
+  params:add_trigger("acid_regenerate_pattern", "acid regenerate")
+  params:set_action("acid_regenerate_pattern", function()
+    local deck = current_deck()
+    local seed = acid_cfg.seed_lock and acid_cfg.seed_value or nil
+    acid_regenerate_deck(deck, seed and {seed=seed} or nil)
+    acid_sync_seed_param(deck)
+  end)
+
   params:add_separator("grid_sep", "GRID")
 
   params:add_option("grid_kb_target", "keyboard target", {"nts1","j6","norns"}, kb_target)
@@ -2353,6 +3041,7 @@ function init()
 
   update_clock()
   grid_connect()
+  acid_sync_seed_param(current_deck())
   redraw()
 end
 
@@ -2580,4 +3269,16 @@ function redraw()
   end
 
   screen.update()
+end
+
+if rawget(_G, "_UNIT_TEST") then
+  _G.ENDLESS_DJ_TEST_API = {
+    acid_build_pattern = acid_cfg.build_pattern,
+    acid_build_deck_state = acid_build_deck_state,
+    acid_refresh_phrase = acid_refresh_phrase,
+    acid_copy_pattern = acid_cfg.copy_pattern,
+    acid_step_index = acid_cfg.step_index,
+    acid_settings_for_genre = acid_cfg.settings_for_genre,
+    nts1_collect_scale = nts1_collect_scale,
+  }
 end

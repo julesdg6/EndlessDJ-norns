@@ -245,4 +245,195 @@ if not source:find('for i = 1, 8 do', 1, true) then
 end
 pass("MPX8 support exists (mpx8_midi_device, play_mpx8, mpx8_pads, one-shot guards)")
 
+local function serialize_pattern(pattern)
+  local parts = {}
+  for i, step in ipairs(pattern) do
+    parts[i] = table.concat({
+      step.degree or 0,
+      step.gate and "1" or "0",
+      step.accent and "1" or "0",
+      step.slide and "1" or "0",
+      step.octave or 0,
+      step.length or 0
+    }, ":")
+  end
+  return table.concat(parts, "|")
+end
+
+local function pattern_stats(pattern)
+  local gate_count, accent_count, slide_count, octave_count = 0, 0, 0, 0
+  local longest_gate_run, longest_rest_run = 0, 0
+  local gate_run, rest_run = 0, 0
+  local unique = {}
+  for _, step in ipairs(pattern) do
+    unique[(step.degree or 0) + ((step.octave or 0) * 12)] = true
+    if step.gate then
+      gate_count = gate_count + 1
+      gate_run = gate_run + 1
+      rest_run = 0
+      if gate_run > longest_gate_run then longest_gate_run = gate_run end
+      if step.accent then accent_count = accent_count + 1 end
+      if step.slide then slide_count = slide_count + 1 end
+    else
+      rest_run = rest_run + 1
+      gate_run = 0
+      if rest_run > longest_rest_run then longest_rest_run = rest_run end
+    end
+    if (step.octave or 0) ~= 0 then octave_count = octave_count + 1 end
+  end
+  local unique_pitch_count = 0
+  for _ in pairs(unique) do unique_pitch_count = unique_pitch_count + 1 end
+  return {
+    gate_count = gate_count,
+    accent_count = accent_count,
+    slide_count = slide_count,
+    octave_count = octave_count,
+    longest_gate_run = longest_gate_run,
+    longest_rest_run = longest_rest_run,
+    unique_pitch_count = unique_pitch_count
+  }
+end
+
+local function diff_steps(a, b)
+  local changed = 0
+  for i = 1, math.min(#a, #b) do
+    local sa, sb = a[i], b[i]
+    if sa.degree ~= sb.degree or sa.gate ~= sb.gate or sa.accent ~= sb.accent or
+        sa.slide ~= sb.slide or sa.octave ~= sb.octave or sa.length ~= sb.length then
+      changed = changed + 1
+    end
+  end
+  return changed
+end
+
+do
+  _G._UNIT_TEST = true
+  _G.ENDLESS_DJ_TEST_API = nil
+  engine = {}
+  audio = {}
+  include = function() return {} end
+  grid = {
+    connect = function()
+      return {
+        led = function() end,
+        all = function() end,
+        refresh = function() end
+      }
+    end
+  }
+  metro = {
+    init = function()
+      return {time = 0, event = nil, start = function() end, stop = function() end}
+    end
+  }
+  midi = {
+    devices = {},
+    connect = function()
+      return {
+        note_on = function() end,
+        note_off = function() end,
+        cc = function() end,
+        program_change = function() end
+      }
+    end,
+    to_msg = function() return nil end
+  }
+  params = {set = function() end}
+  screen = setmetatable({}, {__index = function() return function() end end})
+  softcut = setmetatable({}, {__index = function() return function() end end})
+
+  local chunk, err = loadfile(path)
+  if not chunk then fail("Could not load " .. path .. " for acid generator tests: " .. tostring(err)) end
+  local ok, load_err = pcall(chunk)
+  if not ok then fail("Could not execute " .. path .. " for acid generator tests: " .. tostring(load_err)) end
+  local api = _G.ENDLESS_DJ_TEST_API
+  if type(api) ~= "table" then fail("Missing ENDLESS_DJ_TEST_API test hooks") end
+
+  local function make_pattern(seed, length, variety)
+    local deck = {name = "T-001", genre = "ACID", root = 45}
+    local settings = api.acid_settings_for_genre("ACID")
+    settings.length = length
+    settings.pitch_variety = variety or settings.pitch_variety
+    return api.acid_build_pattern(deck, seed, settings)
+  end
+
+  local p1 = select(1, make_pattern(123456, 16, 0.35))
+  local p2 = select(1, make_pattern(123456, 16, 0.35))
+  if serialize_pattern(p1) ~= serialize_pattern(p2) then
+    fail("Acid generator must be deterministic for a fixed seed and settings")
+  end
+  pass("Acid generator is deterministic for a fixed seed")
+
+  for _, length in ipairs({16, 24, 32}) do
+    local pattern = select(1, make_pattern(54321 + length, length, 0.5))
+    if #pattern ~= length then
+      fail("Acid pattern length " .. tostring(length) .. " must generate " .. tostring(length) .. " steps")
+    end
+  end
+  pass("Acid generator supports 16/24/32 step patterns")
+
+  do
+    local low = select(1, make_pattern(67890, 16, 0.10))
+    local high = select(1, make_pattern(67890, 16, 0.90))
+    local low_stats = pattern_stats(low)
+    local high_stats = pattern_stats(high)
+    if low_stats.unique_pitch_count > high_stats.unique_pitch_count then
+      fail("Low pitch variety should not produce more unique pitches than high pitch variety")
+    end
+  end
+  pass("Acid pitch variety changes the generated note pool")
+
+  do
+    local settings = api.acid_settings_for_genre("ACID")
+    local base, scale = api.acid_build_pattern({name = "T-002", genre = "ACID", root = 45}, 13579, settings)
+    local deck = {
+      name = "T-002",
+      genre = "ACID",
+      root = 45,
+      acid = {
+        seed = 13579,
+        variation = 0,
+        variation_interval = 8,
+        length = settings.length,
+        scale = scale,
+        base_pattern = api.acid_copy_pattern(base),
+        pattern = api.acid_copy_pattern(base),
+        last_section = "GROOVE",
+        last_bar = 0
+      }
+    }
+    api.acid_refresh_phrase(deck, "DROP", 9)
+    local changed = diff_steps(base, deck.acid.pattern)
+    if changed < 1 or changed > 6 then
+      fail("Acid phrase variation should make a limited number of mutations, got " .. tostring(changed))
+    end
+  end
+  pass("Acid phrase variation keeps the base identity and mutates only a few steps")
+
+  do
+    local seen = {}
+    local duplicates = 0
+    for seed = 1, 1000 do
+      local pattern = select(1, make_pattern(seed * 7919, 16, 0.45))
+      local stats = pattern_stats(pattern)
+      if stats.gate_count == 0 or stats.gate_count == #pattern then
+        fail("Acid generator produced an empty or fully gated pattern for seed " .. tostring(seed))
+      end
+      if stats.longest_gate_run > 6 then
+        fail("Acid generator produced an overly long gate run for seed " .. tostring(seed))
+      end
+      if stats.longest_rest_run > 7 then
+        fail("Acid generator produced an overly long rest run for seed " .. tostring(seed))
+      end
+      local signature = serialize_pattern(pattern)
+      if seen[signature] then duplicates = duplicates + 1 end
+      seen[signature] = true
+    end
+    if duplicates > 40 then
+      fail("Acid generator duplicate rate is too high across 1000 seeds (" .. tostring(duplicates) .. " duplicates)")
+    end
+  end
+  pass("Acid generator statistics avoid empty, fully gated, and overly repetitive patterns")
+end
+
 print("All Endless DJ checks passed")
