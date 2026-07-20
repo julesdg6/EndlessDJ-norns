@@ -73,7 +73,7 @@ local nts1_enabled = false
 local nts1_ch = 1
 local nts1_variation_amount = 0.35
 local nts1_motif_density = 0.65
-local nts1_register = 0
+local nts1_register = -8
 local nts1_cc_enabled = true
 local nts1_cc_cache = {}
 local nts1_cc_last_tick = {}
@@ -2262,7 +2262,7 @@ function init()
     nts1_reset_deck_identities()
   end)
 
-  params:add_number("nts1_register", "nts1 register", -6, 6, nts1_register)
+  params:add_number("nts1_register", "nts1 register", -8, 6, nts1_register)
   params:set_action("nts1_register", function(v)
     nts1_register = v
     nts1_reset_deck_identities()
