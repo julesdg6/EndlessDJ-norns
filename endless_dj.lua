@@ -221,20 +221,22 @@ local kb_target  = 1    -- 1 = NTS-1  2 = J-6  3 = Norns instrument
 -- Use the `endless_dj` palette (SYSTEM → MODS → MIDIGRID → palette) for
 -- distinct instrument colours; any standard palette gives usable brightness.
 -- ──────────────────────────────────────────────
-local LEVEL_OFF      = 0
-local LEVEL_INACTIVE = 1   -- inactive step
-local LEVEL_PLAYHEAD = 3   -- cursor on an inactive step
-local LEVEL_KICK     = 5   -- kick drum lane
-local LEVEL_SNARE    = 6   -- snare lane
-local LEVEL_OHAT     = 7   -- open hi-hat lane
-local LEVEL_CHAT     = 8   -- closed hi-hat lane
-local LEVEL_NTS1     = 9   -- NTS-1 enabled step
-local LEVEL_J6       = 10  -- J-6 enabled step
-local LEVEL_ROOT     = 11  -- root note (keyboard)
-local LEVEL_SCALE    = 12  -- in-scale note (keyboard)
-local LEVEL_CHROMA   = 13  -- chromatic / out-of-scale note (keyboard)
-local LEVEL_PRESSED  = 14  -- pressed note or active trigger
-local LEVEL_HOT      = 15  -- active step under playhead / bright white
+local LEVEL = {
+  OFF      = 0,
+  INACTIVE = 1,   -- inactive step
+  PLAYHEAD = 3,   -- cursor on an inactive step
+  KICK     = 5,   -- kick drum lane
+  SNARE    = 6,   -- snare lane
+  OHAT     = 7,   -- open hi-hat lane
+  CHAT     = 8,   -- closed hi-hat lane
+  NTS1     = 9,   -- NTS-1 enabled step
+  J6       = 10,  -- J-6 enabled step
+  ROOT     = 11,  -- root note (keyboard)
+  SCALE    = 12,  -- in-scale note (keyboard)
+  CHROMA   = 13,  -- chromatic / out-of-scale note (keyboard)
+  PRESSED  = 14,  -- pressed note or active trigger
+  HOT      = 15,  -- active step under playhead / bright white
+}
 
 -- Forward declarations (tables defined after drum/chord pattern tables below)
 local bass_patterns
@@ -906,18 +908,18 @@ local function grid_redraw(s)
   local deck = current_deck()
 
   -- Left half: drum sequencer (x=1-8, y=1-8)
-  local drum_lane_levels = {LEVEL_KICK, LEVEL_SNARE, LEVEL_OHAT, LEVEL_CHAT}
+  local drum_lane_levels = {LEVEL.KICK, LEVEL.SNARE, LEVEL.OHAT, LEVEL.CHAT}
   for lane = 1, 4 do
     local lane_level = drum_lane_levels[lane]
     for step_i = 1, 16 do
       local x, y = drum_to_xy(lane, step_i)
       local level
       if step_i == s then
-        level = drum_steps[lane][step_i] and LEVEL_HOT or LEVEL_PLAYHEAD
+        level = drum_steps[lane][step_i] and LEVEL.HOT or LEVEL.PLAYHEAD
       elseif drum_steps[lane][step_i] then
         level = lane_level
       else
-        level = LEVEL_INACTIVE
+        level = LEVEL.INACTIVE
       end
       g:led(x, y, level)
     end
@@ -929,16 +931,16 @@ local function grid_redraw(s)
     local level
     if step_i == s then
       if nts1_steps[step_i] and grid_nts1_level > 0 then
-        level = LEVEL_PRESSED
+        level = LEVEL.PRESSED
       elseif nts1_steps[step_i] then
-        level = LEVEL_HOT
+        level = LEVEL.HOT
       else
-        level = LEVEL_PLAYHEAD
+        level = LEVEL.PLAYHEAD
       end
     elseif nts1_steps[step_i] then
-      level = LEVEL_NTS1
+      level = LEVEL.NTS1
     else
-      level = LEVEL_INACTIVE
+      level = LEVEL.INACTIVE
     end
     g:led(x, y, level)
   end
@@ -949,16 +951,16 @@ local function grid_redraw(s)
     local level
     if step_i == s then
       if j6_steps[step_i] and grid_j6_level > 0 then
-        level = LEVEL_PRESSED
+        level = LEVEL.PRESSED
       elseif j6_steps[step_i] then
-        level = LEVEL_HOT
+        level = LEVEL.HOT
       else
-        level = LEVEL_PLAYHEAD
+        level = LEVEL.PLAYHEAD
       end
     elseif j6_steps[step_i] then
-      level = LEVEL_J6
+      level = LEVEL.J6
     else
-      level = LEVEL_INACTIVE
+      level = LEVEL.INACTIVE
     end
     g:led(x, y, level)
   end
@@ -972,13 +974,13 @@ local function grid_redraw(s)
       local note = kb_note_for(kx, ky)
       local level
       if kb_pressed[note] then
-        level = LEVEL_PRESSED
+        level = LEVEL.PRESSED
       elseif is_root_note(note, deck.root) then
-        level = LEVEL_ROOT
+        level = LEVEL.ROOT
       elseif is_scale_note(note, deck.root) then
-        level = LEVEL_SCALE
+        level = LEVEL.SCALE
       else
-        level = LEVEL_CHROMA
+        level = LEVEL.CHROMA
       end
       g:led(kx, ky, level)
     end
@@ -990,7 +992,7 @@ end
 -- Turn off all grid LEDs.
 local function grid_clear()
   if not g then return end
-  g:all(LEVEL_OFF)
+  g:all(LEVEL.OFF)
   g:refresh()
 end
 
@@ -1715,26 +1717,16 @@ end
 -- NTS-1 melodic voice
 -- ──────────────────────────────────────────────
 
-<<<<<<< HEAD
--- Play one note of the NTS-1 motif.
+-- Play the deck's NTS-1 motif at bar/step boundaries.
 -- For the active deck, nts1_steps[s] gates triggering (default: step 1 only).
 -- For the incoming deck during mixing the original bar-start rule applies.
--- Motif is cached per-deck and refreshed every 8-bar phrase so the melody
--- stays recognisable but evolves slowly.  Activity is section-aware:
--- silent in INTRO/BREAK, sparse in GROOVE, full in MAIN/BUILD/DROP.
--- During a mix it fades with the melody group (phase 4).
+-- Each deck keeps a stable motif/rhythm/timbre identity, then applies
+-- controlled phrase-boundary mutations so the part evolves without chaos.
+-- During mixes, density follows melody-group fade and outgoing/incoming parts
+-- are simplified/introduced gradually.
 local function play_nts1(sec, s, deck, b, mix_fades)
   if not nts1_enabled then return end
   if not nts1_midi_out then return end
-  -- Silent during INTRO and BREAK
-  if sec == "INTRO" or sec == "BREAK" then return end
-  -- Follow melody group fade (phase 4) during mixing
-  local melody_amount = mix_fades and mix_fades.melody or 1
-  if math.random() >= melody_amount then return end
-  -- Sparse in GROOVE: only every second bar
-  if sec == "GROOVE" and b % 2 ~= 1 then return end
-  -- Slightly sparse in MAIN: every second bar (keeps it restrained)
-  if sec == "MAIN" and b % 2 ~= 1 then return end
 
   -- Gate by trigger pattern: active deck uses grid-editable nts1_steps;
   -- incoming deck during mixing uses bar-start rule (step 1 only).
@@ -1744,24 +1736,6 @@ local function play_nts1(sec, s, deck, b, mix_fades)
     if s ~= 1 then return end
   end
 
-  -- Generate or refresh motif at 8-bar phrase boundaries
-  local phrase_idx = math.floor((b - 1) / 8)
-  if not deck.nts1_motif or deck.nts1_phrase ~= phrase_idx then
-    deck.nts1_phrase = phrase_idx
-    local seed = (deck.variation_seed or 1) + phrase_idx * 37
-    deck.nts1_motif = make_nts1_motif(deck.genre, deck.root, seed)
-=======
--- Play the deck's NTS-1 motif at bar boundaries.
--- Each deck keeps a stable motif/rhythm/timbre identity, then applies
--- controlled phrase-boundary mutations so the part evolves without chaos.
--- During mixes, density follows melody-group fade and outgoing/incoming parts
--- are simplified/introduced gradually.
-local function play_nts1(sec, s, deck, b, mix_fades)
-  if not nts1_enabled then return end
-  if not nts1_midi_out then return end
-  -- Only fire at bar start
-  if s ~= 1 then return end
-
   if not deck.nts1_identity then
     deck.nts1_identity = make_nts1_identity(deck)
     deck.nts1_motif = nts1_copy_list(deck.nts1_identity.base_motif)
@@ -1770,7 +1744,6 @@ local function play_nts1(sec, s, deck, b, mix_fades)
     nts1_apply_scene(deck, sec, b, true)
   else
     nts1_apply_scene(deck, sec, b, false)
->>>>>>> origin/main
   end
 
   if not deck.nts1_motif or #deck.nts1_motif == 0 then return end
@@ -1787,12 +1760,6 @@ local function play_nts1(sec, s, deck, b, mix_fades)
     deck.nts1_phrase = phrase_idx
   end
 
-<<<<<<< HEAD
-  -- Schedule note_on with a paired note_off (14 ticks ≈ 3/4 of a bar at ppqn=4).
-  -- NTS-1 does not use Program Change; note_on/note_off is sufficient.
-  note_on_to(nts1_midi_out, note, 80, nts1_ch, 14)
-  grid_nts1_level = 4
-=======
   local melody_amount = mix_fades and mix_fades.melody or 1
   local sec_density = identity.density
   if sec == "INTRO" then sec_density = sec_density * 0.20 end
@@ -1843,7 +1810,7 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   end
 
   deck.nts1_motif_turn = ((deck.nts1_motif_turn + #rhythm - 1) % #motif) + 1
->>>>>>> origin/main
+  grid_nts1_level = 4
 end
 
 -- ──────────────────────────────────────────────
@@ -1976,10 +1943,6 @@ local function finish_handover()
   -- notes_off queue (via note_on_to), so no hanging notes can occur.
   -- The MX-1 effect depth is reset to 0 automatically on the next tick by
   -- update_mx1_fx() once mixing is false.
-<<<<<<< HEAD
-  grid_load_pattern(current_deck().genre)
-  grid_redraw(step)
-=======
   nts1_reset_cc_state()
   if nts1_enabled and nts1_midi_out then
     local deck = current_deck()
@@ -1993,9 +1956,8 @@ local function finish_handover()
       nts1_apply_scene(deck, section_for_bar(current_bar), current_bar, true)
     end
   end
-  lp_load_pattern(current_deck().genre)
-  lp_redraw(step)
->>>>>>> origin/main
+  grid_load_pattern(current_deck().genre)
+  grid_redraw(step)
 end
 
 local metro_clock
