@@ -65,6 +65,26 @@ local mx1_ch = 1
 local mx1_fx_enabled = true
 local mx1_fx_cc = 12
 
+-- ──────────────────────────────────────────────
+-- Korg NTS-1 (optional melodic voice)
+-- ──────────────────────────────────────────────
+local nts1_midi_out
+local nts1_mdev = 1
+local nts1_enabled = false
+local nts1_ch = 1
+
+-- ──────────────────────────────────────────────
+-- Akai MPX8 (optional one-shot / sample layer)
+-- ──────────────────────────────────────────────
+local mpx8_midi_out
+local mpx8_mdev = 1
+local mpx8_enabled = false
+local mpx8_ch = 10
+-- Default pad note numbers (1-8):
+--   1=percussion accent  2=alternate percussion  3=short fill  4=long fill
+--   5=impact             6=riser                 7=vocal/FX stab  8=drop accent
+local mpx8_pads = {36, 38, 42, 46, 48, 50, 60, 62}
+
 local playing = false
 local bpm = 128
 local ppqn = 4
@@ -127,8 +147,10 @@ local genres = {
 
 local roots = {45,47,48,50,52,53,55}
 
-local deck_a = {name="A-001", genre="HOUSE",     active=true,  angle=0, root=45, pc=0, norns_preset=1}
-local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2}
+local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, pc=0, norns_preset=1,
+                variation_seed=12345, mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
+local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
+                variation_seed=54321, mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 
 local notes_off = {}
 local notes_pending = {}
@@ -287,7 +309,12 @@ local function make_deck(letter)
     angle = math.random() * math.pi * 2,
     root = roots[math.random(#roots)],
     pc = random_pc(),
-    norns_preset = math.random(#norns_presets)
+    norns_preset = math.random(#norns_presets),
+    variation_seed = math.random(1, 65535),
+    -- Per-deck MPX8 one-shot flags (reset each time a new deck is generated)
+    mpx8_riser_fired = false,
+    mpx8_impact_fired = false,
+    mpx8_drop_accent_fired = false,
   }
 end
 
@@ -313,6 +340,13 @@ local function quiet_notes()
       for n=0,127 do
         chord_midi_out:note_off(n, 0, ch)
       end
+    end
+  end
+
+  -- Clear any hanging NTS-1 notes on the configured channel.
+  if nts1_midi_out then
+    for n=0,127 do
+      nts1_midi_out:note_off(n, 0, nts1_ch)
     end
   end
 
@@ -1068,6 +1102,60 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
+-- ──────────────────────────────────────────────
+-- NTS-1 motif helpers
+-- ──────────────────────────────────────────────
+
+-- Build a 4-note melodic motif from a deck's genre/root/seed.
+-- Uses unique pitch-class intervals from the chord progression so every
+-- note is key-safe.  The seeded LCG makes motifs reproducible across calls.
+-- Returns a list of 4 absolute MIDI note numbers.
+local function make_nts1_motif(genre, root, variation_seed)
+  local prog = chord_progs[genre] or chord_progs.HOUSE
+  -- Collect unique pitch-class intervals (0-11) from all chords in the prog
+  local scale = {}
+  local seen = {}
+  for _, triad in ipairs(prog) do
+    for _, interval in ipairs(triad) do
+      local pc = interval % 12
+      if not seen[pc] then
+        seen[pc] = true
+        table.insert(scale, pc)
+      end
+    end
+  end
+  table.sort(scale)
+  if #scale == 0 then scale = {0, 3, 7} end
+
+  -- Seeded LCG so the same deck always produces the same motif phrase
+  local rng = math.max(1, variation_seed or 1)
+  local motif = {}
+  for _ = 1, 4 do
+    rng = (rng * 1103515245 + 12345) % 65536
+    local idx = (rng % #scale) + 1
+    local note = root + 12 + scale[idx]   -- one octave above deck root
+    -- Clamp to a comfortable melodic range
+    while note < 48 do note = note + 12 end
+    while note > 84 do note = note - 12 end
+    table.insert(motif, note)
+  end
+  return motif
+end
+
+-- ──────────────────────────────────────────────
+-- MPX8 helpers
+-- ──────────────────────────────────────────────
+
+-- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
+-- The sampler ignores note duration; this purely signals the trigger.
+local function mpx8_trigger(pad_idx, vel)
+  if not mpx8_midi_out then return end
+  local note = mpx8_pads[pad_idx]
+  if not note then return end
+  mpx8_midi_out:note_on(note, vel, mpx8_ch)
+  mpx8_midi_out:note_off(note, 0, mpx8_ch)
+end
+
 -- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
 -- Harder/darker styles push higher; broken-beat styles push slightly lower.
 local kick_vel = {
@@ -1334,12 +1422,129 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
   lp2_norns_level = 8
 end
 
+-- ──────────────────────────────────────────────
+-- NTS-1 melodic voice
+-- ──────────────────────────────────────────────
+
+-- Play one note of the NTS-1 motif at bar boundaries.
+-- Motif is cached per-deck and refreshed every 8-bar phrase so the melody
+-- stays recognisable but evolves slowly.  Activity is section-aware:
+-- silent in INTRO/BREAK, sparse in GROOVE, full in MAIN/BUILD/DROP.
+-- During a mix it fades with the melody group (phase 4).
+local function play_nts1(sec, s, deck, b, mix_fades)
+  if not nts1_enabled then return end
+  if not nts1_midi_out then return end
+  -- Silent during INTRO and BREAK
+  if sec == "INTRO" or sec == "BREAK" then return end
+  -- Only fire at bar start
+  if s ~= 1 then return end
+  -- Follow melody group fade (phase 4) during mixing
+  local melody_amount = mix_fades and mix_fades.melody or 1
+  if math.random() >= melody_amount then return end
+  -- Sparse in GROOVE: only every second bar
+  if sec == "GROOVE" and b % 2 ~= 1 then return end
+  -- Slightly sparse in MAIN: every second bar (keeps it restrained)
+  if sec == "MAIN" and b % 2 ~= 1 then return end
+
+  -- Generate or refresh motif at 8-bar phrase boundaries
+  local phrase_idx = math.floor((b - 1) / 8)
+  if not deck.nts1_motif or deck.nts1_phrase ~= phrase_idx then
+    deck.nts1_phrase = phrase_idx
+    local seed = (deck.variation_seed or deck.pc or 1) + phrase_idx * 37
+    deck.nts1_motif = make_nts1_motif(deck.genre, deck.root, seed)
+  end
+
+  if not deck.nts1_motif or #deck.nts1_motif == 0 then return end
+
+  -- Cycle through the 4-note motif by position within the current 8-bar phrase
+  local idx = ((b - 1) % #deck.nts1_motif) + 1
+  local note = deck.nts1_motif[idx]
+
+  -- Schedule note_on with a paired note_off (14 ticks ≈ 3/4 of a bar at ppqn=4).
+  -- NTS-1 does not use Program Change; note_on/note_off is sufficient.
+  note_on_to(nts1_midi_out, note, 80, nts1_ch, 14)
+end
+
+-- ──────────────────────────────────────────────
+-- MPX8 sample layer
+-- ──────────────────────────────────────────────
+
+-- Trigger MPX8 pads at genre- and section-appropriate bar/phrase boundaries.
+-- Percussion and fills follow the "other drums" phase (mix_fades.drums).
+-- One-shot transition samples (riser, impact, drop accent) fire at most once
+-- per deck so they are not duplicated when both virtual decks are playing.
+local function play_mpx8(sec, s, deck, b, mix_fades)
+  if not mpx8_enabled then return end
+  if not mpx8_midi_out then return end
+  -- MPX8 is a bar-level device; only act at the start of each bar
+  if s ~= 1 then return end
+
+  -- ── One-shot transition samples ────────────────
+  -- Riser fires once at the first bar of BUILD
+  if sec == "BUILD" and b == 81 and not deck.mpx8_riser_fired then
+    deck.mpx8_riser_fired = true
+    mpx8_trigger(6, 100)  -- pad 6: riser
+  end
+
+  -- Impact and drop accent fire once at the first bar of DROP
+  if sec == "DROP" and b == 97 then
+    if not deck.mpx8_impact_fired then
+      deck.mpx8_impact_fired = true
+      mpx8_trigger(5, 110)  -- pad 5: impact
+    end
+    if not deck.mpx8_drop_accent_fired then
+      deck.mpx8_drop_accent_fired = true
+      mpx8_trigger(8, 110)  -- pad 8: drop accent
+    end
+  end
+
+  -- ── Recurring fills, stabs, and accents ────────
+  -- These are gated by the "other drums" mix phase during transitions.
+  if sec == "INTRO" or sec == "GROOVE" or sec == "BREAK" or sec == "MIX" then return end
+
+  local drums_amount = mix_fades and mix_fades.drums or 1
+  if math.random() >= drums_amount then return end
+
+  -- Derive a per-deck accent offset (0-3) from the variation_seed so accents
+  -- land on different bar positions for different tracks.
+  local accent_offset = (deck.variation_seed or 1) % 4
+
+  -- Pad 1: percussion accent at 4-bar boundaries (offset by deck seed)
+  if (b + accent_offset) % 4 == 0 then
+    local vel = (sec == "DROP") and 100 or 82
+    mpx8_trigger(1, vel)
+  end
+  -- Pad 2: alternate percussion at 8-bar boundaries in DROP only
+  if sec == "DROP" and (b + accent_offset) % 8 == 0 then
+    mpx8_trigger(2, 90)
+  end
+
+  -- Pad 3: short fill at every 4-bar boundary
+  if b % 4 == 0 then
+    local vel = (sec == "DROP") and 102 or 85
+    mpx8_trigger(3, vel)
+  end
+  -- Pad 4: long fill at every 8-bar boundary
+  if b % 8 == 0 then
+    local vel = (sec == "DROP") and 108 or 90
+    mpx8_trigger(4, vel)
+  end
+
+  -- Pad 7: vocal/FX stab at the start of every 8-bar phrase in MAIN/DROP
+  if (sec == "MAIN" or sec == "DROP") and b % 8 == 1 then
+    local vel = (sec == "DROP") and 100 or 80
+    mpx8_trigger(7, vel)
+  end
+end
+
 local function play_deck(deck, b, s, mix_fades)
   local sec = section_for_bar(b)
   play_drums(sec, s, b, mix_fades, deck)
   play_bass(sec, s, deck, mix_fades)
   play_chords(sec, s, deck, b, mix_fades)
   play_norns_instrument(sec, s, deck, b, mix_fades)
+  play_nts1(sec, s, deck, b, mix_fades)
+  play_mpx8(sec, s, deck, b, mix_fades)
 end
 
 local function start_mix_if_needed()
@@ -1508,6 +1713,10 @@ function init()
   midi_out = midi.connect(mdev)
   chord_midi_out = midi.connect(chord_mdev)
   connect_mx1_midi()
+  -- NTS-1 and MPX8 are optional; connect using their default device slots.
+  -- They send no MIDI until enabled in params.
+  nts1_midi_out = midi.connect(nts1_mdev)
+  mpx8_midi_out = midi.connect(mpx8_mdev)
 
   scan_acapellas()
   setup_softcut()
@@ -1640,6 +1849,88 @@ function init()
   params:set_action("acapella_vol", function(v)
     acapella_vol = v / 10
     softcut.level(ACAPELLA_VOICE, acapella_vol)
+  end)
+
+  -- ── Korg NTS-1 ────────────────────────────────
+  params:add_separator("nts1_sep", "KORG NTS-1")
+
+  params:add_option("nts1_enabled", "nts1 enabled", {"off","on"}, 1)
+  params:set_action("nts1_enabled", function(v)
+    nts1_enabled = (v == 2)
+    if not nts1_enabled and nts1_midi_out then
+      -- Clear any hanging notes when disabled
+      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+    end
+  end)
+
+  params:add_option("nts1_midi_device", "nts1 device", dev_names, nts1_mdev)
+  params:set_action("nts1_midi_device", function(v)
+    -- Clear hanging notes on old device before switching
+    if nts1_midi_out then
+      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+    end
+    nts1_mdev = v
+    nts1_midi_out = midi.connect(nts1_mdev)
+  end)
+
+  params:add_number("nts1_ch", "nts1 channel", 1, 16, nts1_ch)
+  params:set_action("nts1_ch", function(v)
+    -- Clear hanging notes on old channel before switching
+    if nts1_midi_out then
+      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+    end
+    nts1_ch = v
+  end)
+
+  params:add_trigger("nts1_test", "nts1 test note")
+  params:set_action("nts1_test", function()
+    if nts1_midi_out then
+      note_on_to(nts1_midi_out, 60, 80, nts1_ch, 16)
+    end
+  end)
+
+  -- ── Akai MPX8 ─────────────────────────────────
+  params:add_separator("mpx8_sep", "AKAI MPX8")
+
+  params:add_option("mpx8_enabled", "mpx8 enabled", {"off","on"}, 1)
+  params:set_action("mpx8_enabled", function(v)
+    mpx8_enabled = (v == 2)
+  end)
+
+  params:add_option("mpx8_midi_device", "mpx8 device", dev_names, mpx8_mdev)
+  params:set_action("mpx8_midi_device", function(v)
+    mpx8_mdev = v
+    mpx8_midi_out = midi.connect(mpx8_mdev)
+  end)
+
+  params:add_number("mpx8_ch", "mpx8 channel", 1, 16, mpx8_ch)
+  params:set_action("mpx8_ch", function(v) mpx8_ch = v end)
+
+  -- Configurable note numbers for the 8 pads
+  local pad_labels = {
+    "mpx8 pad1 perc accent",
+    "mpx8 pad2 alt perc",
+    "mpx8 pad3 short fill",
+    "mpx8 pad4 long fill",
+    "mpx8 pad5 impact",
+    "mpx8 pad6 riser",
+    "mpx8 pad7 vocal stab",
+    "mpx8 pad8 drop accent",
+  }
+  for i = 1, 8 do
+    local pad_i = i
+    params:add_number("mpx8_pad" .. i, pad_labels[i], 0, 127, mpx8_pads[i])
+    params:set_action("mpx8_pad" .. i, function(v) mpx8_pads[pad_i] = v end)
+  end
+
+  params:add_trigger("mpx8_test", "mpx8 test pads")
+  params:set_action("mpx8_test", function()
+    if mpx8_midi_out then
+      -- Fire each pad in sequence with a 4-tick gap
+      for i = 1, 8 do
+        note_delayed(mpx8_midi_out, mpx8_pads[i], 90, mpx8_ch, (i - 1) * 4, 1)
+      end
+    end
   end)
 
   update_clock()

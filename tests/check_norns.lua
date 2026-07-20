@@ -163,4 +163,55 @@ if not source:find("lp2_sysex_tick", 1, true) then
 end
 pass("Second Launchpad (LP2) support exists")
 
+-- ── Korg NTS-1 checks ─────────────────────────────────────────────────────
+if not source:find("nts1_midi_out", 1, true) then
+  fail("Missing nts1_midi_out MIDI output for NTS-1")
+end
+if not source:find("nts1_midi_device", 1, true) then
+  fail("Missing nts1_midi_device parameter")
+end
+if not source:find("play_nts1", 1, true) then
+  fail("Missing play_nts1 function")
+end
+if not source:find("make_nts1_motif", 1, true) then
+  fail("Missing make_nts1_motif function")
+end
+if not source:find("variation_seed", 1, true) then
+  fail("Missing variation_seed in deck identity")
+end
+-- NTS-1 must not use program_change
+do
+  local _, pn_start = source:find("local function play_nts1", 1, true)
+  if pn_start then
+    local pn_end = source:find("\nlocal ", pn_start)
+    local pn_body = source:sub(pn_start, pn_end)
+    local pn_no_comments = pn_body:gsub("%-%-[^\n]*", "")
+    if pn_no_comments:find("program_change") then
+      fail("NTS-1 must not use program_change (original NTS-1 does not support it)")
+    end
+  end
+end
+pass("NTS-1 support exists (nts1_midi_device, play_nts1, make_nts1_motif)")
+
+-- ── Akai MPX8 checks ──────────────────────────────────────────────────────
+if not source:find("mpx8_midi_out", 1, true) then
+  fail("Missing mpx8_midi_out MIDI output for MPX8")
+end
+if not source:find("mpx8_midi_device", 1, true) then
+  fail("Missing mpx8_midi_device parameter")
+end
+if not source:find("play_mpx8", 1, true) then
+  fail("Missing play_mpx8 function")
+end
+if not source:find("mpx8_pads", 1, true) then
+  fail("Missing mpx8_pads pad note table")
+end
+if not source:find("mpx8_riser_fired", 1, true) then
+  fail("Missing mpx8_riser_fired one-shot guard")
+end
+if not source:find("mpx8_impact_fired", 1, true) then
+  fail("Missing mpx8_impact_fired one-shot guard")
+end
+pass("MPX8 support exists (mpx8_midi_device, play_mpx8, mpx8_pads, one-shot guards)")
+
 print("All Endless DJ checks passed")

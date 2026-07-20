@@ -87,6 +87,103 @@ Rx 46
 
 Use the correct T-8 notes. In particular, HAND CLAP IS MIDI NOTE 50, NOT GENERAL MIDI NOTE 39.
 
+KORG NTS-1 (OPTIONAL MELODIC VOICE)
+
+The NTS-1 acts as a restrained monophonic lead/melody voice layered on top of the J-6 chords.
+It is disabled by default and has no effect when disabled or disconnected.
+
+MIDI routing
+- Connect the NTS-1 directly to a USB host port on Norns (or via a USB hub).
+  Keep its USB MIDI connection separate from the T-8, J-6, and MX-1 chain.
+- In the Norns params menu (KORG NTS-1 section):
+    nts1 device  – select the USB MIDI port that corresponds to the NTS-1 ("NTS-1 digital kit" or similar)
+    nts1 channel – default 1.  Must match the NTS-1's MIDI channel setting (see below).
+    nts1 enabled – set to "on" to activate.
+
+Required NTS-1 settings
+1. On the NTS-1, hold SHIFT and press OSC to enter the MIDI settings screen.
+2. Set the receive channel to match the "nts1 channel" param (default Ch 1).
+3. Enable "MIDI RX SHORT MESSAGE" so the NTS-1 processes incoming Note On/Off.
+   (This setting may be labelled "MIDI RX MSG" in some firmware revisions.)
+   Without it the NTS-1 will ignore incoming MIDI notes.
+4. The NTS-1 does not respond to MIDI Program Change; sound design is done
+   directly on the device.
+
+How it plays
+- Silent during INTRO and BREAK sections; sparse (every second bar) during GROOVE
+  and MAIN; full in BUILD and DROP.
+- Motifs are generated from the active deck's root note, genre, and chord
+  progression, so every note is key-safe.
+- Each 8-bar phrase gets its own motif; the motif changes at phrase boundaries
+  rather than every note, giving the melody a recognisable character.
+- During a mix the NTS-1 follows the melody group (phase 4, bars 25-32 of the
+  32-bar crossfade) and fades in/out with the chords.
+
+Test procedure
+1. Enable "nts1 enabled" and confirm the device is selected.
+2. Open the params menu and press "nts1 test note" to fire a single middle-C.
+   You should hear the NTS-1 sound for a short note.
+3. Start playback; the NTS-1 should remain silent during INTRO and start
+   playing from GROOVE onward.
+
+AKAI MPX8 (OPTIONAL SAMPLE LAYER)
+
+The MPX8 is a supplementary one-shot sample layer for percussion accents,
+fills, impacts, risers, and vocal/FX stabs.  It is not a replacement for the T-8.
+It is disabled by default and has no effect when disabled or disconnected.
+
+MIDI routing
+- Connect the MPX8 directly to a USB host port on Norns (separate from the
+  T-8/J-6/MX-1 chain).
+- In the Norns params menu (AKAI MPX8 section):
+    mpx8 device  – select the USB MIDI port that corresponds to the MPX8
+    mpx8 channel – default 10.  Must match the MPX8's MIDI receive channel.
+    mpx8 enabled – set to "on" to activate.
+
+Pad note numbers
+The eight MPX8 pads trigger samples by MIDI note number.  The defaults are:
+
+  Pad  Role                  Default note
+  ───  ────────────────────  ────────────
+  1    Percussion accent     36
+  2    Alternate percussion  38
+  3    Short fill            42
+  4    Long fill             46
+  5    Impact                48
+  6    Riser                 50
+  7    Vocal / FX stab       60
+  8    Drop accent           62
+
+To match Norns to your MPX8 kit:
+1. In the MPX8 editor (or on-device), note which MIDI note each pad is assigned.
+2. Set the corresponding "mpx8 padN …" params in the Norns params menu to match.
+   Alternatively, reassign the pads on the MPX8 to match the Norns defaults above.
+
+Required MPX8 settings
+- Set the MPX8 MIDI receive channel to match the "mpx8 channel" param (default 10).
+- Ensure pads are in "one-shot" / "momentary" trigger mode so a short note-on
+  fires the complete sample.
+- Load the desired samples onto each pad slot via the MPX8 SD card / editor.
+
+How it plays
+- Riser (pad 6) fires once at the first bar of the BUILD section.
+- Impact (pad 5) and drop accent (pad 8) fire once at the first bar of DROP.
+- Short fill (pad 3) triggers at every 4-bar boundary in MAIN/BUILD/DROP.
+- Long fill (pad 4) triggers at every 8-bar boundary.
+- Vocal/FX stab (pad 7) fires at the start of every 8-bar phrase in MAIN/DROP.
+- Percussion accents (pads 1-2) fire at regular intervals derived from the
+  deck's variation seed to keep them consistent throughout the track.
+- During a mix the recurring samples follow the "other drums" phase (phase 3,
+  bars 17-24 of the 32-bar crossfade).
+- One-shot transition samples (riser, impact, drop accent) are tracked per deck,
+  so they fire exactly once even when both virtual decks are playing simultaneously.
+
+Test procedure
+1. Enable "mpx8 enabled" and confirm the device is selected.
+2. Open the params menu and press "mpx8 test pads" to fire all 8 pads in
+   sequence (4-tick gap between each).  You should hear each sample trigger.
+3. Start playback; confirm samples fire at the appropriate section boundaries.
+
 CORE CONCEPT
 
 There are two virtual DJ decks:
