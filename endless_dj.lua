@@ -1253,9 +1253,12 @@ local function make_nts1_identity(deck)
   local note_lengths = nts1_copy_list(prof.length or length_pool[(length_seed % #length_pool) + 1])
 
   local timbre_scenes = {
-    {osc_type=0, fx_type=0, cutoff_base=84, cutoff_span=22, resonance_base=48, resonance_span=16, shape_base=40, shape_span=26, reverb_base=26, reverb_span=24},
-    {osc_type=1, fx_type=1, cutoff_base=70, cutoff_span=30, resonance_base=56, resonance_span=20, shape_base=58, shape_span=18, reverb_base=20, reverb_span=18},
-    {osc_type=2, fx_type=2, cutoff_base=62, cutoff_span=36, resonance_base=62, resonance_span=24, shape_base=52, shape_span=28, reverb_base=14, reverb_span=18}
+    {osc_type=0, fx_type=0, cutoff_base=84, cutoff_span=22,
+      resonance_base=48, resonance_span=16, shape_base=40, shape_span=26, reverb_base=26, reverb_span=24},
+    {osc_type=1, fx_type=1, cutoff_base=70, cutoff_span=30,
+      resonance_base=56, resonance_span=20, shape_base=58, shape_span=18, reverb_base=20, reverb_span=18},
+    {osc_type=2, fx_type=2, cutoff_base=62, cutoff_span=36,
+      resonance_base=62, resonance_span=24, shape_base=52, shape_span=28, reverb_base=14, reverb_span=18}
   }
   seed = nts1_lcg(seed + 41)
   local scene = timbre_scenes[(seed % #timbre_scenes) + 1]
@@ -1303,7 +1306,8 @@ local function nts1_send_cc(cc, value, force)
   local prev = nts1_cc_cache[cc]
   local last_tick_sent = nts1_cc_last_tick[cc]
   -- Ignore tiny deltas and rate-limit CC updates per control lane.
-  if (not force) and ((prev and math.abs(prev - v) < 2) or (last_tick_sent and (tick - last_tick_sent) < 2)) then return end
+  local rate_ok = last_tick_sent and (tick - last_tick_sent) < 2
+  if (not force) and ((prev and math.abs(prev - v) < 2) or rate_ok) then return end
   nts1_midi_out:cc(cc, v, nts1_ch)
   nts1_cc_cache[cc] = v
   nts1_cc_last_tick[cc] = tick
@@ -1379,7 +1383,8 @@ local function nts1_mutate_motif(deck, sec, b)
     table.insert(motif, slot, nts1_snap_to_pcs(motif[slot] + 12, deck.root, chord_pcs, min_note, max_note))
   elseif op == 4 then
     -- 4) change final note to a nearby chord tone
-    motif[#motif] = nts1_snap_to_pcs(motif[#motif] + ((seed % 2 == 0) and 5 or -5), deck.root, chord_pcs, min_note, max_note)
+    local delta4 = (seed % 2 == 0) and 5 or -5
+    motif[#motif] = nts1_snap_to_pcs(motif[#motif] + delta4, deck.root, chord_pcs, min_note, max_note)
   elseif op == 5 then
     -- 5) octave-shift one note
     motif[slot] = nts1_snap_to_pcs(motif[slot] + ((seed % 2 == 0) and 12 or -12), deck.root, scale, min_note, max_note)
