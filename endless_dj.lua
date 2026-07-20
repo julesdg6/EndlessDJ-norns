@@ -1961,7 +1961,7 @@ function init()
     local pad_i = i
     params:add_trigger("mpx8_test_pad" .. i, "mpx8 test pad" .. i)
     params:set_action("mpx8_test_pad" .. i, function()
-      if mpx8_enabled then
+      if mpx8_enabled and mpx8_midi_out then
         mpx8_trigger(pad_i, 90)
       end
     end)
