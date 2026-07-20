@@ -192,6 +192,12 @@ end
 if not source:find("nts1_register", 1, true) then
   fail("Missing nts1_register parameter")
 end
+if not source:find("local nts1_register = %-8") then
+  fail("Expected NTS-1 default register to be -8 (-24 semitones)")
+end
+if not source:find('params:add_number%("nts1_register", "nts1 register", %-8, 6, nts1_register%)') then
+  fail("Expected NTS-1 register param minimum/default to allow -8")
+end
 if not source:find("nts1_cc_automation", 1, true) then
   fail("Missing nts1_cc_automation parameter")
 end
