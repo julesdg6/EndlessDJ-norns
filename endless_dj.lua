@@ -745,7 +745,8 @@ local drum_patterns = {
 --   lane 3 open hat:   y 5-6
 --   lane 4 closed hat: y 7-8
 local function drum_to_xy(lane, s)
-  local y = (lane - 1) * 2 + 1 + (s > 8 and 1 or 0)
+  local row_offset = s > 8 and 1 or 0
+  local y = (lane - 1) * 2 + 1 + row_offset
   local x = s <= 8 and s or (s - 8)
   return x, y
 end
@@ -760,7 +761,8 @@ end
 -- Map synth (inst 1-2, step 1-16) → grid (x 9-16, y 1-4).
 -- inst 1 = NTS-1 (y=1-2), inst 2 = J-6 (y=3-4)
 local function synth_to_xy(inst, s)
-  local y = (inst - 1) * 2 + 1 + (s > 8 and 1 or 0)
+  local row_offset = s > 8 and 1 or 0
+  local y = (inst - 1) * 2 + 1 + row_offset
   local x = 8 + (s <= 8 and s or (s - 8))
   return x, y
 end
