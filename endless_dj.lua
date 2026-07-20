@@ -11,7 +11,7 @@
 --   ohh   46
 --
 -- MIDI (all routed via Roland AIRA MX-1 as USB hub):
---   T-8 drums  ch10 on t8 midi device  (default device 1 via MX-1)
+--   T-8 drums  ch9  on t8 midi device  (default device 1 via MX-1)
 --   T-8 bass   ch8  on t8 midi device
 --   J-6 chords ch6  on j6 midi device  (default device 1 via MX-1)
 --   MX-1 Beat FX depth automated via CC during mix transitions
@@ -109,7 +109,7 @@ local xfade = 0
 local manual_xfade = false
 local generation = 2
 
-local drum_ch = 10
+local drum_ch = 9
 local bass_ch = 8
 local chord_ch = 6
 
@@ -298,6 +298,8 @@ local function j6_program_change(num)
   if not chord_midi_out then return end
   if not j6_pc_enabled then return end
   chord_midi_out:program_change(num, j6_pc_ch)
+  -- Disable variation (Roland J-6 CC 80: 0-63 = off)
+  chord_midi_out:cc(80, 0, j6_pc_ch)
 end
 
 local function make_deck(letter)
