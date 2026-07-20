@@ -79,6 +79,21 @@ local nts1_cc_enabled = true
 local nts1_cc_cache = {}
 local nts1_cc_last_tick = {}
 local nts1_reset_cc_state
+local NTS1_LCG_MOD = 4294967296 -- 2^32
+local NTS1_OCTAVE_DIVISOR = 97
+local NTS1_SECTION_BARS = 16
+local NTS1_SECTION_PHASE_DENOM = 15
+local NTS1_MIX_OUTGOING_DENSITY = 0.45
+local NTS1_MIX_INCOMING_DENSITY = 0.75
+local NTS1_RHYTHM_MIN_NOTES = 2
+local NTS1_RHYTHM_REDUCE_MUT_MAX = 0.55
+local NTS1_RHYTHM_MAX_NOTES = 6
+local NTS1_RHYTHM_APPEND_START = 10
+local NTS1_RHYTHM_APPEND_STEP = 3
+local NTS1_RHYTHM_MAX_OFFSET = 15
+local NTS1_MUTATION_SEED_OFFSET = 7
+local NTS1_MUTATION_OP_COUNT = 7
+local NTS1_MOTIF_INDEX_BASE_OFFSET = 2
 
 -- ──────────────────────────────────────────────
 -- Akai MPX8 (optional one-shot / sample layer)
@@ -338,6 +353,15 @@ end
 
 local function next_deck()
   return deck_a.active and deck_b or deck_a
+end
+
+local function nts1_reset_deck_identities()
+  for _, d in ipairs({deck_a, deck_b}) do
+    d.nts1_identity = nil
+    d.nts1_motif = nil
+    d.nts1_phrase = nil
+    d.nts1_motif_turn = 1
+  end
 end
 
 local function quiet_notes()
@@ -1122,7 +1146,7 @@ end
 -- ──────────────────────────────────────────────
 
 local function nts1_lcg(seed)
-  return (math.max(1, seed or 1) * 1103515245 + 12345) % 65536
+  return (math.max(1, seed or 1) * 1103515245 + 12345) % NTS1_LCG_MOD
 end
 
 local function nts1_copy_list(t)
@@ -1177,7 +1201,7 @@ local function make_nts1_motif(genre, root, variation_seed, min_note, max_note)
   for i = 1, 4 do
     seed = nts1_lcg(seed + i * 17)
     local pc = scale[(seed % #scale) + 1]
-    local octave = ((seed // 97) % 2) + 1
+    local octave = ((seed // NTS1_OCTAVE_DIVISOR) % 2) + 1
     local note = root + pc + octave * 12
     motif[i] = nts1_snap_to_pcs(note, root, scale, min_note or 48, max_note or 84)
   end
@@ -1190,6 +1214,8 @@ end
 local function make_nts1_identity(deck)
   local seed = math.max(1, deck.variation_seed or 1)
   local scale = nts1_collect_scale(deck.genre)
+  -- reg = register bias (in 3-semitone steps), density = stylistic density scalar,
+  -- pattern = bar-relative trigger offsets (0-15 ticks), length = note lengths (ticks).
   local genre_profile = {
     TECHNO={reg=-3,density=0.55,pattern={0,8},length={8,6,8,6}},
     DUBSTEP={reg=-4,density=0.45,pattern={0,10},length={10,6,9,6}},
@@ -1203,6 +1229,8 @@ local function make_nts1_identity(deck)
     HARDSTYLE={reg=0,density=0.70,pattern={0,4,8,12},length={4,4,4,4}}
   }
   local prof = genre_profile[deck.genre] or {reg=0,density=0.65}
+  -- Register param uses 3-semitone steps (minor-third moves) for noticeable
+  -- shifts without forcing abrupt octave jumps.
   local register_min = 48 + (nts1_register + prof.reg) * 3
   local register_max = 76 + (nts1_register + prof.reg) * 3
   local mutation_choices = {4, 8, 16}
@@ -1219,10 +1247,10 @@ local function make_nts1_identity(deck)
     {4, 4, 6, 6},
     {5, 3, 4, 7}
   }
-  seed = nts1_lcg(seed + 29)
-  local rhythm_pattern = nts1_copy_list(prof.pattern or pattern_pool[(seed % #pattern_pool) + 1])
-  seed = nts1_lcg(seed + 37)
-  local note_lengths = nts1_copy_list(prof.length or length_pool[(seed % #length_pool) + 1])
+  local rhythm_seed = nts1_lcg(seed + 29)
+  local rhythm_pattern = nts1_copy_list(prof.pattern or pattern_pool[(rhythm_seed % #pattern_pool) + 1])
+  local length_seed = nts1_lcg(seed + 37)
+  local note_lengths = nts1_copy_list(prof.length or length_pool[(length_seed % #length_pool) + 1])
 
   local timbre_scenes = {
     {osc_type=0, fx_type=0, cutoff_base=84, cutoff_span=22, resonance_base=48, resonance_span=16, shape_base=40, shape_span=26, reverb_base=26, reverb_span=24},
@@ -1273,9 +1301,9 @@ local function nts1_send_cc(cc, value, force)
   if not nts1_midi_out or not nts1_cc_enabled then return end
   local v = clamp(math.floor(value), 0, 127)
   local prev = nts1_cc_cache[cc]
-  if (not force) and prev and math.abs(prev - v) < 2 then return end
-  local last_t = nts1_cc_last_tick[cc]
-  if (not force) and last_t and (tick - last_t) < 2 then return end
+  local last_tick_sent = nts1_cc_last_tick[cc]
+  -- Ignore tiny deltas and rate-limit CC updates per control lane.
+  if (not force) and ((prev and math.abs(prev - v) < 2) or (last_tick_sent and (tick - last_tick_sent) < 2)) then return end
   nts1_midi_out:cc(cc, v, nts1_ch)
   nts1_cc_cache[cc] = v
   nts1_cc_last_tick[cc] = tick
@@ -1286,8 +1314,8 @@ local function nts1_apply_scene(deck, sec, b, force)
   if not deck.nts1_identity then return end
   local timbre = deck.nts1_identity.timbre
   if not timbre then return end
-  local sec_phase = (b - 1) % 16
-  local phase = sec_phase / 15
+  local sec_phase = (b - 1) % NTS1_SECTION_BARS
+  local phase = sec_phase / NTS1_SECTION_PHASE_DENOM
   if sec == "BREAK" then phase = phase * 0.3 end
   if sec == "BUILD" then phase = clamp(phase + 0.35, 0, 1) end
   if sec == "DROP" then phase = 1 end
@@ -1334,31 +1362,47 @@ local function nts1_mutate_motif(deck, sec, b)
     table.insert(chord_pcs, interval % 12)
   end
 
-  seed = nts1_lcg(seed + 7)
+  seed = nts1_lcg(seed + NTS1_MUTATION_SEED_OFFSET)
   local slot = (seed % #motif) + 1
-  local op = (seed % 7) + 1
+  local op = (seed % NTS1_MUTATION_OP_COUNT) + 1
   local min_note = identity.octave_range[1]
   local max_note = identity.octave_range[2]
 
   if op == 1 then
+    -- 1) transpose a motif note by a scale step
     motif[slot] = nts1_snap_to_pcs(motif[slot] + ((seed % 2 == 0) and 2 or -2), deck.root, scale, min_note, max_note)
   elseif op == 2 and #motif > 2 then
+    -- 2) remove one motif note
     table.remove(motif, slot)
   elseif op == 3 and #motif < 6 then
+    -- 3) add one note in register and chord context
     table.insert(motif, slot, nts1_snap_to_pcs(motif[slot] + 12, deck.root, chord_pcs, min_note, max_note))
   elseif op == 4 then
+    -- 4) change final note to a nearby chord tone
     motif[#motif] = nts1_snap_to_pcs(motif[#motif] + ((seed % 2 == 0) and 5 or -5), deck.root, chord_pcs, min_note, max_note)
   elseif op == 5 then
+    -- 5) octave-shift one note
     motif[slot] = nts1_snap_to_pcs(motif[slot] + ((seed % 2 == 0) and 12 or -12), deck.root, scale, min_note, max_note)
   elseif op == 6 then
-    local t = identity.note_lengths[((slot - 1) % #identity.note_lengths) + 1]
-    identity.note_lengths[((slot - 1) % #identity.note_lengths) + 1] = clamp(t + ((seed % 2 == 0) and 1 or -1), 2, 12)
+    -- 6) shorten or extend a selected note length
+    local len_idx = ((slot - 1) % #identity.note_lengths) + 1
+    local t = identity.note_lengths[len_idx]
+    identity.note_lengths[len_idx] = clamp(t + ((seed % 2 == 0) and 1 or -1), 2, 12)
   else
+    -- 7) increase/reduce rhythmic density (call/response style simplification/extension)
     local rp = identity.rhythmic_pattern
-    if #rp > 2 and mut < 0.55 then
+    if #rp == 0 then
+      rp[1] = 0
+    end
+    -- Intentionally mutates the per-deck identity so rhythmic evolution carries
+    -- across subsequent phrase boundaries instead of resetting each bar.
+    -- At low mutation settings prefer simplification; at higher settings bias
+    -- toward extension so BUILD/DROP sections can intensify over time.
+    if #rp > NTS1_RHYTHM_MIN_NOTES and mut < NTS1_RHYTHM_REDUCE_MUT_MAX then
       table.remove(rp, #rp)
-    elseif #rp < 6 then
-      table.insert(rp, clamp(((rp[#rp] or 10) + 3), 0, 15))
+    elseif #rp < NTS1_RHYTHM_MAX_NOTES then
+      local new_offset = (rp[#rp] or NTS1_RHYTHM_APPEND_START) + NTS1_RHYTHM_APPEND_STEP
+      table.insert(rp, clamp(new_offset, 0, NTS1_RHYTHM_MAX_OFFSET))
     end
   end
   deck.nts1_motif = motif
@@ -1691,7 +1735,10 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   if sec == "BREAK" then sec_density = sec_density * 0.15 end
   if sec == "BUILD" then sec_density = sec_density * 0.95 end
   if sec == "DROP" then sec_density = clamp(sec_density * 1.15, 0, 1) end
-  if sec == "MIX" then sec_density = sec_density * (deck == current_deck() and 0.45 or 0.75) end
+  -- In MIX: outgoing/current deck is simplified, incoming deck gets stronger.
+  if sec == "MIX" then
+    sec_density = sec_density * (deck == current_deck() and NTS1_MIX_OUTGOING_DENSITY or NTS1_MIX_INCOMING_DENSITY)
+  end
   sec_density = sec_density * melody_amount
 
   local seed = nts1_lcg((identity.variation_seed or 1) + b * 19)
@@ -1706,14 +1753,17 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   if sec == "DROP" then register_bump = 7 end
   if sec == "BREAK" then register_bump = -12 end
 
-  local calls = (sec == "MIX" and deck == current_deck()) and 1 or #rhythm
-  for i = 1, calls do
+  local num_triggers = (sec == "MIX" and deck == current_deck()) and 1 or #rhythm
+  for i = 1, num_triggers do
     local offset = rhythm[((i - 1) % #rhythm) + 1]
-    local motif_idx = ((deck.nts1_motif_turn + i - 2) % #motif) + 1
+    local motif_idx = ((deck.nts1_motif_turn + i - NTS1_MOTIF_INDEX_BASE_OFFSET) % #motif) + 1
     local note = motif[motif_idx] + register_bump
     note = clamp(note, identity.octave_range[1], identity.octave_range[2] + 12)
     local note_len = note_lengths[((motif_idx - 1) % #note_lengths) + 1] or 6
-    local next_offset = rhythm[((i) % #rhythm) + 1]
+    local next_offset = nil
+    if i < num_triggers then
+      next_offset = rhythm[((i) % #rhythm) + 1]
+    end
     if next_offset and next_offset > offset then
       note_len = math.min(note_len, math.max(1, next_offset - offset - 1))
     end
@@ -2173,23 +2223,13 @@ function init()
   params:add_number("nts1_motif_density", "nts1 motif density", 10, 100, math.floor(nts1_motif_density * 100))
   params:set_action("nts1_motif_density", function(v)
     nts1_motif_density = clamp(v / 100, 0.1, 1)
-    for _, d in ipairs({deck_a, deck_b}) do
-      d.nts1_identity = nil
-      d.nts1_motif = nil
-      d.nts1_phrase = nil
-      d.nts1_motif_turn = 1
-    end
+    nts1_reset_deck_identities()
   end)
 
   params:add_number("nts1_register", "nts1 register", -6, 6, nts1_register)
   params:set_action("nts1_register", function(v)
     nts1_register = v
-    for _, d in ipairs({deck_a, deck_b}) do
-      d.nts1_identity = nil
-      d.nts1_motif = nil
-      d.nts1_phrase = nil
-      d.nts1_motif_turn = 1
-    end
+    nts1_reset_deck_identities()
   end)
 
   params:add_option("nts1_cc_automation", "nts1 cc automation", {"off","on"}, nts1_cc_enabled and 2 or 1)
