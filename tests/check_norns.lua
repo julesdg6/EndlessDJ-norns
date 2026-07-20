@@ -179,6 +179,21 @@ end
 if not source:find("variation_seed", 1, true) then
   fail("Missing variation_seed in deck identity")
 end
+if not source:find("nts1_variation", 1, true) then
+  fail("Missing nts1_variation parameter")
+end
+if not source:find("nts1_motif_density", 1, true) then
+  fail("Missing nts1_motif_density parameter")
+end
+if not source:find("nts1_register", 1, true) then
+  fail("Missing nts1_register parameter")
+end
+if not source:find("nts1_cc_automation", 1, true) then
+  fail("Missing nts1_cc_automation parameter")
+end
+if not source:find("nts1_midi_out:cc", 1, true) and not source:find("nts1_send_cc", 1, true) then
+  fail("Missing NTS-1 CC automation output")
+end
 -- NTS-1 must not use program_change
 do
   local _, pn_start = source:find("local function play_nts1", 1, true)
