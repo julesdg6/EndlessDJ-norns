@@ -1306,8 +1306,8 @@ local function nts1_send_cc(cc, value, force)
   local prev = nts1_cc_cache[cc]
   local last_tick_sent = nts1_cc_last_tick[cc]
   -- Ignore tiny deltas and rate-limit CC updates per control lane.
-  local rate_ok = last_tick_sent and (tick - last_tick_sent) < 2
-  if (not force) and ((prev and math.abs(prev - v) < 2) or rate_ok) then return end
+  local rate_limited = last_tick_sent and (tick - last_tick_sent) < 2
+  if (not force) and ((prev and math.abs(prev - v) < 2) or rate_limited) then return end
   nts1_midi_out:cc(cc, v, nts1_ch)
   nts1_cc_cache[cc] = v
   nts1_cc_last_tick[cc] = tick
