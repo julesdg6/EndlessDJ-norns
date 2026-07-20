@@ -158,7 +158,7 @@ to the `i01` factory pad notes:
  7    Crash                 49            Vocal / FX stab
  8    Ride                  51            Drop accent
 
-You can still customise all eight pad notes with the `mpx8 padN ...` params.
+You can still customize all eight pad notes with the `mpx8 padN ...` params.
 This keeps custom/user kits fully supported.
 
 Required MPX8 settings

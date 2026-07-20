@@ -79,7 +79,7 @@ local nts1_ch = 1
 local mpx8_midi_out
 local mpx8_mdev = 1
 local mpx8_enabled = false
-local mpx8_ch = 10
+local mpx8_ch = 10 -- standard drum channel; matches MPX8 factory i01 incoming Note On channel
 -- Factory Internal Kit i01 pad notes (1-8):
 --   1=kick(36)  2=snare(38)  3=closed hat(42)  4=open hat(46)
 --   5=low tom(43)  6=mid tom(47)  7=crash(49)  8=ride(51)
@@ -1959,7 +1959,7 @@ function init()
 
   for i = 1, 8 do
     local pad_i = i
-    params:add_trigger("mpx8_test_pad" .. i, "mpx8 test pad" .. i)
+    params:add_trigger("mpx8_test_pad" .. i, "test " .. pad_labels[i])
     params:set_action("mpx8_test_pad" .. i, function()
       if mpx8_enabled and mpx8_midi_out then
         mpx8_trigger(pad_i, 90)

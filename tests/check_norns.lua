@@ -218,7 +218,7 @@ end
 if not source:find("mpx8_impact_fired", 1, true) then
   fail("Missing mpx8_impact_fired one-shot guard")
 end
-if not source:find('params:add_trigger("mpx8_test_pad" .. i, "mpx8 test pad" .. i)', 1, true) then
+if not source:find('params:add_trigger("mpx8_test_pad" .. i,', 1, true) then
   fail("Missing per-pad MPX8 test triggers")
 end
 if not source:find('for i = 1, 8 do', 1, true) then
