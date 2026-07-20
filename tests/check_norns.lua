@@ -218,6 +218,47 @@ do
 end
 pass("NTS-1 support exists (nts1_midi_device, play_nts1, make_nts1_motif)")
 
+-- ── NTS-1 AR loop sync checks ──────────────────────────────────────────────
+-- AR loop must only be used when the NTS-1 has received enough MIDI clock
+-- to be in sync; the guard state and clock-sending machinery must exist.
+if not source:find("nts1_synced", 1, true) then
+  fail("Missing nts1_synced flag for AR loop sync guard")
+end
+if not source:find("nts1_clock_ticks", 1, true) then
+  fail("Missing nts1_clock_ticks counter for MIDI clock tracking")
+end
+if not source:find("nts1_midi_out:clock()", 1, true) then
+  fail("NTS-1 must send MIDI clock pulses so the device can sync its AR loop rate")
+end
+if not source:find("nts1_midi_out:start()", 1, true) then
+  fail("NTS-1 must send MIDI Start when playback begins")
+end
+if not source:find("nts1_midi_out:stop()", 1, true) then
+  fail("NTS-1 must send MIDI Stop when playback ends so the AR loop halts cleanly")
+end
+if not source:find("EG_TYPE", 1, true) then
+  fail("Missing EG_TYPE in NTS1_CC for envelope type control (AR loop gating)")
+end
+if not source:find("EG_AR_LOOP", 1, true) then
+  fail("Missing EG_AR_LOOP value in NTS1_CC")
+end
+-- Verify AR loop is guarded by nts1_synced in nts1_apply_scene
+do
+  local _, as_start = source:find("local function nts1_apply_scene", 1, true)
+  if as_start then
+    local as_end = source:find("\nlocal ", as_start)
+    local as_body = source:sub(as_start, as_end)
+    local as_no_comments = as_body:gsub("%-%-[^\n]*", "")
+    if not as_no_comments:find("nts1_synced") then
+      fail("nts1_apply_scene must gate AR loop on nts1_synced")
+    end
+    if not as_no_comments:find("EG_AR_LOOP") then
+      fail("nts1_apply_scene must reference EG_AR_LOOP")
+    end
+  end
+end
+pass("NTS-1 AR loop is guarded by sync state (nts1_synced, MIDI clock/start/stop)")
+
 -- ── Akai MPX8 checks ──────────────────────────────────────────────────────
 if not source:find("mpx8_midi_out", 1, true) then
   fail("Missing mpx8_midi_out MIDI output for MPX8")

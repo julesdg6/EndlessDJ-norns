@@ -79,7 +79,6 @@ local nts1_cc_cache = {}
 local nts1_cc_last_tick = {}
 local nts1_reset_cc_state
 local NTS1_LCG_MOD = 4294967296 -- 2^32
-local NTS1_OCTAVE_DIVISOR = 97
 local NTS1_SECTION_BARS = 16
 local NTS1_SECTION_PHASE_DENOM = 15
 local NTS1_MIX_OUTGOING_DENSITY = 0.45
@@ -92,7 +91,10 @@ local NTS1_RHYTHM_APPEND_STEP = 3
 local NTS1_RHYTHM_MAX_OFFSET = 15
 local NTS1_MUTATION_SEED_OFFSET = 7
 local NTS1_MUTATION_OP_COUNT = 7
-local NTS1_MOTIF_INDEX_BASE_OFFSET = 2
+-- Number of internal clock ticks we must have sent to the NTS-1 before
+-- considering it "in sync" and allowing AR loop EG mode (1 bar = 16 ticks).
+local nts1_synced = false  -- true once the NTS-1 has received enough MIDI clock
+local nts1_clock_ticks = 0 -- ticks of MIDI clock sent since last play start
 -- Keep the max seed inside the positive 31-bit signed range so it remains easy
 -- to enter/replay from a Norns parameter while still covering a large space.
 local ACID_SEED_MAX = 2147483646
@@ -397,7 +399,13 @@ local function quiet_notes()
     for n=0,127 do
       nts1_midi_out:note_off(n, 0, nts1_ch)
     end
+    -- Stop the NTS-1 clock so AR loop halts immediately and any looping
+    -- envelope stops cleanly.  Sync state is cleared so AR loop mode will
+    -- not be re-engaged until a full re-sync after the next play start.
+    nts1_midi_out:stop()
   end
+  nts1_synced = false
+  nts1_clock_ticks = 0
 
   -- Reset MX-1 Beat FX depth so no effect lingers after stopping.
   send_mx1_cc(mx1_fx_cc, 0)
@@ -1793,7 +1801,7 @@ local function make_nts1_motif(genre, root, variation_seed, min_note, max_note)
   for i = 1, 4 do
     seed = nts1_lcg(seed + i * 17)
     local pc = scale[(seed % #scale) + 1]
-    local octave = ((seed // NTS1_OCTAVE_DIVISOR) % 2) + 1
+    local octave = ((seed // 97) % 2) + 1  -- 97 spreads the LCG output across 2 octaves (was NTS1_OCTAVE_DIVISOR)
     local note = root + pc + octave * 12
     motif[i] = nts1_snap_to_pcs(note, root, scale, min_note or 48, max_note or 84)
   end
@@ -1888,6 +1896,9 @@ local NTS1_CC = {
   FILTER_RESONANCE = 44,
   AMP_ATTACK = 16,
   AMP_RELEASE = 72,
+  EG_TYPE    = 20,   -- NTS-1 CC 20: EG type; CC value ranges: 0–41=Gate, 42–85=AR, 86–127=AR Loop
+  EG_AR      = 43,   -- standard attack/release, no loop (midpoint of the AR range)
+  EG_AR_LOOP = 86,   -- AR loop: envelope repeats while note held (midpoint of the AR Loop range)
   FX_TYPE = 88,
   FX_DEPTH = 91
 }
@@ -1927,6 +1938,12 @@ local function nts1_apply_scene(deck, sec, b, force)
   nts1_send_cc(NTS1_CC.FX_DEPTH, fx_depth, force)
   nts1_send_cc(NTS1_CC.AMP_ATTACK, (sec == "INTRO" or sec == "BREAK") and 60 or 28, force)
   nts1_send_cc(NTS1_CC.AMP_RELEASE, (sec == "BREAK" or sec == "MIX") and 86 or 56, force)
+  -- Only engage AR loop when the NTS-1 is confirmed in sync with MIDI clock.
+  -- Without sync the loop rate is unconstrained and will drift against the BPM.
+  -- The loop stops naturally when the scheduled note_off fires at the end of
+  -- each note's duration.
+  local eg_type = nts1_synced and NTS1_CC.EG_AR_LOOP or NTS1_CC.EG_AR
+  nts1_send_cc(NTS1_CC.EG_TYPE, eg_type, force)
 end
 
 nts1_reset_cc_state = function()
@@ -2401,7 +2418,7 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   local num_triggers = (sec == "MIX" and deck == current_deck()) and 1 or #rhythm
   for i = 1, num_triggers do
     local offset = rhythm[((i - 1) % #rhythm) + 1]
-    local motif_idx = ((deck.nts1_motif_turn + i - NTS1_MOTIF_INDEX_BASE_OFFSET) % #motif) + 1
+    local motif_idx = ((deck.nts1_motif_turn + i - 2) % #motif) + 1  -- offset 2 aligns turn counter to 1-based motif index (was NTS1_MOTIF_INDEX_BASE_OFFSET)
     local note = motif[motif_idx] + register_bump
     note = clamp(note, identity.octave_range[1], identity.octave_range[2] + 12)
     local note_len = note_lengths[((motif_idx - 1) % #note_lengths) + 1] or 6
@@ -2587,6 +2604,22 @@ local function clock_tick()
   grid_nts1_level = math.max(0, grid_nts1_level - 1)
   grid_j6_level   = math.max(0, grid_j6_level   - 1)
   grid_redraw(step)
+
+  -- Send MIDI clock to the NTS-1 (24 PPQN = 6 pulses per internal 4-PPQN tick)
+  -- so it can lock its AR loop rate to the current BPM.  On the very first tick
+  -- of a new play session send MIDI Start first so the NTS-1 re-syncs from beat
+  -- one.  Once NTS1_SYNC_TICKS have been sent the NTS-1 is considered in sync
+  -- and AR loop EG mode may be used.
+  if nts1_enabled and nts1_midi_out then
+    if nts1_clock_ticks == 0 then
+      nts1_midi_out:start()
+    end
+    for _ = 1, 6 do nts1_midi_out:clock() end
+    nts1_clock_ticks = nts1_clock_ticks + 1
+    if nts1_clock_ticks >= 16 then  -- 16 ticks = 1 bar: enough for a reliable sync
+      nts1_synced = true
+    end
+  end
 
   -- Wrap musical playback in pcall so any unexpected engine or MIDI error
   -- (e.g. the norns instrument first firing at bar 17 where the GROOVE
@@ -2949,10 +2982,15 @@ function init()
       if not nts1_enabled then
         -- Clear any hanging notes when disabled
         for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+        -- Stop clock so any AR loop halts and cannot restart.
+        nts1_midi_out:stop()
       else
         nts1_reset_cc_state()
       end
     end
+    -- Disable sync so AR loop is not used until a full re-sync occurs.
+    nts1_synced = false
+    nts1_clock_ticks = 0
   end)
 
   params:add_option("nts1_midi_device", "nts1 device", dev_names, nts1_mdev)
@@ -2964,6 +3002,9 @@ function init()
     nts1_mdev = v
     nts1_midi_out = midi.connect(nts1_mdev)
     nts1_reset_cc_state()
+    -- New device has not received any clock; require a fresh sync.
+    nts1_synced = false
+    nts1_clock_ticks = 0
   end)
 
   params:add_number("nts1_ch", "nts1 channel", 1, 16, nts1_ch)
@@ -2974,6 +3015,9 @@ function init()
     end
     nts1_ch = v
     nts1_reset_cc_state()
+    -- Channel change may reach a different receiver; require a fresh sync.
+    nts1_synced = false
+    nts1_clock_ticks = 0
   end)
 
   params:add_number("nts1_variation", "nts1 variation", 0, 100, math.floor(nts1_variation_amount * 100))
