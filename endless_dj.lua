@@ -79,7 +79,7 @@ local nts1_ch = 1
 local mpx8_midi_out
 local mpx8_mdev = 1
 local mpx8_enabled = false
-local mpx8_ch = 10 -- standard drum channel; matches MPX8 factory i01 incoming Note On channel
+local mpx8_ch = 10 -- MIDI channel 10 (General MIDI drum channel); matches MPX8 i01 incoming Note On channel
 -- Factory Internal Kit i01 pad notes (1-8):
 --   1=kick(36)  2=snare(38)  3=closed hat(42)  4=open hat(46)
 --   5=low tom(43)  6=mid tom(47)  7=crash(49)  8=ride(51)
