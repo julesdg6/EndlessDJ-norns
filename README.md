@@ -99,6 +99,10 @@ MIDI routing
     nts1 device  – select the USB MIDI port that corresponds to the NTS-1 ("NTS-1 digital kit" or similar)
     nts1 channel – default 1.  Must match the NTS-1's MIDI channel setting (see below).
     nts1 enabled – set to "on" to activate.
+    nts1 variation – controls phrase-boundary motif mutation amount.
+    nts1 motif density – controls rhythmic hit density.
+    nts1 register – shifts melodic register up/down.
+    nts1 cc automation – enables/disables timbre CC scene automation.
 
 Required NTS-1 settings
 1. On the NTS-1, hold SHIFT and press OSC to enter the MIDI settings screen.
@@ -110,14 +114,16 @@ Required NTS-1 settings
    directly on the device.
 
 How it plays
-- Silent during INTRO and BREAK sections; sparse (every second bar) during GROOVE
-  and MAIN; full in BUILD and DROP.
-- Motifs are generated from the active deck's root note, genre, and chord
-  progression, so every note is key-safe.
-- Each 8-bar phrase gets its own motif; the motif changes at phrase boundaries
-  rather than every note, giving the melody a recognisable character.
-- During a mix the NTS-1 follows the melody group (phase 4, bars 25-32 of the
-  32-bar crossfade) and fades in/out with the chords.
+- Each deck gets a stable NTS-1 identity: scale-safe base motif, rhythm pattern,
+  note lengths, density, register, timbre scene, and variation seed.
+- Motifs are monophonic and chord-compatible; mutations are controlled and only
+  applied on 4/8/16-bar phrase boundaries (never mid-phrase).
+- INTRO/BREAK stay sparse; GROOVE/MAIN establish motif; BUILD increases density,
+  register, and timbral movement; DROP returns a strong motif variant.
+- During MIX/OUTRO the outgoing deck simplifies while the incoming deck starts to
+  introduce its motif in the melody transition phase.
+- The NTS-1 does not use Program Change. Timbre evolution uses bounded MIDI CC
+  scene automation with change-threshold caching and CC rate limiting.
 
 Test procedure
 1. Enable "nts1 enabled" and confirm the device is selected.
