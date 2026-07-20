@@ -6,6 +6,7 @@ globals = {
   "cleanup",
   "enc",
   "engine",
+  "grid",
   "include",
   "init",
   "key",

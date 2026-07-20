@@ -143,25 +143,29 @@ if not source:find("scan_acapellas", 1, true) then
 end
 pass("Acapella playback support exists")
 
-if not source:find("lp2_midi_device", 1, true) then
-  fail("Missing lp2_midi_device parameter for second Launchpad")
+-- ── Unified grid interface checks ─────────────────────────────────────────
+if not source:find("grid.connect", 1, true) then
+  fail("Script must use grid.connect() for the single logical grid connection")
 end
-if not source:find("lp2_redraw", 1, true) then
-  fail("Missing lp2_redraw function for LP2 display")
+if source:find("LP_PROGRAMMER_SYSEX", 1, true) then
+  fail("Regression: LP_PROGRAMMER_SYSEX must be removed (no Launchpad SysEx in script)")
 end
-if not source:find("lp2_connect", 1, true) then
-  fail("Missing lp2_connect function")
+if source:find("midigrid_lib", 1, true) then
+  fail("Regression: midigrid_lib must be removed (use grid.connect() instead)")
 end
-if not source:find("LP2_COLORS", 1, true) then
-  fail("Missing LP2_COLORS palette table")
+if not source:find("grid_redraw", 1, true) then
+  fail("Missing grid_redraw function for unified grid display")
 end
-if not source:find("lp2_step_note", 1, true) then
-  fail("Missing lp2_step_note helper for LP2 step-grid layout")
+if not source:find("nts1_steps", 1, true) then
+  fail("Missing nts1_steps for NTS-1 trigger pattern")
 end
-if not source:find("lp2_sysex_tick", 1, true) then
-  fail("Missing LP2 programmer-mode keepalive tick")
+if not source:find("j6_steps", 1, true) then
+  fail("Missing j6_steps for J-6 chord trigger pattern")
 end
-pass("Second Launchpad (LP2) support exists")
+if not source:find("grid_connect", 1, true) then
+  fail("Missing grid_connect function")
+end
+pass("Unified grid interface (grid.connect, grid_redraw, nts1_steps, j6_steps)")
 
 -- ── Korg NTS-1 checks ─────────────────────────────────────────────────────
 if not source:find("nts1_midi_out", 1, true) then
