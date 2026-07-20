@@ -1240,7 +1240,9 @@ end
 
 acid_cfg.make_rng = function(seed)
   local state = math.max(1, math.floor(seed or 1)) % ACID_SEED_MAX
-  if state == 0 then state = 1 end
+  if state == 0 then
+    state = 1
+  end
   return function(limit)
     state = acid_cfg.lcg(state + 97)
     if limit then
@@ -1269,7 +1271,7 @@ acid_cfg.new_seed = function()
   local hi = math.random(0, 32767)
   local lo = math.random(0, 65535)
   local seed = ((hi * 65536) + lo + generation * 1103515245) % ACID_SEED_MAX
-  if seed < 1 then seed = seed + 1 end
+  if seed == 0 then seed = 1 end
   return seed
 end
 
@@ -1323,7 +1325,14 @@ acid_cfg.pitch_pool = function(scale, settings)
   local count = clamp(2 + math.floor(settings.pitch_variety * math.max(1, max_count - 1) + 0.5), 2, max_count)
   local pool = {}
   for i = 1, count do pool[i] = ordered[i] end
-  if pool[1] ~= 0 then table.insert(pool, 1, 0) end
+  local has_root = false
+  for _, pc in ipairs(pool) do
+    if pc == 0 then
+      has_root = true
+      break
+    end
+  end
+  if pool[1] ~= 0 and not has_root then table.insert(pool, 1, 0) end
   return pool
 end
 
@@ -1405,7 +1414,6 @@ acid_cfg.generate_pitch_steps = function(length, scale, root, settings, rng, exi
         end
         degree = pool[pool_idx]
       end
-      if not degree then degree = 0 end
       octave = 0
       local octave_prob = settings.octave_amount * (0.45 + settings.pitch_variety * 0.70)
       if rng() < octave_prob then
@@ -2092,7 +2100,7 @@ local function play_acid_bass(sec, s, deck, b, mix_fades)
   if not step_data or not step_data.gate then return false end
   local bass_amount = mix_fades and mix_fades.bass or 1
   if not acid_cfg.mix_gate(acid.seed + acid.variation * 17, step_index, bass_amount) then return false end
-  local note = acid_cfg.clamp_note(deck.root + step_data.degree + ((step_data.octave or 0) * 12))
+  local note = acid_cfg.clamp_note(deck.root + step_data.degree + (step_data.octave * 12))
   t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1)
   return true
 end
