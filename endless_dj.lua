@@ -1718,8 +1718,6 @@ end
 -- ──────────────────────────────────────────────
 
 -- Play the deck's NTS-1 motif at bar/step boundaries.
--- For the active deck, nts1_steps[s] gates triggering (default: step 1 only).
--- For the incoming deck during mixing the original bar-start rule applies.
 -- Each deck keeps a stable motif/rhythm/timbre identity, then applies
 -- controlled phrase-boundary mutations so the part evolves without chaos.
 -- During mixes, density follows melody-group fade and outgoing/incoming parts
