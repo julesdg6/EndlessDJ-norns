@@ -18,13 +18,12 @@
 
 engine.name = "PolyPerc"
 
--- Optional midigrid support for Launchpad connected as HID
--- Install via: https://github.com/jaggednz/midigrid
-local midigrid_lib
-local _mg_ok, _mg_err = pcall(function() midigrid_lib = include('midigrid/lib/midigrid') end)
-if not _mg_ok and _mg_err then
-  print("midigrid not loaded (direct MIDI mode): " .. tostring(_mg_err))
-end
+-- Virtual grid connection (monome or midigrid virtual device).
+-- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
+-- Mini MK3 controllers appear as one 16×8 virtual grid.  Physical-device
+-- setup, Programmer mode, rotation, RGB conversion, and LED buffering are
+-- handled by midigrid; this script uses only the standard grid API.
+local g   -- grid object; nil when no grid is connected
 
 local midi_out
 local chord_midi_out
@@ -163,74 +162,58 @@ local CHH = 42
 local OHH = 46
 
 -- ──────────────────────────────────────────────
--- Launchpad Mini MK3 drum step sequencer
+-- Virtual 16×8 grid state
+-- Left half  (x 1–8):  four-lane drum sequencer
+-- Right half (x 9–16): NTS-1 and J-6 trigger lanes + playable keyboard
 -- ──────────────────────────────────────────────
-local lp = nil
-local lp_dev = 3
-local lp_use_mg = false
 
--- 4 lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
+-- 4 drum lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
 local drum_steps = {}
 for i = 1, 4 do
   drum_steps[i] = {}
   for j = 1, 16 do drum_steps[i][j] = false end
 end
 
--- Novation colour palette velocities per lane: {active, playhead cursor}
-local LP_COLORS = {
-  {5,  7},   -- kick:       red
-  {13, 14},  -- snare:      yellow
-  {21, 23},  -- open hat:   green
-  {45, 46},  -- closed hat: blue
-}
+-- Right-half trigger patterns (16 steps, toggled via grid pads)
+local nts1_steps = {}   -- NTS-1 melody: true = allowed to trigger on this step
+local j6_steps   = {}   -- J-6 chord:   true = allowed to trigger on this step
+for i = 1, 16 do nts1_steps[i] = false end
+for i = 1, 16 do j6_steps[i]   = false end
 
--- Map Novation palette velocities → midigrid brightness levels
-local LP_VEL_TO_MG = {
-  [5]=3,  [7]=5,    -- kick
-  [13]=8, [14]=10,  -- snare
-  [21]=12,[23]=14,  -- open hat
-  [45]=6, [46]=9,   -- closed hat
-}
-
--- SysEx to switch Launchpad Mini MK3 into programmer mode
--- NOTE: must be sent via the MIDI port (not DAW port) of the Launchpad.
--- LP_COLORS palette indices only produce distinct colours in programmer mode;
--- in the default live layout all velocities appear as shades of yellow.
--- The SysEx is re-sent periodically inside lp_redraw to keep the device in
--- programmer mode after power-cycles or reconnections.
-local LP_PROGRAMMER_SYSEX = {0xF0,0x00,0x20,0x29,0x02,0x0D,0x0E,0x01,0xF7}
-local lp_sysex_tick = 0   -- counter used to throttle SysEx re-sends
+-- Activity levels for synth rows (set when instrument fires; decayed each tick)
+local grid_nts1_level = 0
+local grid_j6_level   = 0
 
 -- ──────────────────────────────────────────────
--- Second Launchpad – dedicated bass/chord display (split in two 4-row blocks)
+-- Keyboard state (right half, y = 5–8)
 -- ──────────────────────────────────────────────
-local lp2 = nil
-local lp2_dev = 4
+local kb_base    = 48   -- MIDI note at bottom-left of keyboard area (C3)
+local kb_octave  = 0    -- additional octave shift (params: grid_kb_octave)
+local kb_pressed = {}   -- note → true while pad is held (for note-off cleanup)
+local kb_target  = 1    -- 1 = NTS-1  2 = J-6  3 = Norns instrument
 
--- Per-instrument activity levels: set to a positive integer when triggered;
--- decremented each tick so the LEDs fade naturally.
-local lp2_kick_level  = 0
-local lp2_snare_level = 0
-local lp2_hat_level   = 0
-local lp2_bass_level  = 0
-local lp2_j6_level    = 0
-local lp2_norns_level = 0
+-- ──────────────────────────────────────────────
+-- Semantic grid brightness levels (0–15)
+-- midigrid maps these to device-specific RGB via its selected palette.
+-- Use the `endless_dj` palette (SYSTEM → MODS → MIDIGRID → palette) for
+-- distinct instrument colours; any standard palette gives usable brightness.
+-- ──────────────────────────────────────────────
+local LEVEL_OFF      = 0
+local LEVEL_INACTIVE = 1   -- inactive step
+local LEVEL_PLAYHEAD = 3   -- cursor on an inactive step
+local LEVEL_KICK     = 5   -- kick drum lane
+local LEVEL_SNARE    = 6   -- snare lane
+local LEVEL_OHAT     = 7   -- open hi-hat lane
+local LEVEL_CHAT     = 8   -- closed hi-hat lane
+local LEVEL_NTS1     = 9   -- NTS-1 enabled step
+local LEVEL_J6       = 10  -- J-6 enabled step
+local LEVEL_ROOT     = 11  -- root note (keyboard)
+local LEVEL_SCALE    = 12  -- in-scale note (keyboard)
+local LEVEL_CHROMA   = 13  -- chromatic / out-of-scale note (keyboard)
+local LEVEL_PRESSED  = 14  -- pressed note or active trigger
+local LEVEL_HOT      = 15  -- active step under playhead / bright white
 
--- Novation static palette velocities for each instrument on LP2.
--- Top block (rows 8-5): bass pattern + bass activity
--- Bottom block (rows 4-1): chord trigger pattern + chord activity
-local LP2_COLORS = {
-  kick  = 5,   -- red
-  snare = 13,  -- yellow
-  hat   = 21,  -- green
-  bass  = 9,   -- amber / orange
-  bass_cursor = 11,
-  j6    = 53,  -- purple
-  j6_cursor = 55,
-  norns = 25,  -- cyan
-}
-local lp2_sysex_tick = 0
--- Forward declarations used by lp2_redraw (defined later in file).
+-- Forward declarations (tables defined after drum/chord pattern tables below)
 local bass_patterns
 local chord_allow_house
 
@@ -752,271 +735,290 @@ local drum_patterns = {
 }
 
 -- ──────────────────────────────────────────────
--- Launchpad helper functions
+-- Grid coordinate helpers
 -- ──────────────────────────────────────────────
 
--- Encode (lane, step) → programmer-mode MIDI note.
--- Physical layout (top row of launchpad = row 8):
---   lane 1 kick      rows 8/7  (steps 1-8 / 9-16)
---   lane 2 snare     rows 6/5
---   lane 3 open hat  rows 4/3
---   lane 4 closed hat rows 2/1
-local function lp_note(lane, s)
-  local base_row = 8 - (lane - 1) * 2
-  local row = (s <= 8) and base_row or (base_row - 1)
-  local col = (s <= 8) and s or (s - 8)
-  return row * 10 + col
+-- Map drum (lane 1-4, step 1-16) → grid (x 1-8, y 1-8).
+-- Layout (y=1 = top row):
+--   lane 1 kick:       y 1-2,  steps 1-8 → y=1, steps 9-16 → y=2
+--   lane 2 snare:      y 3-4
+--   lane 3 open hat:   y 5-6
+--   lane 4 closed hat: y 7-8
+local function drum_to_xy(lane, s)
+  local y = (lane - 1) * 2 + 1 + (s > 8 and 1 or 0)
+  local x = s <= 8 and s or (s - 8)
+  return x, y
 end
 
--- Decode a programmer-mode MIDI note → (lane, step); nil,nil if outside grid
-local function lp_decode(note)
-  local row = math.floor(note / 10)
-  local col = note % 10
-  if row < 1 or row > 8 or col < 1 or col > 8 then return nil, nil end
-  for lane = 1, 4 do
-    local base_row = 8 - (lane - 1) * 2
-    if row == base_row     then return lane, col     end
-    if row == base_row - 1 then return lane, col + 8 end
+-- Map grid (x 1-8, y 1-8) → drum (lane 1-4, step 1-16).
+local function xy_to_drum(x, y)
+  local lane = math.ceil(y / 2)
+  local s = x + ((y - 1) % 2) * 8
+  return lane, s
+end
+
+-- Map synth (inst 1-2, step 1-16) → grid (x 9-16, y 1-4).
+-- inst 1 = NTS-1 (y=1-2), inst 2 = J-6 (y=3-4)
+local function synth_to_xy(inst, s)
+  local y = (inst - 1) * 2 + 1 + (s > 8 and 1 or 0)
+  local x = 8 + (s <= 8 and s or (s - 8))
+  return x, y
+end
+
+-- Map grid (x 9-16, y 1-4) → synth (inst 1-2, step 1-16); nil if outside.
+local function xy_to_synth(x, y)
+  if y < 1 or y > 4 then return nil, nil end
+  local inst = math.ceil(y / 2)
+  local s = (x - 8) + ((y - 1) % 2) * 8
+  if s < 1 or s > 16 then return nil, nil end
+  return inst, s
+end
+
+-- Map keyboard grid (x 9-16, y 5-8) → MIDI note.
+-- y=8 (bottom row) starts at kb_base + kb_octave*12; each row adds 8 semitones.
+local function kb_note_for(x, y)
+  local row = 8 - y    -- 0=bottom (y=8), 3=top (y=5)
+  return kb_base + kb_octave * 12 + row * 8 + (x - 9)
+end
+
+-- Returns true when note shares its pitch class with root.
+local function is_root_note(note, root)
+  return (note - root) % 12 == 0
+end
+
+-- Major-scale intervals (semitones above root).
+local MAJOR_SCALE_INTERVALS = {0, 2, 4, 5, 7, 9, 11}
+
+-- Returns true when note is in the major scale rooted at root.
+local function is_scale_note(note, root)
+  local interval = (note - root) % 12
+  for _, v in ipairs(MAJOR_SCALE_INTERVALS) do
+    if interval == v then return true end
   end
-  return nil, nil
+  return false
 end
 
-local function lp_led(note, vel)
-  if not lp then return end
-  if lp_use_mg then
-    local row = math.floor(note / 10)
-    local col = note % 10
-    local x, y = col, 9 - row
-    local z = (vel == 0) and 0 or (LP_VEL_TO_MG[vel] or 1)
-    lp:led(x, y, z)
+-- ──────────────────────────────────────────────
+-- J-6 trigger pattern initialisation
+-- ──────────────────────────────────────────────
+
+-- Populate j6_steps with the genre's default chord-trigger steps so the
+-- initial grid pattern matches the generative engine's timing rules.
+local function j6_init_pattern(genre)
+  for i = 1, 16 do j6_steps[i] = false end
+  if chord_allow_house and chord_allow_house[genre] then
+    j6_steps[1] = true; j6_steps[9] = true
+  elseif genre == "TWO_STEP" then
+    j6_steps[4] = true; j6_steps[10] = true
+  elseif genre == "BREAKS" then
+    j6_steps[1] = true; j6_steps[11] = true
+  elseif genre == "TECHNO" or genre == "DUBSTEP" then
+    j6_steps[1] = true; j6_steps[9] = true
+  elseif genre == "TRANCE" or genre == "PROG" or genre == "HARDTECHNO" then
+    j6_steps[1] = true
+  elseif genre == "JUKE" then
+    j6_steps[1] = true; j6_steps[5] = true
+    j6_steps[9] = true; j6_steps[13] = true
+  elseif genre == "MINIMAL" then
+    j6_steps[1] = true
+  elseif genre == "SPEED" or genre == "BASSLINE" then
+    j6_steps[4] = true; j6_steps[12] = true
   else
-    lp:note_on(note, vel, 1)
+    j6_steps[1] = true   -- fallback: trigger at bar start
   end
 end
 
-local function lp_refresh()
-  if lp_use_mg and lp then lp:refresh() end
-end
-
--- Redraw the entire grid; s = the step currently being played (1-16)
-local function lp_redraw(s)
-  if not lp then return end
-  -- Re-send programmer mode SysEx once per bar (every 16 ticks) so the device
-  -- stays in programmer mode even after a reconnect or power-cycle.  Without
-  -- this the Launchpad falls back to its live layout and all pads appear as
-  -- different shades of yellow rather than the distinct red/yellow/green/blue
-  -- lane colours.
-  if not lp_use_mg then
-    lp_sysex_tick = lp_sysex_tick + 1
-    if lp_sysex_tick >= 16 then
-      lp_sysex_tick = 0
-      pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
-    end
-  end
-  for lane = 1, 4 do
-    local c = LP_COLORS[lane]
-    for i = 1, 16 do
-      local n   = lp_note(lane, i)
-      local vel
-      if i == s then
-        vel = c[2]
-      elseif drum_steps[lane][i] then
-        vel = c[1]
-      else
-        vel = 0
-      end
-      lp_led(n, vel)
-    end
-  end
-  lp_refresh()
-end
-
--- Populate drum_steps from a genre's base drum pattern
-local function lp_load_pattern(genre)
+-- Load drum and synth patterns from a genre's defaults.
+local function grid_load_pattern(genre)
   local p = drum_patterns[genre] or drum_patterns.HOUSE
   for i = 1, 16 do
     drum_steps[1][i] = hit(p.kick  or {}, i)
     drum_steps[2][i] = hit(p.snare or {}, i)
-    drum_steps[3][i] = false                   -- open hat has no base pattern entry; start empty for manual programming
+    drum_steps[3][i] = false                  -- open hat starts empty for editing
     drum_steps[4][i] = hit(p.hats  or {}, i)
   end
-end
-
--- Turn off all launchpad LEDs
-local function lp_clear()
-  if not lp then return end
-  if lp_use_mg then
-    lp:all(0)
-    lp:refresh()
-  else
-    for row = 1, 8 do
-      for col = 1, 8 do
-        lp:note_on(row * 10 + col, 0, 1)
-      end
-    end
-  end
-end
-
--- Connect to the launchpad; tries midigrid first (for HID-connected devices),
--- then falls back to direct MIDI programmer mode.
-local function lp_connect(dev)
-  lp_use_mg = false
-
-  if midigrid_lib then
-    local mg = midigrid_lib.connect()
-    if mg then
-      lp = mg
-      lp_use_mg = true
-      lp_load_pattern(current_deck().genre)
-      lp_redraw(step)
-      mg.key = function(x, y, z)
-        if z > 0 then
-          -- Convert midigrid (x,y) to programmer-mode note: row = 9-y, col = x
-          local note = (9 - y) * 10 + x
-          local lane, s = lp_decode(note)
-          if lane then
-            drum_steps[lane][s] = not drum_steps[lane][s]
-            local brightness = drum_steps[lane][s]
-              and (LP_VEL_TO_MG[LP_COLORS[lane][1]] or 1) or 0
-            lp:led(x, y, brightness)
-            lp:refresh()
-          end
-        end
-      end
-      return
-    end
-  end
-
-  -- Fall back to direct MIDI (programmer mode SysEx + note_on LEDs)
-  lp = midi.connect(dev)
-  local ok = pcall(function() lp:send(LP_PROGRAMMER_SYSEX) end)
-  if not ok then
-    print("launchpad: programmer mode SysEx failed on device " .. dev)
-  end
-  lp_load_pattern(current_deck().genre)
-  lp_redraw(step)
-
-  lp.event = function(data)
-    local msg = midi.to_msg(data)
-    if msg and msg.type == "note_on" and msg.vel > 0 then
-      local lane, s = lp_decode(msg.note)
-      if lane then
-        drum_steps[lane][s] = not drum_steps[lane][s]
-        lp_led(lp_note(lane, s),
-          drum_steps[lane][s] and LP_COLORS[lane][1] or 0)
-      end
-    end
-  end
+  j6_init_pattern(genre)
+  -- NTS-1 triggers at bar start by default
+  for i = 1, 16 do nts1_steps[i] = false end
+  nts1_steps[1] = true
 end
 
 -- ──────────────────────────────────────────────
--- Second Launchpad helper functions
+-- Grid drawing
 -- ──────────────────────────────────────────────
 
--- Send a single LED message to lp2.
-local function lp2_led(note, vel)
-  if not lp2 then return end
-  lp2:note_on(note, vel, 1)
-end
-
--- Convert a 1-16 step index into a Launchpad programmer note using a 2-row band.
--- Steps 1-8 map to top_row, steps 9-16 map to top_row-1.
-local function lp2_step_note(top_row, step_index)
-  local row = (step_index <= 8) and top_row or (top_row - 1)
-  local col = (step_index <= 8) and step_index or (step_index - 8)
-  return row * 10 + col
-end
-
--- Clear all LEDs on lp2.
-local function lp2_clear()
-  if not lp2 then return end
-  for row = 1, 8 do
-    for col = 1, 8 do
-      lp2:note_on(row * 10 + col, 0, 1)
-    end
-  end
-end
-
--- Redraw LP2 with a bass/chord split view:
---   Rows 8-7: bass 16-step pattern
---   Rows 6-5: bass current-step activity
---   Rows 4-3: chord trigger pattern
---   Rows 2-1: chord/norns current-step activity
-local function lp2_redraw(current_step)
-  if not lp2 then return end
-  if not bass_patterns or not chord_allow_house then return end
-
-  -- Keep LP2 in programmer mode (prevents all-yellow fallback/live layout).
-  lp2_sysex_tick = lp2_sysex_tick + 1
-  if lp2_sysex_tick >= 16 then
-    lp2_sysex_tick = 0
-    pcall(function() lp2:send(LP_PROGRAMMER_SYSEX) end)
-  end
-
+local function grid_redraw(s)
+  if not g then return end
   local deck = current_deck()
-  local pat = bass_patterns[deck.genre] or bass_patterns.HOUSE or {}
-  local chord_activity = math.max(lp2_j6_level, lp2_norns_level)
-  local bass_activity = lp2_bass_level
 
-  for s = 1, 16 do
-    local bass_on = (pat[s] ~= nil and pat[s] ~= 0)
-    local chord_on = false
-    local g = deck.genre
-    if chord_allow_house[g] then
-      chord_on = (s == 1 or s == 9)
-    elseif g == "TWO_STEP" then
-      chord_on = (s == 4 or s == 10)
-    elseif g == "BREAKS" then
-      chord_on = (s == 1 or s == 11)
-    elseif g == "TECHNO" then
-      chord_on = (s == 1)
-    elseif g == "DUBSTEP" then
-      chord_on = (s == 1 or s == 9)
-    elseif g == "TRANCE" then
-      chord_on = (s == 1)
-    elseif g == "PROG" or g == "HARDTECHNO" then
-      chord_on = (s == 1)
-    elseif g == "JUKE" then
-      chord_on = (s == 1 or s == 5 or s == 9 or s == 13)
-    elseif g == "MINIMAL" then
-      chord_on = (s == 1)
-    elseif g == "SPEED" or g == "BASSLINE" then
-      chord_on = (s == 4 or s == 12)
+  -- Left half: drum sequencer (x=1-8, y=1-8)
+  local drum_lane_levels = {LEVEL_KICK, LEVEL_SNARE, LEVEL_OHAT, LEVEL_CHAT}
+  for lane = 1, 4 do
+    local lane_level = drum_lane_levels[lane]
+    for step_i = 1, 16 do
+      local x, y = drum_to_xy(lane, step_i)
+      local level
+      if step_i == s then
+        level = drum_steps[lane][step_i] and LEVEL_HOT or LEVEL_PLAYHEAD
+      elseif drum_steps[lane][step_i] then
+        level = lane_level
+      else
+        level = LEVEL_INACTIVE
+      end
+      g:led(x, y, level)
     end
-
-    local bass_pat_vel = bass_on and LP2_COLORS.bass or 0
-    local chord_pat_vel = chord_on and LP2_COLORS.j6 or 0
-    if s == current_step then
-      if bass_on then bass_pat_vel = LP2_COLORS.bass_cursor end
-      if chord_on then chord_pat_vel = LP2_COLORS.j6_cursor end
-    end
-
-    lp2_led(lp2_step_note(8, s), bass_pat_vel)
-    lp2_led(lp2_step_note(4, s), chord_pat_vel)
-
-    local bass_act_vel = (s == current_step and bass_activity > 0) and LP2_COLORS.bass_cursor or 0
-    local chord_act_vel = (s == current_step and chord_activity > 0) and LP2_COLORS.j6_cursor or 0
-    lp2_led(lp2_step_note(6, s), bass_act_vel)
-    lp2_led(lp2_step_note(2, s), chord_act_vel)
   end
 
-  -- Decay activity levels (1 step per redraw call)
-  lp2_kick_level  = math.max(0, lp2_kick_level  - 1)
-  lp2_snare_level = math.max(0, lp2_snare_level - 1)
-  lp2_hat_level   = math.max(0, lp2_hat_level   - 1)
-  lp2_bass_level  = math.max(0, lp2_bass_level  - 1)
-  lp2_j6_level    = math.max(0, lp2_j6_level    - 1)
-  lp2_norns_level = math.max(0, lp2_norns_level - 1)
+  -- Right half: NTS-1 trigger pattern (x=9-16, y=1-2)
+  for step_i = 1, 16 do
+    local x, y = synth_to_xy(1, step_i)
+    local level
+    if step_i == s then
+      if nts1_steps[step_i] and grid_nts1_level > 0 then
+        level = LEVEL_PRESSED
+      elseif nts1_steps[step_i] then
+        level = LEVEL_HOT
+      else
+        level = LEVEL_PLAYHEAD
+      end
+    elseif nts1_steps[step_i] then
+      level = LEVEL_NTS1
+    else
+      level = LEVEL_INACTIVE
+    end
+    g:led(x, y, level)
+  end
+
+  -- Right half: J-6 trigger pattern (x=9-16, y=3-4)
+  for step_i = 1, 16 do
+    local x, y = synth_to_xy(2, step_i)
+    local level
+    if step_i == s then
+      if j6_steps[step_i] and grid_j6_level > 0 then
+        level = LEVEL_PRESSED
+      elseif j6_steps[step_i] then
+        level = LEVEL_HOT
+      else
+        level = LEVEL_PLAYHEAD
+      end
+    elseif j6_steps[step_i] then
+      level = LEVEL_J6
+    else
+      level = LEVEL_INACTIVE
+    end
+    g:led(x, y, level)
+  end
+
+  -- Right half: chromatic keyboard (x=9-16, y=5-8)
+  -- Layout (y=8 bottom): rows cover 8 chromatic notes each; every row adds
+  -- 8 semitones so the 32 pads span roughly 2.5 octaves.  Root notes are
+  -- highlighted; in-scale and chromatic notes are visually distinct.
+  for ky = 5, 8 do
+    for kx = 9, 16 do
+      local note = kb_note_for(kx, ky)
+      local level
+      if kb_pressed[note] then
+        level = LEVEL_PRESSED
+      elseif is_root_note(note, deck.root) then
+        level = LEVEL_ROOT
+      elseif is_scale_note(note, deck.root) then
+        level = LEVEL_SCALE
+      else
+        level = LEVEL_CHROMA
+      end
+      g:led(kx, ky, level)
+    end
+  end
+
+  g:refresh()
 end
 
--- Connect the second Launchpad (direct MIDI only, no midigrid needed).
-local function lp2_connect(dev)
-  lp2 = midi.connect(dev)
-  local ok = pcall(function() lp2:send(LP_PROGRAMMER_SYSEX) end)
-  if not ok then
-    print("lp2: programmer mode SysEx failed on device " .. dev)
+-- Turn off all grid LEDs.
+local function grid_clear()
+  if not g then return end
+  g:all(LEVEL_OFF)
+  g:refresh()
+end
+
+-- ──────────────────────────────────────────────
+-- Keyboard MIDI output
+-- ──────────────────────────────────────────────
+
+local function kb_note_on(note)
+  if kb_target == 1 then
+    if nts1_enabled and nts1_midi_out then
+      nts1_midi_out:note_on(note, 100, nts1_ch)
+    end
+  elseif kb_target == 2 then
+    if chord_midi_out then chord_midi_out:note_on(note, 100, chord_ch) end
+  elseif kb_target == 3 then
+    engine.hz(note_to_hz(note))
   end
-  lp2_clear()
+end
+
+local function kb_note_off(note)
+  if kb_target == 1 then
+    if nts1_midi_out then nts1_midi_out:note_off(note, 0, nts1_ch) end
+  elseif kb_target == 2 then
+    if chord_midi_out then chord_midi_out:note_off(note, 0, chord_ch) end
+  end
+  -- PolyPerc (kb_target==3) does not support explicit note-off
+end
+
+-- Send note-off for every currently held keyboard note and clear pressed state.
+local function kb_all_notes_off()
+  for note, _ in pairs(kb_pressed) do
+    kb_note_off(note)
+  end
+  kb_pressed = {}
+end
+
+-- ──────────────────────────────────────────────
+-- Grid key handler and connection
+-- ──────────────────────────────────────────────
+
+local function grid_key(x, y, z)
+  if x <= 8 then
+    -- Left half: drum sequencer
+    if z == 0 then return end
+    local lane, s_idx = xy_to_drum(x, y)
+    if lane >= 1 and lane <= 4 and s_idx >= 1 and s_idx <= 16 then
+      drum_steps[lane][s_idx] = not drum_steps[lane][s_idx]
+      grid_redraw(step)
+    end
+  elseif y <= 4 then
+    -- Right half, upper rows: synth trigger lanes
+    if z == 0 then return end
+    local inst, s_idx = xy_to_synth(x, y)
+    if inst == 1 and s_idx then
+      nts1_steps[s_idx] = not nts1_steps[s_idx]
+      grid_redraw(step)
+    elseif inst == 2 and s_idx then
+      j6_steps[s_idx] = not j6_steps[s_idx]
+      grid_redraw(step)
+    end
+  else
+    -- Right half, lower rows (y=5-8): chromatic keyboard
+    local note = kb_note_for(x, y)
+    if z > 0 then
+      kb_pressed[note] = true
+      kb_note_on(note)
+    else
+      kb_pressed[note] = nil
+      kb_note_off(note)
+    end
+    grid_redraw(step)
+  end
+end
+
+-- Connect to the virtual grid and set up the key callback.
+local function grid_connect()
+  g = grid.connect()
+  if g then
+    g.key = grid_key
+    grid_load_pattern(current_deck().genre)
+    grid_redraw(step)
+  end
 end
 
 bass_patterns = {
@@ -1216,11 +1218,11 @@ chord_allow_house = {
 }
 
 local function play_drums(sec, s, b, mix_fades, deck)
-  local g = deck.genre
-  local p = drum_patterns[g] or drum_patterns.HOUSE
+  local gn = deck.genre
+  local p = drum_patterns[gn] or drum_patterns.HOUSE
   local d = density_for_section(sec)
-  -- Use launchpad patterns only for the currently active deck
-  local use_lp = lp ~= nil and (deck == current_deck())
+  -- Use grid-editable drum_steps for the active deck; genre pattern for incoming deck during mix
+  local use_grid = (deck == current_deck())
 
   local kick_amount  = mix_fades and mix_fades.kick  or 1
   local drums_amount = mix_fades and mix_fades.drums or 1
@@ -1237,27 +1239,25 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Kick
   local kick_hit
-  if use_lp then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
+  if use_grid then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
   if kick_hit and math.random() < kick_prob then
-    t8_note(KICK, kick_vel[g] or 110, drum_ch, 1)
-    lp2_kick_level = 4
+    t8_note(KICK, kick_vel[gn] or 110, drum_ch, 1)
   end
 
   -- Snare
   local snare_hit
-  if use_lp then
+  if use_grid then
     snare_hit = drum_steps[2][s]
   else
     snare_hit = p.snare and hit(p.snare, s)
   end
   if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
-    t8_note(SNARE, snare_vel[g] or 100, drum_ch, 1)
-    lp2_snare_level = 4
+    t8_note(SNARE, snare_vel[gn] or 100, drum_ch, 1)
   end
 
-  -- Clap (always generative; not on launchpad)
+  -- Clap (always generative; not on grid)
   if p.clap and hit(p.clap, s) and sec ~= "INTRO" and math.random() < clap_prob then
-    if g ~= "TECHNO" then
+    if gn ~= "TECHNO" then
       t8_note(CLAP, 110, drum_ch, 1)
     end
   end
@@ -1269,25 +1269,22 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Closed hi-hat
   local chh_hit
-  if use_lp then
+  if use_grid then
     chh_hit = drum_steps[4][s]
   else
     chh_hit = p.hats and hit(p.hats, s)
   end
   if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
-    t8_note(CHH, hat_vel[g] or 70, drum_ch, 1)
-    lp2_hat_level = 4
+    t8_note(CHH, hat_vel[gn] or 70, drum_ch, 1)
   end
 
   -- Open hi-hat
-  if use_lp then
+  if use_grid then
     if drum_steps[3][s] and math.random() < drums_amount then
       t8_note(OHH, 70, drum_ch, 1)
-      lp2_hat_level = 4
     end
   elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 * drums_amount then
     t8_note(OHH, 70, drum_ch, 1)
-    lp2_hat_level = 4
   end
 
   -- Bar fills (always generative)
@@ -1315,7 +1312,6 @@ local function play_bass(sec, s, deck, mix_fades)
     local octave = bass_octave[deck.genre] or 0
     local len    = bass_len[deck.genre]    or 1
     t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len)
-    lp2_bass_level = 4
   end
 end
 
@@ -1324,43 +1320,49 @@ local function play_chords(sec, s, deck, b, mix_fades)
   local melody_amount = mix_fades and mix_fades.melody or 1
   if math.random() >= melody_amount then return end
 
-  local g = deck.genre
+  -- Determine whether this step is allowed to trigger.
+  -- For the active deck: use the grid-editable j6_steps pattern.
+  -- For the incoming deck during mixing: fall back to genre timing rules.
   local allow = false
-
-  if chord_allow_house[g] then
-    allow = (s==1 or s==9)
-  elseif g=="TWO_STEP" then
-    allow = (s==4 or s==10)
-  elseif g=="BREAKS" then
-    allow = (s==1 or s==11)
-  elseif g=="TECHNO" then
-    allow = (s==1 and b%4==1)
-  elseif g=="DUBSTEP" then
-    allow = (s==1 or s==9)
-  elseif g=="TRANCE" then
-    allow = (s==1 and b%2==1)
-  elseif g=="PROG" or g=="HARDTECHNO" then
-    allow = (s==1 and b%4==1)
-  elseif g=="JUKE" then
-    allow = (s==1 or s==5 or s==9 or s==13)
-  elseif g=="MINIMAL" then
-    allow = (s==1 and b%8==1)
-  elseif g=="SPEED" or g=="BASSLINE" then
-    allow = (s==4 or s==12)
+  if deck == current_deck() then
+    allow = j6_steps[s]
+  else
+    local gn = deck.genre
+    if chord_allow_house[gn] then
+      allow = (s==1 or s==9)
+    elseif gn=="TWO_STEP" then
+      allow = (s==4 or s==10)
+    elseif gn=="BREAKS" then
+      allow = (s==1 or s==11)
+    elseif gn=="TECHNO" then
+      allow = (s==1 and b%4==1)
+    elseif gn=="DUBSTEP" then
+      allow = (s==1 or s==9)
+    elseif gn=="TRANCE" then
+      allow = (s==1 and b%2==1)
+    elseif gn=="PROG" or gn=="HARDTECHNO" then
+      allow = (s==1 and b%4==1)
+    elseif gn=="JUKE" then
+      allow = (s==1 or s==5 or s==9 or s==13)
+    elseif gn=="MINIMAL" then
+      allow = (s==1 and b%8==1)
+    elseif gn=="SPEED" or gn=="BASSLINE" then
+      allow = (s==4 or s==12)
+    end
   end
-
   if not allow then return end
   if sec == "BREAK" and math.random() < 0.45 then return end
 
-  local prog = chord_progs[g] or chord_progs.HOUSE
+  local gn = deck.genre
+  local prog = chord_progs[gn] or chord_progs.HOUSE
   local triad = prog[(math.floor((b-1)/2) % #prog) + 1]
   local base = deck.root + 12
   local notes = {base+triad[1], base+triad[2], base+triad[3]}
-  local style = choose(chord_styles[g] or {"block"})
+  local style = choose(chord_styles[gn] or {"block"})
   local vel = sec=="DROP" and 98 or 78
 
   if style == "block" then
-    local dur = block_chord_dur[g] or 10
+    local dur = block_chord_dur[gn] or 10
     for _,n in ipairs(notes) do
       chord_note(n, vel, dur)
     end
@@ -1386,7 +1388,7 @@ local function play_chords(sec, s, deck, b, mix_fades)
       chord_note_delayed(n, vel, 2, 4)
     end
   end
-  lp2_j6_level = 8
+  grid_j6_level = 8
 end
 
 local function play_norns_instrument(sec, s, deck, b, mix_fades)
@@ -1396,9 +1398,9 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
   if math.random() >= melody_amount then return end
   if s ~= 1 then return end
 
-  local g = deck.genre
+  local gn = deck.genre
   local preset = norns_presets[deck.norns_preset or norns_preset_idx]
-  -- If no preset could be found, no notes are sent, so keep LP2 dark.
+  -- If no preset could be found, no notes are sent.
   if not preset then return end
   local is_pad = (preset.name == "pad" or preset.name == "strings")
   if is_pad and b % 2 ~= 1 then return end
@@ -1410,7 +1412,7 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
     engine.pw(preset.pw)
     engine.amp(norns_inst_vol)
 
-    local prog = chord_progs[g] or chord_progs.HOUSE
+    local prog = chord_progs[gn] or chord_progs.HOUSE
     local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
     local base = deck.root + 24  -- +24 semitones = two octaves above deck root
 
@@ -1422,14 +1424,15 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
     print("Endless DJ: norns instrument error: " .. tostring(err))
     return
   end
-  lp2_norns_level = 8
 end
 
 -- ──────────────────────────────────────────────
 -- NTS-1 melodic voice
 -- ──────────────────────────────────────────────
 
--- Play one note of the NTS-1 motif at bar boundaries.
+-- Play one note of the NTS-1 motif.
+-- For the active deck, nts1_steps[s] gates triggering (default: step 1 only).
+-- For the incoming deck during mixing the original bar-start rule applies.
 -- Motif is cached per-deck and refreshed every 8-bar phrase so the melody
 -- stays recognisable but evolves slowly.  Activity is section-aware:
 -- silent in INTRO/BREAK, sparse in GROOVE, full in MAIN/BUILD/DROP.
@@ -1439,8 +1442,6 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   if not nts1_midi_out then return end
   -- Silent during INTRO and BREAK
   if sec == "INTRO" or sec == "BREAK" then return end
-  -- Only fire at bar start
-  if s ~= 1 then return end
   -- Follow melody group fade (phase 4) during mixing
   local melody_amount = mix_fades and mix_fades.melody or 1
   if math.random() >= melody_amount then return end
@@ -1448,6 +1449,14 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   if sec == "GROOVE" and b % 2 ~= 1 then return end
   -- Slightly sparse in MAIN: every second bar (keeps it restrained)
   if sec == "MAIN" and b % 2 ~= 1 then return end
+
+  -- Gate by trigger pattern: active deck uses grid-editable nts1_steps;
+  -- incoming deck during mixing uses bar-start rule (step 1 only).
+  if deck == current_deck() then
+    if not nts1_steps[s] then return end
+  else
+    if s ~= 1 then return end
+  end
 
   -- Generate or refresh motif at 8-bar phrase boundaries
   local phrase_idx = math.floor((b - 1) / 8)
@@ -1466,6 +1475,7 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   -- Schedule note_on with a paired note_off (14 ticks ≈ 3/4 of a bar at ppqn=4).
   -- NTS-1 does not use Program Change; note_on/note_off is sufficient.
   note_on_to(nts1_midi_out, note, 80, nts1_ch, 14)
+  grid_nts1_level = 4
 end
 
 -- ──────────────────────────────────────────────
@@ -1598,8 +1608,8 @@ local function finish_handover()
   -- notes_off queue (via note_on_to), so no hanging notes can occur.
   -- The MX-1 effect depth is reset to 0 automatically on the next tick by
   -- update_mx1_fx() once mixing is false.
-  lp_load_pattern(current_deck().genre)
-  lp_redraw(step)
+  grid_load_pattern(current_deck().genre)
+  grid_redraw(step)
 end
 
 local metro_clock
@@ -1612,8 +1622,10 @@ local function clock_tick()
   start_mix_if_needed()
   update_xfade()
   update_mx1_fx()
-  lp_redraw(step)
-  lp2_redraw(step)
+  -- Decay synth activity levels and redraw the grid once for both halves
+  grid_nts1_level = math.max(0, grid_nts1_level - 1)
+  grid_j6_level   = math.max(0, grid_j6_level   - 1)
+  grid_redraw(step)
 
   -- Wrap musical playback in pcall so any unexpected engine or MIDI error
   -- (e.g. the norns instrument first firing at bar 17 where the GROOVE
@@ -1789,17 +1801,19 @@ function init()
   params:add_option("manual_xfade", "manual crossfader", {"no","yes"}, 1)
   params:set_action("manual_xfade", function(v) manual_xfade = (v == 2) end)
 
-  params:add_separator("launchpad_sep", "LAUNCHPAD")
-  params:add_option("lp_midi_device", "launchpad device", dev_names, lp_dev)
-  params:set_action("lp_midi_device", function(v)
-    lp_dev = v
-    lp_connect(lp_dev)
+  params:add_separator("grid_sep", "GRID")
+
+  params:add_option("grid_kb_target", "keyboard target", {"nts1","j6","norns"}, kb_target)
+  params:set_action("grid_kb_target", function(v)
+    kb_all_notes_off()
+    kb_target = v
   end)
 
-  params:add_option("lp2_midi_device", "lp2 device", dev_names, lp2_dev)
-  params:set_action("lp2_midi_device", function(v)
-    lp2_dev = v
-    lp2_connect(lp2_dev)
+  params:add_number("grid_kb_octave", "keyboard octave", -2, 4, kb_octave)
+  params:set_action("grid_kb_octave", function(v)
+    kb_all_notes_off()
+    kb_octave = v
+    grid_redraw(step)
   end)
 
   -- ── Norns instrument ──────────────────────────
@@ -1940,15 +1954,14 @@ function init()
   end)
 
   update_clock()
-  lp_connect(lp_dev)
-  lp2_connect(lp2_dev)
+  grid_connect()
   redraw()
 end
 
 function cleanup()
   quiet_notes()
-  lp_clear()
-  lp2_clear()
+  kb_all_notes_off()
+  grid_clear()
   stop_acapella()
   if metro_clock then metro_clock:stop() end
 end

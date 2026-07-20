@@ -37,6 +37,72 @@ Roland AIRA MX-1:
 - Default Beat FX CC: 12 (Roland MX-1 Beat FX depth); default system channel: 1
 - MX-1 transport is supported: START/PLAY and CONTINUE start Norns playback, STOP halts playback
 
+GRID CONTROLLER (OPTIONAL)
+
+Endless DJ supports a 16×8 grid controller for live performance.  The recommended
+setup uses two Launchpad Mini MK3 controllers connected through the midigrid mod,
+which exposes them as a single 16×8 virtual grid.  A real monome 128 also works.
+
+midigrid setup (two Launchpad Mini MK3)
+1. Install the midigrid mod:
+     SYSTEM → MODS → install midigrid  (https://github.com/jaggednz/midigrid)
+2. In midigrid settings:
+     SYSTEM → MODS → MIDIGRID → layout → 128
+3. Physical orientation: place both controllers flat with the logo at the bottom.
+   The left controller (x = 1–8) handles the drum sequencer; the right controller
+   (x = 9–16) handles the synth lanes and keyboard.
+4. Rotation: leave "rotate second device" DISABLED.  Both controllers should be
+   in the same physical orientation.  Do not enable rotation inside midigrid for
+   this setup.
+5. Palette: for distinct instrument colours select:
+     SYSTEM → MODS → MIDIGRID → palette → endless_dj
+   Any other midigrid palette still works; brightness differences remain legible.
+
+16×8 control map
+  The left half (x = 1–8) and right half (x = 9–16) are independent sections.
+  y = 1 is the top row; y = 8 is the bottom row.
+
+LEFT HALF – four-lane drum sequencer (x = 1–8)
+
+  y 1–2  Kick:        row 1 = steps 1–8,  row 2 = steps 9–16
+  y 3–4  Snare:       row 3 = steps 1–8,  row 4 = steps 9–16
+  y 5–6  Open hi-hat: row 5 = steps 1–8,  row 6 = steps 9–16
+  y 7–8  Closed hat:  row 7 = steps 1–8,  row 8 = steps 9–16
+
+  Press any pad to toggle that step on/off.
+  The playhead cursor moves across both rows of each pair; active steps under
+  the cursor are shown brighter (LEVEL_HOT = 15).
+
+RIGHT HALF – synth lanes and keyboard (x = 9–16)
+
+  y 1–2  NTS-1 melody trigger pattern (16 steps)
+  y 3–4  J-6 chord trigger pattern (16 steps)
+
+  Press any pad in y 1–4 to toggle whether the instrument fires on that step.
+  The pattern is pre-loaded with the genre's default timing when the deck changes.
+  Pitch and chord content always comes from the active deck's musical identity.
+
+  y 5–8  Chromatic keyboard (32 pads, 4 rows × 8 columns)
+
+  Row y = 8 (bottom): kb_base + kb_octave×12 to +7
+  Row y = 7:          +8 to +15
+  Row y = 6:          +16 to +23
+  Row y = 5 (top):    +24 to +31
+
+  Default kb_base = 48 (C3); adjust "keyboard octave" in params (GRID section).
+  Root note pads are highlighted (LEVEL_ROOT = 11); in-scale pads use
+  LEVEL_SCALE = 12; all other chromatic pads use LEVEL_CHROMA = 13.
+  Pressed pads show LEVEL_PRESSED = 14.
+
+  Keyboard MIDI target: set "keyboard target" param to nts1, j6, or norns.
+  Changing target sends note-off for any held notes before switching.
+  All held notes are also released on script cleanup and grid disconnect.
+
+Fallback behaviour
+  Endless DJ continues generating music when no grid is connected.
+  The drum patterns revert to the genre defaults when no grid is active.
+  Grid disconnection does not interrupt playback.
+
 MX-1 MIDI THRU
 
 To pass MIDI from Norns through the MX-1 to the T-8 and J-6:
