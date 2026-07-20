@@ -93,6 +93,8 @@ local NTS1_RHYTHM_MAX_OFFSET = 15
 local NTS1_MUTATION_SEED_OFFSET = 7
 local NTS1_MUTATION_OP_COUNT = 7
 local NTS1_MOTIF_INDEX_BASE_OFFSET = 2
+-- Keep the max seed inside the positive 31-bit signed range so it remains easy
+-- to enter/replay from a Norns parameter while still covering a large space.
 local ACID_SEED_MAX = 2147483646
 local acid_cfg = {
   generator_enabled = true,
@@ -1225,8 +1227,14 @@ acid_cfg.profiles = {
   BASSLINE={root_weight=1.05,syncopation=0.28,gate_anchor=0.18,slide_bias=0.85,accent_bias=0.95,octave_bias=1.10},
   TRANCE={root_weight=0.95,syncopation=0.16,gate_anchor=0.16,slide_bias=0.35,accent_bias=0.80,octave_bias=0.90}
 }
+acid_cfg.note_min = 36
+acid_cfg.note_max = 60
+acid_cfg.repeat_curve = {base = 1.15, variety_scale = 0.65, min = 0.12, max = 0.92}
+acid_cfg.mutation_ops = {scale = 4, drop_bonus = 0.8, max = 3.2}
 
 acid_cfg.lcg = function(seed)
+  -- POSIX/glibc-style LCG constants. We keep the RNG local to each generated
+  -- pattern so acid identity is deterministic without disturbing math.random().
   return (math.max(1, seed or 1) * 1103515245 + 12345) % NTS1_LCG_MOD
 end
 
@@ -1340,11 +1348,40 @@ acid_cfg.target_gate_count = function(length, density)
   return clamp(math.floor(length * density + 0.5), 2, max_count)
 end
 
+acid_cfg.clamp_note = function(note)
+  while note < acid_cfg.note_min do note = note + 12 end
+  while note > acid_cfg.note_max do note = note - 12 end
+  return note
+end
+
+acid_cfg.apply_complexity = function()
+  local targets = {
+    acid_note_density = {base = 45, span = 35, min = 15, max = 100},
+    acid_pitch_variety = {base = 20, span = 55, min = 0, max = 100},
+    acid_repeat_bias = {base = 70, span = -40, min = 0, max = 100},
+    acid_slide_amount = {base = 10, span = 28, min = 0, max = 100},
+    acid_accent_amount = {base = 10, span = 18, min = 0, max = 100},
+    acid_octave_amount = {base = 5, span = 24, min = 0, max = 100},
+    acid_evolution_amount = {base = 8, span = 35, min = 0, max = 100}
+  }
+  for param_id, mapping in pairs(targets) do
+    params:set(
+      param_id,
+      math.floor(clamp(mapping.base + acid_cfg.complexity * mapping.span, mapping.min, mapping.max) + 0.5)
+    )
+  end
+end
+
 acid_cfg.generate_pitch_steps = function(length, scale, root, settings, rng, existing)
   local pool = acid_cfg.pitch_pool(scale, settings)
   local steps = {}
   local pool_idx = 1
-  local repeat_chance = clamp(settings.repeat_bias * (1.15 - settings.pitch_variety * 0.65), 0.12, 0.92)
+  local repeat_curve = acid_cfg.repeat_curve
+  local repeat_chance = clamp(
+    settings.repeat_bias * (repeat_curve.base - settings.pitch_variety * repeat_curve.variety_scale),
+    repeat_curve.min,
+    repeat_curve.max
+  )
   for i = 1, length do
     local degree
     local octave
@@ -1374,15 +1411,8 @@ acid_cfg.generate_pitch_steps = function(length, scale, root, settings, rng, exi
       if rng() < octave_prob then
         octave = (rng() < 0.72) and 1 or -1
       end
-      local note = root + degree + octave * 12
-      while note < 36 do
-        octave = octave + 1
-        note = note + 12
-      end
-      while note > 60 do
-        octave = octave - 1
-        note = note - 12
-      end
+      local note = acid_cfg.clamp_note(root + degree + octave * 12)
+      octave = math.floor((note - root - degree) / 12)
     end
     steps[i] = {
       degree = degree,
@@ -1597,8 +1627,14 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
     density_scale
   )
   local section_boost = ({GROOVE=0.35, MAIN=0.55, BUILD=0.80, DROP=1.00, MIX=0.20})[sec] or 0
+  local mutation_ops = acid_cfg.mutation_ops
   local op_count = math.floor(
-    clamp(settings.evolution_amount * section_boost * 4 + ((sec == "DROP") and 0.8 or 0), 0, 3.2)
+    clamp(
+      settings.evolution_amount * section_boost * mutation_ops.scale +
+        ((sec == "DROP") and mutation_ops.drop_bonus or 0),
+      0,
+      mutation_ops.max
+    )
   )
   local rng = acid_cfg.make_rng(acid.seed + variation * 131 + #pattern * 29)
   local scale = acid_cfg.pitch_pool(acid.scale, settings)
@@ -1624,9 +1660,10 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
       step_data.accent = not step_data.accent
     elseif op == 4 then
       local following_step = pattern[(idx % #pattern) + 1]
-      step_data.slide = step_data.gate and following_step.gate and
-        (step_data.degree ~= following_step.degree or step_data.octave ~= following_step.octave) and
-        (not step_data.slide) or false
+      local has_next_note = step_data.gate and following_step.gate
+      local note_changes = step_data.degree ~= following_step.degree or
+        step_data.octave ~= following_step.octave
+      step_data.slide = has_next_note and note_changes and (not step_data.slide)
       step_data.length = step_data.slide and 2 or 1
     elseif op == 5 then
       step_data.octave = clamp(step_data.octave + ((rng(2) == 1) and -1 or 1), -1, 1)
@@ -2055,9 +2092,7 @@ local function play_acid_bass(sec, s, deck, b, mix_fades)
   if not step_data or not step_data.gate then return false end
   local bass_amount = mix_fades and mix_fades.bass or 1
   if not acid_cfg.mix_gate(acid.seed + acid.variation * 17, step_index, bass_amount) then return false end
-  local note = deck.root + step_data.degree + ((step_data.octave or 0) * 12)
-  while note < 36 do note = note + 12 end
-  while note > 60 do note = note - 12 end
+  local note = acid_cfg.clamp_note(deck.root + step_data.degree + ((step_data.octave or 0) * 12))
   t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1)
   return true
 end
@@ -2739,13 +2774,7 @@ function init()
   params:add_number("acid_complexity", "acid complexity", 0, 100, math.floor(acid_cfg.complexity * 100))
   params:set_action("acid_complexity", function(v)
     acid_cfg.complexity = clamp(v / 100, 0, 1)
-    params:set("acid_note_density", math.floor(clamp(45 + acid_cfg.complexity * 35, 15, 100) + 0.5))
-    params:set("acid_pitch_variety", math.floor(clamp(20 + acid_cfg.complexity * 55, 0, 100) + 0.5))
-    params:set("acid_repeat_bias", math.floor(clamp(70 - acid_cfg.complexity * 40, 0, 100) + 0.5))
-    params:set("acid_slide_amount", math.floor(clamp(10 + acid_cfg.complexity * 28, 0, 100) + 0.5))
-    params:set("acid_accent_amount", math.floor(clamp(10 + acid_cfg.complexity * 18, 0, 100) + 0.5))
-    params:set("acid_octave_amount", math.floor(clamp(5 + acid_cfg.complexity * 24, 0, 100) + 0.5))
-    params:set("acid_evolution_amount", math.floor(clamp(8 + acid_cfg.complexity * 35, 0, 100) + 0.5))
+    acid_cfg.apply_complexity()
   end)
 
   params:add_number("acid_note_density", "acid note density", 5, 100, math.floor(acid_cfg.note_density * 100))
