@@ -80,10 +80,11 @@ local mpx8_midi_out
 local mpx8_mdev = 1
 local mpx8_enabled = false
 local mpx8_ch = 10
--- Default pad note numbers (1-8):
---   1=percussion accent  2=alternate percussion  3=short fill  4=long fill
---   5=impact             6=riser                 7=vocal/FX stab  8=drop accent
-local mpx8_pads = {36, 38, 42, 46, 48, 50, 60, 62}
+-- Factory Internal Kit i01 pad notes (1-8):
+--   1=kick(36)  2=snare(38)  3=closed hat(42)  4=open hat(46)
+--   5=low tom(43)  6=mid tom(47)  7=crash(49)  8=ride(51)
+-- Endless DJ semantics still map to these pads by index (see params labels).
+local mpx8_pads = {36, 38, 42, 46, 43, 47, 49, 51}
 
 local playing = false
 local bpm = 128
@@ -434,6 +435,20 @@ local function note_delayed(dev, note, vel, ch, delay_ticks, len_ticks)
     len = len_ticks,
     dev = dev
   })
+end
+
+local function clear_scheduled_notes_for_device(dev)
+  if not dev then return end
+  for i=#notes_pending,1,-1 do
+    if notes_pending[i].dev == dev then
+      table.remove(notes_pending, i)
+    end
+  end
+  for i=#notes_off,1,-1 do
+    if notes_off[i].dev == dev then
+      table.remove(notes_off, i)
+    end
+  end
 end
 
 local function t8_note(note, vel, ch, len_ticks)
@@ -1898,16 +1913,29 @@ function init()
   params:add_option("mpx8_enabled", "mpx8 enabled", {"off","on"}, 1)
   params:set_action("mpx8_enabled", function(v)
     mpx8_enabled = (v == 2)
+    if not mpx8_enabled and mpx8_midi_out then
+      clear_scheduled_notes_for_device(mpx8_midi_out)
+      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
+    end
   end)
 
   params:add_option("mpx8_midi_device", "mpx8 device", dev_names, mpx8_mdev)
   params:set_action("mpx8_midi_device", function(v)
+    if mpx8_midi_out then
+      clear_scheduled_notes_for_device(mpx8_midi_out)
+      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
+    end
     mpx8_mdev = v
     mpx8_midi_out = midi.connect(mpx8_mdev)
   end)
 
   params:add_number("mpx8_ch", "mpx8 channel", 1, 16, mpx8_ch)
-  params:set_action("mpx8_ch", function(v) mpx8_ch = v end)
+  params:set_action("mpx8_ch", function(v)
+    if mpx8_midi_out then
+      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
+    end
+    mpx8_ch = v
+  end)
 
   -- Configurable note numbers for the 8 pads
   local pad_labels = {
@@ -1929,9 +1957,19 @@ function init()
     params:set_action("mpx8_pad" .. i, function(v) mpx8_pads[pad_i] = v end)
   end
 
-  params:add_trigger("mpx8_test", "mpx8 test pads")
+  for i = 1, 8 do
+    local pad_i = i
+    params:add_trigger("mpx8_test_pad" .. i, "mpx8 test pad" .. i)
+    params:set_action("mpx8_test_pad" .. i, function()
+      if mpx8_enabled then
+        mpx8_trigger(pad_i, 90)
+      end
+    end)
+  end
+
+  params:add_trigger("mpx8_test", "mpx8 test all pads")
   params:set_action("mpx8_test", function()
-    if mpx8_midi_out then
+    if mpx8_enabled and mpx8_midi_out then
       -- Fire each pad in sequence with a 4-tick gap
       for i = 1, 8 do
         note_delayed(mpx8_midi_out, mpx8_pads[i], 90, mpx8_ch, (i - 1) * 4, 1)

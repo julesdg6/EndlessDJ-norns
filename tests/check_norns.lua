@@ -200,17 +200,29 @@ end
 if not source:find("mpx8_midi_device", 1, true) then
   fail("Missing mpx8_midi_device parameter")
 end
+if not source:match("local%s+mpx8_ch%s*=%s*10") then
+  fail("MPX8 channel default must be 10")
+end
 if not source:find("play_mpx8", 1, true) then
   fail("Missing play_mpx8 function")
 end
 if not source:find("mpx8_pads", 1, true) then
   fail("Missing mpx8_pads pad note table")
 end
+if not source:find("local mpx8_pads = {36, 38, 42, 46, 43, 47, 49, 51}", 1, true) then
+  fail("MPX8 default pad map must match factory i01 notes")
+end
 if not source:find("mpx8_riser_fired", 1, true) then
   fail("Missing mpx8_riser_fired one-shot guard")
 end
 if not source:find("mpx8_impact_fired", 1, true) then
   fail("Missing mpx8_impact_fired one-shot guard")
+end
+if not source:find('params:add_trigger("mpx8_test_pad" .. i, "mpx8 test pad" .. i)', 1, true) then
+  fail("Missing per-pad MPX8 test triggers")
+end
+if not source:find('for i = 1, 8 do', 1, true) then
+  fail("Missing 8-pad loop for MPX8 tests")
 end
 pass("MPX8 support exists (mpx8_midi_device, play_mpx8, mpx8_pads, one-shot guards)")
 
