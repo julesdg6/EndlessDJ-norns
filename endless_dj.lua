@@ -2414,12 +2414,12 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   if sec == "BUILD" then register_bump = 12 end
   if sec == "DROP" then register_bump = 7 end
   if sec == "BREAK" then register_bump = -12 end
+  local motif_index_base_offset = 2
 
   local num_triggers = (sec == "MIX" and deck == current_deck()) and 1 or #rhythm
   for i = 1, num_triggers do
     local offset = rhythm[((i - 1) % #rhythm) + 1]
-    -- Offset 2 aligns turn counter to 1-based motif index.
-    local motif_idx = ((deck.nts1_motif_turn + i - 2) % #motif) + 1
+    local motif_idx = ((deck.nts1_motif_turn + i - motif_index_base_offset) % #motif) + 1
     local note = motif[motif_idx] + register_bump
     note = clamp(note, identity.octave_range[1], identity.octave_range[2] + 12)
     local note_len = note_lengths[((motif_idx - 1) % #note_lengths) + 1] or 6
