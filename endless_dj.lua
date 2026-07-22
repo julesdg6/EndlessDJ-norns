@@ -2418,7 +2418,8 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   local num_triggers = (sec == "MIX" and deck == current_deck()) and 1 or #rhythm
   for i = 1, num_triggers do
     local offset = rhythm[((i - 1) % #rhythm) + 1]
-    local motif_idx = ((deck.nts1_motif_turn + i - 2) % #motif) + 1  -- offset 2 aligns turn counter to 1-based motif index (was NTS1_MOTIF_INDEX_BASE_OFFSET)
+    -- Offset 2 aligns turn counter to 1-based motif index.
+    local motif_idx = ((deck.nts1_motif_turn + i - 2) % #motif) + 1
     local note = motif[motif_idx] + register_bump
     note = clamp(note, identity.octave_range[1], identity.octave_range[2] + 12)
     local note_len = note_lengths[((motif_idx - 1) % #note_lengths) + 1] or 6
