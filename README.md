@@ -10,6 +10,26 @@ The script should continuously generate complete, DJ-structured electronic track
 
 Think of it as an endless AI/procedural DJ using external Roland AIRA hardware.
 
+INTERNAL INSTRUMENTS / TRAVEL MODE
+
+Endless DJ includes one custom SuperCollider engine named `Endless`. It provides
+five Norns-native instrument roles:
+
+- `n-808`: six synthesized drum voices
+- `n-303`: monophonic acid/bass voice with accent and slide inputs
+- `n-chord`: polyphonic chord voice and the Norns keyboard target
+- `n-mono`: general monophonic melody voice scaffold
+- `n-sampler`: 16 loadable mono sample slots
+
+The engine mixes internal Deck A and Deck B through separate stereo buses. The
+existing Endless DJ crossfader drives those buses with an equal-power curve.
+
+In the `OUTPUT ROUTING` parameter group, drums, bass, chords, mono, and samples
+can each be set manually to `off`, `external`, `internal`, or `both`. Every route
+defaults to `external`, preserving the existing T-8, J-6, NTS-1, and MPX8 MIDI
+behaviour after upgrading. Use `internal` for a Norns-only travel rig, or `both`
+to layer the internal voice with the connected hardware.
+
 HARDWARE
 
 Norns is the sequencer and conductor.

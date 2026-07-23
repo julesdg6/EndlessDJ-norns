@@ -110,10 +110,10 @@ if source:match("local%s+CLAP%s*=%s*39") then
 end
 pass("No T-8 clap regression")
 
-if not source:find('"PolyPerc"', 1, true) then
-  fail("PolyPerc engine must be referenced as engine.name")
+if not source:find('"Endless"', 1, true) then
+  fail("Custom Endless engine must be referenced as engine.name")
 end
-pass("PolyPerc engine selected")
+pass("Custom Endless engine selected")
 
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
@@ -121,13 +121,38 @@ end
 if not source:find("norns_presets", 1, true) then
   fail("Missing norns_presets definitions")
 end
-if not source:find("note_to_hz", 1, true) then
-  fail("Missing note_to_hz helper for PolyPerc frequency conversion")
+if not source:find("internal_engine.chord", 1, true) then
+  fail("Norns instrument must target the internal n-chord voice")
 end
 if source:find("engine%.attack", 1, true) then
-  fail("Regression: engine.attack does not exist in PolyPerc (Env.perc has no attack command)")
+  fail("Regression: unsupported engine.attack call")
 end
-pass("Norns instrument (PolyPerc) support exists")
+pass("Norns instrument (n-chord) support exists")
+
+for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
+  if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then
+    fail("Missing manual output route for " .. part)
+  end
+end
+if not source:find("output_router", 1, true) then
+  fail("Missing output router integration")
+end
+if not source:find("internal_engine.set_deck_levels", 1, true) then
+  fail("Internal Deck A/B bus levels must follow the crossfader")
+end
+do
+  local router = dofile("lib/output_router.lua")
+  for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
+    if router.get(part) ~= router.EXTERNAL then
+      fail(part .. " output must default to external to preserve MIDI behaviour")
+    end
+    router.set(part, router.BOTH)
+    if not router.sends_external(part) or not router.sends_internal(part) then
+      fail(part .. " BOTH route must reach external and internal outputs")
+    end
+  end
+end
+pass("Manual per-part routes and internal deck crossfade exist")
 
 if not source:find("acapella_files", 1, true) then
   fail("Missing acapella_files variable")
