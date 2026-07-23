@@ -624,15 +624,6 @@ local function density_for_section(sec)
 end
 
 -- ──────────────────────────────────────────────
--- Norns instrument helpers
--- ──────────────────────────────────────────────
-
--- Convert a MIDI note number to frequency in Hz (A440 tuning; note 69 = 440 Hz).
-local function note_to_hz(note)
-  return 440 * 2 ^ ((note - 69) / 12)
-end
-
--- ──────────────────────────────────────────────
 -- Acapella helpers
 -- ──────────────────────────────────────────────
 
