@@ -16,7 +16,10 @@
 --   J-6 chords ch6  on j6 midi device  (default device 1 via MX-1)
 --   MX-1 Beat FX depth automated via CC during mix transitions
 
-engine.name = "PolyPerc"
+engine.name = "Endless"
+
+output_router = include("EndlessDJ-norns/lib/output_router")
+internal_engine = include("EndlessDJ-norns/lib/internal_engine")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
@@ -34,14 +37,14 @@ local chord_mdev = 1
 local mx1_mdev = 1
 
 -- ──────────────────────────────────────────────
--- Norns instrument (PolyPerc SuperCollider engine)
+-- Norns instrument (n-chord voice in the Endless SuperCollider engine)
 -- ──────────────────────────────────────────────
 local norns_inst_enabled = true
 local norns_inst_vol = 0.8
 
 -- Presets: pad, synth, pluck, strings.
 -- Fields: release in seconds, cutoff in Hz, gain = filter resonance (0-1), pw = pulse width (0-1).
--- Note: PolyPerc uses Env.perc with a fixed default attack; there is no engine.attack command.
+-- The presets map to n-chord release and timbre choices in Engine_Endless.sc.
 local norns_presets = {
   {name="pad",     release=2.0, cutoff=800,  gain=0.5, pw=0.5},
   {name="synth",   release=0.5, cutoff=3000, gain=0.3, pw=0.3},
@@ -195,6 +198,7 @@ local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, 
 
 local notes_off = {}
 local notes_pending = {}
+internal_notes_pending = {}
 
 local KICK = 36
 local SNARE = 38
@@ -328,6 +332,7 @@ end
 local function j6_program_change(num)
   if not chord_midi_out then return end
   if not j6_pc_enabled then return end
+  if not output_router.sends_external("chords") then return end
   chord_midi_out:program_change(num, j6_pc_ch)
   -- Disable variation (Roland J-6 CC 80: 0-63 = off)
   chord_midi_out:cc(80, 0, j6_pc_ch)
@@ -410,9 +415,11 @@ local function quiet_notes()
   -- Reset MX-1 Beat FX depth so no effect lingers after stopping.
   send_mx1_cc(mx1_fx_cc, 0)
   nts1_reset_cc_state()
+  internal_engine.all_off()
 
   notes_off = {}
   notes_pending = {}
+  internal_notes_pending = {}
 end
 
 local function apply_transport_message(msg_type)
@@ -506,16 +513,59 @@ local function clear_scheduled_notes_for_device(dev)
   end
 end
 
-local function t8_note(note, vel, ch, len_ticks)
-  note_on_to(midi_out, note, vel, ch, len_ticks)
+n808_voice = {
+  [KICK] = 0,
+  [SNARE] = 1,
+  [CLAP] = 2,
+  [TOM] = 3,
+  [CHH] = 4,
+  [OHH] = 5,
+}
+
+local function t8_note(note, vel, ch, len_ticks, deck, opts)
+  local part = ch == drum_ch and "drums" or "bass"
+  if output_router.sends_external(part) then
+    note_on_to(midi_out, note, vel, ch, len_ticks)
+  end
+  if not deck or not output_router.sends_internal(part) then return end
+  local deck_id = internal_engine.deck_id(deck, deck_a)
+  if part == "drums" then
+    local voice = n808_voice[note]
+    if voice then internal_engine.drum(deck_id, voice, vel) end
+  else
+    opts = opts or {}
+    internal_engine.bass(deck_id, note, vel, len_ticks, opts.accent, opts.slide)
+  end
 end
 
-local function chord_note(note, vel, len_ticks)
-  note_on_to(chord_midi_out, note, vel, chord_ch, len_ticks)
+local function chord_note(note, vel, len_ticks, deck)
+  if output_router.sends_external("chords") then
+    note_on_to(chord_midi_out, note, vel, chord_ch, len_ticks)
+  end
+  if deck and output_router.sends_internal("chords") then
+    internal_engine.chord(
+      internal_engine.deck_id(deck, deck_a),
+      note,
+      vel,
+      len_ticks,
+      deck.norns_preset or norns_preset_idx
+    )
+  end
 end
 
-local function chord_note_delayed(note, vel, delay_ticks, len_ticks)
-  note_delayed(chord_midi_out, note, vel, chord_ch, delay_ticks, len_ticks)
+local function chord_note_delayed(note, vel, delay_ticks, len_ticks, deck)
+  if output_router.sends_external("chords") then
+    note_delayed(chord_midi_out, note, vel, chord_ch, delay_ticks, len_ticks)
+  end
+  if deck and output_router.sends_internal("chords") then
+    table.insert(internal_notes_pending, {
+      t = tick + delay_ticks,
+      deck = deck,
+      note = note,
+      velocity = vel,
+      length = len_ticks,
+    })
+  end
 end
 
 local function service_note_offs()
@@ -536,6 +586,28 @@ local function service_pending_notes()
     if tick >= e.t then
       note_on_to(e.dev, e.n, e.v, e.ch, e.len)
       table.remove(notes_pending, i)
+    end
+  end
+  for i=#internal_notes_pending,1,-1 do
+    local e = internal_notes_pending[i]
+    if tick >= e.t then
+      if e.kind == "mono" then
+        internal_engine.mono(
+          internal_engine.deck_id(e.deck, deck_a),
+          e.note,
+          e.velocity,
+          e.length
+        )
+      else
+        internal_engine.chord(
+          internal_engine.deck_id(e.deck, deck_a),
+          e.note,
+          e.velocity,
+          e.length,
+          e.deck.norns_preset or norns_preset_idx
+        )
+      end
+      table.remove(internal_notes_pending, i)
     end
   end
 end
@@ -1041,7 +1113,13 @@ local function kb_note_on(note)
   elseif kb_target == 2 then
     if chord_midi_out then chord_midi_out:note_on(note, 100, chord_ch) end
   elseif kb_target == 3 then
-    engine.hz(note_to_hz(note))
+    internal_engine.chord(
+      internal_engine.deck_id(current_deck(), deck_a),
+      note,
+      100,
+      4,
+      current_deck().norns_preset or norns_preset_idx
+    )
   end
 end
 
@@ -1051,7 +1129,7 @@ local function kb_note_off(note)
   elseif kb_target == 2 then
     if chord_midi_out then chord_midi_out:note_off(note, 0, chord_ch) end
   end
-  -- PolyPerc (kb_target==3) does not support explicit note-off
+  -- n-chord keyboard notes use a short self-terminating envelope.
 end
 
 -- Send note-off for every currently held keyboard note and clear pressed state.
@@ -1905,6 +1983,7 @@ local NTS1_CC = {
 
 local function nts1_send_cc(cc, value, force)
   if not nts1_midi_out or not nts1_cc_enabled then return end
+  if not output_router.sends_external("mono") then return end
   local v = clamp(math.floor(value), 0, 127)
   local prev = nts1_cc_cache[cc]
   local last_tick_sent = nts1_cc_last_tick[cc]
@@ -2028,12 +2107,17 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel)
-  if not mpx8_midi_out then return end
-  local note = mpx8_pads[pad_idx]
-  if not note then return end
-  mpx8_midi_out:note_on(note, vel, mpx8_ch)
-  mpx8_midi_out:note_off(note, 0, mpx8_ch)
+local function mpx8_trigger(pad_idx, vel, deck)
+  if output_router.sends_external("samples") and mpx8_midi_out then
+    local note = mpx8_pads[pad_idx]
+    if note then
+      mpx8_midi_out:note_on(note, vel, mpx8_ch)
+      mpx8_midi_out:note_off(note, 0, mpx8_ch)
+    end
+  end
+  if output_router.sends_internal("samples") and deck then
+    internal_engine.sampler(internal_engine.deck_id(deck, deck_a), pad_idx, vel)
+  end
 end
 
 -- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
@@ -2118,7 +2202,10 @@ local function play_acid_bass(sec, s, deck, b, mix_fades)
   local bass_amount = mix_fades and mix_fades.bass or 1
   if not acid_cfg.mix_gate(acid.seed + acid.variation * 17, step_index, bass_amount) then return false end
   local note = acid_cfg.clamp_note(deck.root + step_data.degree + (step_data.octave * 12))
-  t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1)
+  t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1, deck, {
+    accent = step_data.accent,
+    slide = step_data.slide,
+  })
   return true
 end
 
@@ -2155,7 +2242,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local kick_hit
   if use_grid then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
   if kick_hit and math.random() < kick_prob then
-    t8_note(KICK, kick_vel[gn] or 110, drum_ch, 1)
+    t8_note(KICK, kick_vel[gn] or 110, drum_ch, 1, deck)
   end
 
   -- Snare
@@ -2166,19 +2253,19 @@ local function play_drums(sec, s, b, mix_fades, deck)
     snare_hit = p.snare and hit(p.snare, s)
   end
   if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
-    t8_note(SNARE, snare_vel[gn] or 100, drum_ch, 1)
+    t8_note(SNARE, snare_vel[gn] or 100, drum_ch, 1, deck)
   end
 
   -- Clap (always generative; not on grid)
   if p.clap and hit(p.clap, s) and sec ~= "INTRO" and math.random() < clap_prob then
     if gn ~= "TECHNO" then
-      t8_note(CLAP, 110, drum_ch, 1)
+      t8_note(CLAP, 110, drum_ch, 1, deck)
     end
   end
 
   -- Tom (always generative)
   if p.tom and hit(p.tom, s) and math.random() < 0.45 * drums_amount then
-    t8_note(TOM, 85, drum_ch, 1)
+    t8_note(TOM, 85, drum_ch, 1, deck)
   end
 
   -- Closed hi-hat
@@ -2189,24 +2276,24 @@ local function play_drums(sec, s, b, mix_fades, deck)
     chh_hit = p.hats and hit(p.hats, s)
   end
   if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
-    t8_note(CHH, hat_vel[gn] or 70, drum_ch, 1)
+    t8_note(CHH, hat_vel[gn] or 70, drum_ch, 1, deck)
   end
 
   -- Open hi-hat
   if use_grid then
     if drum_steps[3][s] and math.random() < drums_amount then
-      t8_note(OHH, 70, drum_ch, 1)
+      t8_note(OHH, 70, drum_ch, 1, deck)
     end
   elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 * drums_amount then
-    t8_note(OHH, 70, drum_ch, 1)
+    t8_note(OHH, 70, drum_ch, 1, deck)
   end
 
   -- Bar fills (always generative)
   if b % 16 == 0 and s >= 13 and math.random() < drums_amount then
-    if s == 13 then t8_note(SNARE, 95, drum_ch, 1) end
-    if s == 14 then t8_note(TOM, 90, drum_ch, 1) end
-    if s == 15 then t8_note(SNARE, 105, drum_ch, 1) end
-    if s == 16 then t8_note(CLAP, 115, drum_ch, 1) end
+    if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
+    if s == 14 then t8_note(TOM, 90, drum_ch, 1, deck) end
+    if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
+    if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
   end
 end
 
@@ -2229,7 +2316,7 @@ local function play_bass(sec, s, deck, b, mix_fades)
   if degree ~= 0 or math.random() < prob then
     local octave = bass_octave[deck.genre] or 0
     local len    = bass_len[deck.genre]    or 1
-    t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len)
+    t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len, deck)
   end
 end
 
@@ -2282,28 +2369,28 @@ local function play_chords(sec, s, deck, b, mix_fades)
   if style == "block" then
     local dur = block_chord_dur[gn] or 10
     for _,n in ipairs(notes) do
-      chord_note(n, vel, dur)
+      chord_note(n, vel, dur, deck)
     end
   elseif style == "up" then
     for i,n in ipairs(notes) do
-      chord_note_delayed(n, vel, i-1, 8)
+      chord_note_delayed(n, vel, i-1, 8, deck)
     end
   elseif style == "updown" then
-    chord_note_delayed(notes[1], vel, 0, 5)
-    chord_note_delayed(notes[2], vel, 1, 5)
-    chord_note_delayed(notes[3], vel, 2, 5)
-    chord_note_delayed(notes[2], vel, 3, 5)
+    chord_note_delayed(notes[1], vel, 0, 5, deck)
+    chord_note_delayed(notes[2], vel, 1, 5, deck)
+    chord_note_delayed(notes[3], vel, 2, 5, deck)
+    chord_note_delayed(notes[2], vel, 3, 5, deck)
   elseif style == "strum" then
     for i,n in ipairs(notes) do
-      chord_note_delayed(n, vel, i-1, 12)
+      chord_note_delayed(n, vel, i-1, 12, deck)
     end
   elseif style == "stab" then
     for _,n in ipairs(notes) do
-      chord_note(n, vel+12, 3)
+      chord_note(n, vel+12, 3, deck)
     end
   elseif style == "offbeat" then
     for _,n in ipairs(notes) do
-      chord_note_delayed(n, vel, 2, 4)
+      chord_note_delayed(n, vel, 2, 4, deck)
     end
   end
   grid_j6_level = 8
@@ -2311,6 +2398,9 @@ end
 
 local function play_norns_instrument(sec, s, deck, b, mix_fades)
   if not norns_inst_enabled then return end
+  -- Preserve the legacy always-on Norns chord layer in the default external
+  -- route, but let n-chord become the routed voice in internal/both modes.
+  if output_router.get("chords") ~= output_router.EXTERNAL then return end
   if sec == "INTRO" or sec == "BREAK" then return end
   local melody_amount = mix_fades and mix_fades.melody or 1
   if math.random() >= melody_amount then return end
@@ -2324,18 +2414,18 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
   if is_pad and b % 2 ~= 1 then return end
 
   local ok, err = pcall(function()
-    engine.release(preset.release)
-    engine.cutoff(preset.cutoff)
-    engine.gain(preset.gain)
-    engine.pw(preset.pw)
-    engine.amp(norns_inst_vol)
-
     local prog = chord_progs[gn] or chord_progs.HOUSE
     local triad = prog[(math.floor((b - 1) / 2) % #prog) + 1]
     local base = deck.root + 24  -- +24 semitones = two octaves above deck root
 
     for _, interval in ipairs(triad) do
-      engine.hz(note_to_hz(base + interval))
+      internal_engine.chord(
+        internal_engine.deck_id(deck, deck_a),
+        base + interval,
+        math.floor(norns_inst_vol * 100),
+        math.max(1, math.floor(preset.release * ppqn)),
+        deck.norns_preset or norns_preset_idx
+      )
     end
   end)
   if not ok then
@@ -2355,7 +2445,8 @@ end
 -- are simplified/introduced gradually.
 local function play_nts1(sec, s, deck, b, mix_fades)
   if not nts1_enabled then return end
-  if not nts1_midi_out then return end
+  if output_router.sends_external("mono") and not nts1_midi_out
+      and not output_router.sends_internal("mono") then return end
 
   -- Gate by trigger pattern: active deck uses grid-editable nts1_steps;
   -- incoming deck during mixing uses bar-start rule (step 1 only).
@@ -2432,10 +2523,26 @@ local function play_nts1(sec, s, deck, b, mix_fades)
     end
     note_len = math.min(note_len, math.max(1, 16 - offset))
     local vel = (sec == "DROP") and 92 or ((sec == "BREAK") and 58 or 80)
-    if offset == 0 then
-      note_on_to(nts1_midi_out, note, vel, nts1_ch, note_len)
-    else
-      note_delayed(nts1_midi_out, note, vel, nts1_ch, offset, note_len)
+    if output_router.sends_external("mono") then
+      if offset == 0 then
+        note_on_to(nts1_midi_out, note, vel, nts1_ch, note_len)
+      else
+        note_delayed(nts1_midi_out, note, vel, nts1_ch, offset, note_len)
+      end
+    end
+    if output_router.sends_internal("mono") then
+      if offset == 0 then
+        internal_engine.mono(internal_engine.deck_id(deck, deck_a), note, vel, note_len)
+      else
+        table.insert(internal_notes_pending, {
+          kind = "mono",
+          t = tick + offset,
+          deck = deck,
+          note = note,
+          velocity = vel,
+          length = note_len,
+        })
+      end
     end
   end
 
@@ -2461,18 +2568,18 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- Riser fires once at the first bar of BUILD
   if sec == "BUILD" and b == 81 and not deck.mpx8_riser_fired then
     deck.mpx8_riser_fired = true
-    mpx8_trigger(6, 100)  -- pad 6: riser
+    mpx8_trigger(6, 100, deck)  -- pad 6: riser
   end
 
   -- Impact and drop accent fire once at the first bar of DROP
   if sec == "DROP" and b == 97 then
     if not deck.mpx8_impact_fired then
       deck.mpx8_impact_fired = true
-      mpx8_trigger(5, 110)  -- pad 5: impact
+      mpx8_trigger(5, 110, deck)  -- pad 5: impact
     end
     if not deck.mpx8_drop_accent_fired then
       deck.mpx8_drop_accent_fired = true
-      mpx8_trigger(8, 110)  -- pad 8: drop accent
+      mpx8_trigger(8, 110, deck)  -- pad 8: drop accent
     end
   end
 
@@ -2490,28 +2597,28 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- Pad 1: percussion accent at 4-bar boundaries (offset by deck seed)
   if (b + accent_offset) % 4 == 0 then
     local vel = (sec == "DROP") and 100 or 82
-    mpx8_trigger(1, vel)
+    mpx8_trigger(1, vel, deck)
   end
   -- Pad 2: alternate percussion at 8-bar boundaries in DROP only
   if sec == "DROP" and (b + accent_offset) % 8 == 0 then
-    mpx8_trigger(2, 90)
+    mpx8_trigger(2, 90, deck)
   end
 
   -- Pad 3: short fill at every 4-bar boundary
   if b % 4 == 0 then
     local vel = (sec == "DROP") and 102 or 85
-    mpx8_trigger(3, vel)
+    mpx8_trigger(3, vel, deck)
   end
   -- Pad 4: long fill at every 8-bar boundary
   if b % 8 == 0 then
     local vel = (sec == "DROP") and 108 or 90
-    mpx8_trigger(4, vel)
+    mpx8_trigger(4, vel, deck)
   end
 
   -- Pad 7: vocal/FX stab at the start of every 8-bar phrase in MAIN/DROP
   if (sec == "MAIN" or sec == "DROP") and b % 8 == 1 then
     local vel = (sec == "DROP") and 100 or 80
-    mpx8_trigger(7, vel)
+    mpx8_trigger(7, vel, deck)
   end
 end
 
@@ -2535,18 +2642,20 @@ local function start_mix_if_needed()
 end
 
 local function update_xfade()
-  if manual_xfade then return end
-
-  if mixing then
-    local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
-    if deck_a.active then
-      xfade = clamp(pos * 100, 0, 100)
+  if not manual_xfade then
+    if mixing then
+      local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
+      if deck_a.active then
+        xfade = clamp(pos * 100, 0, 100)
+      else
+        xfade = clamp(100 - pos * 100, 0, 100)
+      end
     else
-      xfade = clamp(100 - pos * 100, 0, 100)
+      xfade = deck_a.active and 0 or 100
     end
-  else
-    xfade = deck_a.active and 0 or 100
   end
+  local position = xfade / 100
+  internal_engine.set_deck_levels(math.sqrt(1 - position), math.sqrt(position))
 end
 
 local function finish_handover()
@@ -2575,7 +2684,7 @@ local function finish_handover()
   -- The MX-1 effect depth is reset to 0 automatically on the next tick by
   -- update_mx1_fx() once mixing is false.
   nts1_reset_cc_state()
-  if nts1_enabled and nts1_midi_out then
+  if nts1_enabled and nts1_midi_out and output_router.sends_external("mono") then
     local deck = current_deck()
     if deck and not deck.nts1_identity then
       deck.nts1_identity = make_nts1_identity(deck)
@@ -2734,6 +2843,22 @@ function init()
   local dev_names = midi_device_names()
 
   params:add_separator("endless_dj", "ENDLESS DJ")
+
+  params:add_separator("output_routes_sep", "OUTPUT ROUTING")
+  local route_params = {
+    {"drums", "drums output"},
+    {"bass", "bass output"},
+    {"chords", "chords output"},
+    {"mono", "mono output"},
+    {"samples", "samples output"},
+  }
+  for _, route_param in ipairs(route_params) do
+    local part = route_param[1]
+    params:add_option(part .. "_output", route_param[2], output_router.OPTIONS, output_router.EXTERNAL)
+    params:set_action(part .. "_output", function(v)
+      output_router.set(part, v)
+    end)
+  end
 
   params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
   params:set_action("t8_midi_device", function(v)
