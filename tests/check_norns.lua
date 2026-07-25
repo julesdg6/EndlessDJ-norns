@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.68", 1, true) then
-  fail("Script version must match PR #68")
+if not source:find("Endless DJ v1.69", 1, true) then
+  fail("Script version must match PR #69")
 end
-pass("Script version matches PR #68")
+pass("Script version matches PR #69")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -479,6 +479,65 @@ do
   end
 end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  if not engine_source:find("SynthDef(\\endlessSamplerGrain", 1, true) or
+      not engine_source:find("GrainBuf.ar", 1, true) then
+    fail("Granular sampler must use a dedicated GrainBuf SynthDef")
+  end
+  for command, format in pairs({
+    nsampler_grain_on="iiffffffffi", nsampler_grain_off="i"
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Granular sampler is missing " .. command .. " command")
+    end
+  end
+  if not engine_source:find("maxGrains: 24", 1, true) or
+      not engine_source:find("samplerGrains = Array.fill(2", 1, true) then
+    fail("Granular sampler must enforce one CPU-bounded voice per deck")
+  end
+end
+for _, control in ipairs({
+  "granular", "grain_position", "grain_size", "grain_density",
+  "grain_rate", "grain_spread", "grain_freeze",
+}) do
+  if not source:find('{"' .. control .. '"', 1, true) then
+    fail("Missing granular sampler control " .. control)
+  end
+end
+if not source:find("granular_patch_for_genre", 1, true) or
+    not source:find("ngrain = granular_patch_for_genre", 1, true) then
+  fail("Each generated deck must receive a stable genre-shaped granular patch")
+end
+if not source:find("sampler_grain_settings", 1, true) or
+    not source:find("internal_engine.sampler_grain_on", 1, true) or
+    not source:find("internal_engine.sampler_grain_off", 1, true) then
+  fail("Granular playback and cleanup must flow through the engine wrapper")
+end
+do
+  local previous_engine = engine
+  local received
+  engine = {
+    nsampler_grain_on = function(...)
+      received = {...}
+    end
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.sampler_grain_on(2, 5, {
+    level=0.7, position=0.25, size=0.08, density=18, rate=1.5,
+    pan=-0.1, spread=0.8, cutoff=0.6, freeze=true,
+  })
+  engine = previous_engine
+  if not received or received[1] ~= 2 or received[2] ~= 5 or
+      received[4] ~= 0.25 or received[6] ~= 18 or
+      received[10] ~= 0.6 or received[11] ~= 1 then
+    fail("Granular wrapper must forward deck, pad, controls, and freeze")
+  end
+end
+pass("CPU-bounded, genre-shaped Deck A/B granular playback and freeze exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then
