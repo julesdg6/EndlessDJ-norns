@@ -39,6 +39,11 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
+if not source:find("Endless DJ v1.61", 1, true) then
+  fail("Script version must match PR #61")
+end
+pass("Script version matches PR #61")
+
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
     fail("Missing required entry point: " .. name .. "()")
@@ -67,6 +72,24 @@ for _, genre in ipairs({
   end
 end
 pass("All required genres exist")
+
+do
+  local _, init_start = source:find("function init()", 1, true)
+  local init_end = init_start and source:find("\n  midi_out =", init_start, true)
+  local startup = init_start and init_end and source:sub(init_start, init_end) or ""
+  if not startup:find('deck_a = make_deck("A")', 1, true) or
+      not startup:find('deck_b = make_deck("B", deck_a.genre)', 1, true) then
+    fail("Both startup decks must use the normal randomized deck generator")
+  end
+  if not startup:find("deck_a.active = true", 1, true) or
+      not startup:find("deck_b.active = false", 1, true) then
+    fail("Random startup must leave Deck A active and Deck B queued")
+  end
+  if not source:find("while genre == excluded_genre", 1, true) then
+    fail("Startup deck generation must avoid duplicate opening genres")
+  end
+end
+pass("Startup decks are randomized with distinct genres")
 
 if not source:find("chord_midi_out", 1, true) then
   fail("J-6 must use a separate MIDI output")
