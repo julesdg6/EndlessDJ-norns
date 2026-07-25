@@ -184,6 +184,19 @@ function InternalEngine.sampler_off(deck_id, pad)
   call("nsampler_off", deck_id, pad)
 end
 
+function InternalEngine.sampler_loop_on(deck_id, pad, settings)
+  settings = settings or {}
+  call(
+    "nsampler_loop_on", deck_id, pad,
+    settings.level or 1, settings.rate or 1, settings.pan or 0,
+    settings.start or 0, settings.finish or 1, settings.cutoff or 1
+  )
+end
+
+function InternalEngine.sampler_loop_off(deck_id, pad)
+  call("nsampler_loop_off", deck_id, pad)
+end
+
 function InternalEngine.load_sample(pad, path)
   call("nsampler_load", pad, path)
 end

@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.67
+-- Endless DJ v1.68
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -136,11 +136,15 @@ sampler_state = {
   },
   edit_pad = 1,
   pads = {},
+  running = {{}, {}},
 }
 for i = 1, 16 do
   sampler_state.pads[i] = {
     level = 1, pitch = 0, reverse = false, pan = 0,
     start = 0, finish = 1, cutoff = 1, choke = 0, gated = false,
+    loaded = false, source_bpm = 128, loop = false, slices = 0,
+    order = 1, slice_reverse = 0, repeat_amount = 0,
+    probability = 1, target = 3,
   }
 end
 
@@ -155,6 +159,21 @@ function sampler_playback_settings(pad)
     cutoff = source.cutoff,
     choke = source.choke,
   }
+end
+
+function sampler_reset_runtime()
+  sampler_state.running = {{}, {}}
+end
+
+function sampler_stop_all_loops()
+  for deck_id = 1, 2 do
+    for pad = 1, 16 do
+      if sampler_state.running[deck_id][pad] then
+        internal_engine.sampler_loop_off(deck_id, pad)
+      end
+    end
+  end
+  sampler_reset_runtime()
 end
 
 local playing = false
@@ -636,6 +655,7 @@ local function quiet_notes()
   send_mx1_cc(mx1_fx_cc, 0)
   nts1_reset_cc_state()
   internal_engine.all_off()
+  sampler_reset_runtime()
 
   notes_off = {}
   notes_pending = {}
@@ -2389,6 +2409,73 @@ local function mpx8_trigger(pad_idx, vel, deck, internal_role)
   end
 end
 
+function sampler_advanced_tick(deck, deck_id, bar, sequencer_step)
+  if not output_router.sends_internal("samples") then return end
+  for pad, settings in ipairs(sampler_state.pads) do
+    local targeted = settings.target == 3 or settings.target == deck_id
+    if not settings.loaded or not targeted then
+      if sampler_state.running[deck_id][pad] then
+        internal_engine.sampler_loop_off(deck_id, pad)
+        sampler_state.running[deck_id][pad] = nil
+      end
+    elseif settings.loop then
+      local playback = sampler_playback_settings(pad)
+      playback.rate = math.abs(playback.rate) * bpm / settings.source_bpm
+      local previous_rate = sampler_state.running[deck_id][pad]
+      if sequencer_step == 1 and previous_rate ~= playback.rate then
+        internal_engine.sampler_loop_on(deck_id, pad, playback)
+        sampler_state.running[deck_id][pad] = playback.rate
+      end
+    elseif settings.slices > 0 then
+      if sampler_state.running[deck_id][pad] then
+        internal_engine.sampler_loop_off(deck_id, pad)
+        sampler_state.running[deck_id][pad] = nil
+      end
+      local count = settings.slices
+      local should_fire = count == 16 or (sequencer_step % 2 == 1)
+      if should_fire then
+        local position = count == 16
+          and (sequencer_step - 1)
+          or math.floor((sequencer_step - 1) / 2)
+        local seed = (deck.variation_seed or 1) + pad * 997 +
+          bar * 131 + sequencer_step * 17
+        local chance = (seed * 1103515245 + 12345) % 100
+        if chance < settings.probability * 100 then
+          if settings.order == 2 then
+            position = count - position - 1
+          elseif settings.order == 3 then
+            position = (seed * 48271) % count
+          end
+          local playback = sampler_playback_settings(pad)
+          local width = (playback.finish - playback.start) / count
+          playback.start = playback.start + position * width
+          playback.finish = playback.start + width
+          local reverse_chance = (seed * 69621 + 7) % 100
+          local magnitude = math.abs(playback.rate) * bpm / settings.source_bpm
+          playback.rate = reverse_chance < settings.slice_reverse * 100
+            and -magnitude or magnitude
+          internal_engine.sampler(deck_id, pad, 100, playback)
+          local repeat_chance = (seed * 31337 + 19) % 100
+          if repeat_chance < settings.repeat_amount * 100 then
+            local repeated = {
+              level=playback.level, rate=playback.rate, pan=playback.pan,
+              start=playback.start, finish=playback.finish,
+              cutoff=playback.cutoff, choke=playback.choke,
+            }
+            clock.run(function()
+              clock.sleep(60 / bpm / 8)
+              internal_engine.sampler(deck_id, pad, 92, repeated)
+            end)
+          end
+        end
+      end
+    elseif sampler_state.running[deck_id][pad] then
+      internal_engine.sampler_loop_off(deck_id, pad)
+      sampler_state.running[deck_id][pad] = nil
+    end
+  end
+end
+
 -- Per-genre kick velocity (default 110). Only genres deviating from the default are listed.
 -- Harder/darker styles push higher; broken-beat styles push slightly lower.
 local kick_vel = {
@@ -2942,6 +3029,7 @@ local function play_deck(deck, b, s, mix_fades)
   play_norns_instrument(sec, s, deck, b, mix_fades)
   play_nts1(sec, s, deck, b, mix_fades)
   play_mpx8(sec, s, deck, b, mix_fades)
+  sampler_advanced_tick(deck, internal_engine.deck_id(deck, deck_a), b, s)
 end
 
 local function start_mix_if_needed()
@@ -3185,6 +3273,9 @@ function init()
     params:add_option(part .. "_output", route_param[2], output_router.OPTIONS, output_router.EXTERNAL)
     params:set_action(part .. "_output", function(v)
       output_router.set(part, v)
+      if part == "samples" and not output_router.sends_internal("samples") then
+        sampler_stop_all_loops()
+      end
     end)
   end
 
@@ -3195,8 +3286,12 @@ function init()
     params:set_action("nsampler_pad_" .. i, function(path)
       if path and path ~= "-" and util.file_exists(path) then
         internal_engine.load_sample(pad, path)
+        sampler_state.pads[pad].loaded = true
       elseif path and path ~= "-" then
+        sampler_state.pads[pad].loaded = false
         print("Endless DJ: sample not found: " .. path)
+      else
+        sampler_state.pads[pad].loaded = false
       end
     end)
 
@@ -3210,6 +3305,14 @@ function init()
       {"cutoff", 0, 100, 100},
       {"choke", 0, 4, 0},
       {"gated", 1, 2, 1},
+      {"source_bpm", 60, 200, 128},
+      {"loop", 1, 2, 1},
+      {"slices", 1, 3, 1},
+      {"order", 1, 3, 1},
+      {"slice_reverse", 0, 100, 0},
+      {"repeat_amount", 0, 100, 0},
+      {"probability", 0, 100, 100},
+      {"target", 1, 3, 3},
     }
     for _, spec in ipairs(controls) do
       local name, lo, hi, default = spec[1], spec[2], spec[3], spec[4]
@@ -3227,6 +3330,14 @@ function init()
         elseif name == "cutoff" then settings.cutoff = v / 100
         elseif name == "choke" then settings.choke = v
         elseif name == "gated" then settings.gated = (v == 2)
+        elseif name == "source_bpm" then settings.source_bpm = v
+        elseif name == "loop" then settings.loop = (v == 2)
+        elseif name == "slices" then settings.slices = ({0, 8, 16})[v]
+        elseif name == "order" then settings.order = v
+        elseif name == "slice_reverse" then settings.slice_reverse = v / 100
+        elseif name == "repeat_amount" then settings.repeat_amount = v / 100
+        elseif name == "probability" then settings.probability = v / 100
+        elseif name == "target" then settings.target = v
         end
       end)
     end
@@ -3239,7 +3350,9 @@ function init()
     sampler_state.edit_pad = v
     for _, name in ipairs({
       "level", "pitch", "reverse", "pan", "start",
-      "finish", "cutoff", "choke", "gated",
+      "finish", "cutoff", "choke", "gated", "source_bpm",
+      "loop", "slices", "order", "slice_reverse",
+      "repeat_amount", "probability", "target",
     }) do
       params:set(
         "nsampler_" .. name,
@@ -3256,6 +3369,10 @@ function init()
     {"finish", "n-sampler end", 1, 100, 100},
     {"cutoff", "n-sampler filter", 0, 100, 100},
     {"choke", "n-sampler choke", 0, 4, 0},
+    {"source_bpm", "n-sampler source bpm", 60, 200, 128},
+    {"slice_reverse", "n-sampler reverse slices", 0, 100, 0},
+    {"repeat_amount", "n-sampler repeat", 0, 100, 0},
+    {"probability", "n-sampler probability", 0, 100, 100},
   }
   for _, control in ipairs(visible_controls) do
     local name = control[1]
@@ -3269,10 +3386,19 @@ function init()
   for _, option in ipairs({
     {"reverse", "n-sampler reverse", {"off", "on"}},
     {"gated", "n-sampler mode", {"one-shot", "gated"}},
+    {"loop", "n-sampler loop sync", {"off", "on"}},
+    {"slices", "n-sampler slices", {"off", "8 slices", "16 slices"}},
+    {"order", "n-sampler slice order", {"forward", "reverse", "random"}},
+    {"target", "n-sampler target", {"deck A", "deck B", "both"}},
   }) do
     local name = option[1]
     params:add_option("nsampler_" .. name, option[2], option[3], 1)
     params:set_action("nsampler_" .. name, function(v)
+      if name == "loop" and v == 2 then
+        params:set("nsampler_slices", 1)
+      elseif name == "slices" and v > 1 then
+        params:set("nsampler_loop", 1)
+      end
       params:set("nsampler_pad_" .. sampler_state.edit_pad .. "_" .. name, v)
     end)
   end
@@ -3290,6 +3416,19 @@ function init()
   params:add_trigger("nsampler_release_pad", "n-sampler release pad")
   params:set_action("nsampler_release_pad", function()
     internal_engine.sampler_off(1, sampler_state.edit_pad)
+  end)
+  params:add_trigger("nsampler_start_loop", "n-sampler start loop")
+  params:set_action("nsampler_start_loop", function()
+    local playback = sampler_playback_settings(sampler_state.edit_pad)
+    local settings = sampler_state.pads[sampler_state.edit_pad]
+    playback.rate = math.abs(playback.rate) * bpm / settings.source_bpm
+    internal_engine.sampler_loop_on(1, sampler_state.edit_pad, playback)
+    sampler_state.running[1][sampler_state.edit_pad] = playback.rate
+  end)
+  params:add_trigger("nsampler_stop_loop", "n-sampler stop loop")
+  params:set_action("nsampler_stop_loop", function()
+    internal_engine.sampler_loop_off(1, sampler_state.edit_pad)
+    sampler_state.running[1][sampler_state.edit_pad] = nil
   end)
   for i, role in ipairs(sampler_state.roles) do
     local pad_index, role_name = i, role

@@ -3,6 +3,7 @@ std = "lua53"
 globals = {
   "_path",
   "audio",
+  "clock",
   "cleanup",
   "enc",
   "engine",
@@ -28,7 +29,10 @@ globals = {
   "redraw",
   "screen",
   "sampler_playback_settings",
+  "sampler_advanced_tick",
+  "sampler_reset_runtime",
   "sampler_state",
+  "sampler_stop_all_loops",
   "softcut",
   "util",
 }
