@@ -25,7 +25,8 @@ five Norns-native instrument roles:
   saw/square waveform, filter, envelope, decay, drive, and slide-time controls
 - `n-chord`: gated polyphonic chord voice with eight sound models, generated
   voicings and patches, and the Norns keyboard target
-- `n-mono`: general monophonic melody voice scaffold
+- `n-mono`: persistent monophonic lead/bass/pluck/FX voice with generated
+  per-song patches
 - `n-sampler`: 16 loadable mono sample slots
 
 The engine mixes internal Deck A and Deck B through separate stereo buses. The
@@ -59,6 +60,13 @@ settings affect only the internal voice; external J-6 notes and timing remain
 unchanged. The `N-CHORD` parameter group follows and edits the current deck.
 Grid keyboard notes targeting Norns now remain gated until their pads are
 released.
+
+Each song receives an independent N-MONO role and patch. Genre families favour
+lead, bass, pluck, or FX settings, with saw/square/triangle oscillator choice,
+sub level, resonant filter, attack/release, glide, LFO rate/depth, and stereo
+delay send. One persistent voice is allocated to each deck, so melodic notes
+retrigger safely while pitch glide and effects remain continuous. External and
+layered NTS-1 routing is unchanged.
 
 HARDWARE
 
