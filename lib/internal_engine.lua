@@ -1,5 +1,12 @@
 local InternalEngine = {}
 
+InternalEngine.n808 = {
+  tone = 0.5,
+  decay = 0.5,
+  drive = 0.25,
+  variation = 0.15,
+}
+
 local function call(command, ...)
   local fn = engine and engine[command]
   if type(fn) ~= "function" then return false end
@@ -25,6 +32,26 @@ end
 
 function InternalEngine.drum(deck_id, voice, velocity)
   call("n808_hit", deck_id, voice, velocity / 127)
+end
+
+function InternalEngine.set_n808(tone, decay, drive, variation)
+  call("n808_set", tone, decay, drive, variation)
+end
+
+function InternalEngine.set_n808_control(name, value)
+  if InternalEngine.n808[name] == nil then return false end
+  InternalEngine.n808[name] = value
+  InternalEngine.set_n808(
+    InternalEngine.n808.tone,
+    InternalEngine.n808.decay,
+    InternalEngine.n808.drive,
+    InternalEngine.n808.variation
+  )
+  return true
+end
+
+function InternalEngine.set_n808_level(voice, level)
+  call("n808_level", voice, level)
 end
 
 function InternalEngine.bass(deck_id, note, velocity, length, accent, slide)

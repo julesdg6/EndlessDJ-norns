@@ -2851,6 +2851,29 @@ function init()
     end)
   end
 
+  params:add_separator("n808_sep", "N-808")
+  for _, control in ipairs({
+    {"tone", "n-808 tone", 50},
+    {"decay", "n-808 decay", 50},
+    {"drive", "n-808 drive", 25},
+    {"variation", "n-808 variation", 15},
+  }) do
+    local name = control[1]
+    params:add_number("n808_" .. name, control[2], 0, 100, control[3])
+    params:set_action("n808_" .. name, function(v)
+      internal_engine.set_n808_control(name, v / 100)
+    end)
+  end
+
+  for voice, name in ipairs({"kick", "snare", "clap", "tom", "closed hat", "open hat"}) do
+    local voice_id = voice - 1
+    local param_id = "n808_" .. name:gsub(" ", "_") .. "_level"
+    params:add_number(param_id, "n-808 " .. name .. " level", 0, 150, 100)
+    params:set_action(param_id, function(v)
+      internal_engine.set_n808_level(voice_id, v / 100)
+    end)
+  end
+
   params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
   params:set_action("t8_midi_device", function(v)
     mdev = v

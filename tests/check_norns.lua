@@ -142,8 +142,33 @@ do
   if not engine_source:find("server.sync", 1, true) then
     fail("Custom engine must wait for SynthDef uploads before creating mixer nodes")
   end
+  for _, command in ipairs({"n808_set", "n808_level"}) do
+    if not engine_source:find("addCommand(\\" .. command, 1, true) then
+      fail("Custom engine is missing " .. command .. " command")
+    end
+  end
+  if not engine_source:find("openHats", 1, true) then
+    fail("n-808 must maintain per-deck open-hat state for choking")
+  end
 end
 pass("Custom engine uses the supplied Crone audio context")
+
+for _, control in ipairs({"tone", "decay", "drive", "variation"}) do
+  if not source:find('"n808_" .. name', 1, true) or
+      not source:find('{"' .. control .. '", "n-808 ' .. control, 1, true) then
+    fail("Missing n-808 " .. control .. " performance parameter")
+  end
+end
+for _, voice in ipairs({"kick", "snare", "clap", "tom", "closed hat", "open hat"}) do
+  if not source:find('"' .. voice .. '"', 1, true) then
+    fail("Missing n-808 " .. voice .. " level")
+  end
+end
+if not source:find("internal_engine.set_n808_control", 1, true) or
+    not source:find("internal_engine.set_n808_level", 1, true) then
+  fail("n-808 parameters must be forwarded through the internal engine wrapper")
+end
+pass("n-808 performance controls and per-voice levels exist")
 
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
