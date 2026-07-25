@@ -14,6 +14,50 @@ On every script launch, both virtual decks are generated through the normal
 song-creation path. Deck A starts active, Deck B is queued, and their initial
 genres are selected randomly without duplicating one another.
 
+INSTALLING AND UPDATING ON NORNS
+
+Install the complete repository, not only `EndlessDJ.lua` or the files in
+`lib`. N-SAMPLER's factory sounds live under
+`samples/factory/risers`, so partial updates will leave the sampler silent.
+
+From Maiden's command line, this command downloads merged `main`, including all
+32 riser WAV files, and copies it over the installed script:
+
+```lua
+os.execute("cd /tmp && curl -fL https://github.com/julesdg6/EndlessDJ-norns/archive/refs/heads/main.tar.gz -o EndlessDJ-main.tar.gz && tar -xzf EndlessDJ-main.tar.gz && mkdir -p /home/we/dust/code/EndlessDJ && rm -f /home/we/dust/code/EndlessDJ/endless_dj.lua && cp -R EndlessDJ-norns-main/. /home/we/dust/code/EndlessDJ/")
+```
+
+After installing or updating `Engine_Endless.sc`, restart Norns from
+`SYSTEM → RESET → restart`. This lets SuperCollider recompile the custom
+engine. Script parameter sets remain in `/home/we/dust/data/EndlessDJ` and are
+not replaced by the command above.
+
+`EndlessDJ.lua` is the canonical Norns entrypoint. The update command removes
+the obsolete lowercase `endless_dj.lua` left by v1.65, preventing duplicate
+scripts in Maiden and ensuring Norns launches the updated version.
+
+Verify that the complete factory library arrived:
+
+```lua
+os.execute("find /home/we/dust/code/EndlessDJ/samples/factory/risers -maxdepth 1 -type f -name '*.wav' | wc -l")
+```
+
+The result must be `32`. After loading Endless DJ, Maiden should also print:
+
+```text
+Endless DJ: loaded 32 factory risers
+```
+
+For an immediate sound test, set `samples output` to `internal`, then enter:
+
+```lua
+engine.deck_level(1, 1)
+engine.nsampler_hit(1, 17, 0.8, 1, 0, 0, 1, 1, 0)
+```
+
+This triggers the first factory riser without waiting for a generated song to
+reach its BUILD section.
+
 INTERNAL INSTRUMENTS / TRAVEL MODE
 
 Endless DJ includes one custom SuperCollider engine named `Endless`. It provides
