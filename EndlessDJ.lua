@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.76
+-- Endless DJ v1.77
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -143,6 +143,12 @@ sampler_state = {
 mixer_state = {
   parts = {"drums", "bass", "chords", "mono", "samples"},
   channels = {},
+  auto_mode = 3,
+  auto_amount = 0.65,
+  auto_headroom = 0.9,
+  auto_kick_duck = 0.3,
+  auto_melody_priority = 0.45,
+  auto_transition = 0.25,
   master_level = 0.9,
   limiter_ceiling = 0.9,
   master_compression = 0.35,
@@ -155,13 +161,6 @@ for _, part in ipairs(mixer_state.parts) do
     level=1, pan=0, filter=1, saturation=0,
     delay_send=0, reverb_send=0,
   }
-end
-
-function mixer_apply_channel(part, part_id)
-  local settings = mixer_state.channels[part]
-  if not settings then return end
-  internal_engine.set_mixer(1, part_id, settings)
-  internal_engine.set_mixer(2, part_id, settings)
 end
 
 for i = 1, 16 do
@@ -455,18 +454,94 @@ nmono_patch_for_genre = function(genre)
   }
 end
 
+automix_patch_for_genre = function(genre, seed)
+  local levels = {
+    drums=0.92, bass=0.82, chords=0.62, mono=0.68, samples=0.72,
+  }
+  local bass_heavy = {
+    DUBSTEP=true, DNB=true, JUNGLE=true, BASSLINE=true, TWO_STEP=true,
+  }
+  local melodic = {
+    DEEP=true, LIQUID=true, TRANCE=true, PROG=true, MELODIC=true,
+  }
+  local percussion_heavy = {
+    TECHNO=true, HARDTECHNO=true, HARDSTYLE=true, JUKE=true, SPEED=true,
+  }
+  if bass_heavy[genre] then
+    levels.bass = 0.88
+    levels.chords = 0.54
+    levels.mono = 0.60
+  elseif melodic[genre] then
+    levels.drums = 0.86
+    levels.bass = 0.76
+    levels.chords = 0.66
+    levels.mono = 0.62
+  elseif percussion_heavy[genre] then
+    levels.drums = 0.96
+    levels.bass = 0.80
+    levels.chords = 0.50
+    levels.samples = 0.64
+  elseif genre == "HOUSE" or genre == "GARAGE4" or genre == "FUNKY" then
+    levels.drums = 0.94
+    levels.bass = 0.80
+    levels.chords = 0.58
+  end
+  local value = math.max(1, seed or 1)
+  local function variation()
+    value = (value * 1103515245 + 12345) % 2147483648
+    return ((value / 2147483648) * 2 - 1) * 0.035
+  end
+  for _, part in ipairs(mixer_state.parts) do
+    levels[part] = math.max(0.4, math.min(1, levels[part] + variation()))
+  end
+  return {levels=levels}
+end
+
 local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, pc=0, norns_preset=1,
                 variation_seed=12345, n303=n303_patch_for_genre("HOUSE"),
                 nchord=nchord_patch_for_genre("HOUSE"),
                 nmono=nmono_patch_for_genre("HOUSE"),
                 ngrain=granular_patch_for_genre("HOUSE", 12345),
+                automix=automix_patch_for_genre("HOUSE", 12345),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
                 variation_seed=54321, n303=n303_patch_for_genre("TWO_STEP"),
                 nchord=nchord_patch_for_genre("TWO_STEP"),
                 nmono=nmono_patch_for_genre("TWO_STEP"),
                 ngrain=granular_patch_for_genre("TWO_STEP", 54321),
+                automix=automix_patch_for_genre("TWO_STEP", 54321),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
+
+function mixer_apply_deck(deck, deck_id)
+  if not deck then return end
+  deck.automix = deck.automix or
+    automix_patch_for_genre(deck.genre, deck.variation_seed)
+  for part_id, part in ipairs(mixer_state.parts) do
+    local manual = mixer_state.channels[part]
+    local auto_level = mixer_state.auto_mode == 1 and 1 or
+      deck.automix.levels[part]
+    local headroom = mixer_state.auto_mode == 1 and 1 or
+      mixer_state.auto_headroom
+    internal_engine.set_mixer(deck_id, part_id, {
+      level = manual.level * auto_level * headroom,
+      pan = manual.pan,
+      filter = manual.filter,
+      saturation = manual.saturation,
+      delay_send = manual.delay_send,
+      reverb_send = manual.reverb_send,
+    })
+  end
+  internal_engine.set_automix(deck_id, {
+    amount=mixer_state.auto_amount,
+    kick_duck=mixer_state.auto_kick_duck,
+    melody_priority=mixer_state.auto_melody_priority,
+  })
+end
+
+function mixer_apply_channel()
+  mixer_apply_deck(deck_a, 1)
+  mixer_apply_deck(deck_b, 2)
+end
 
 local notes_off = {}
 local notes_pending = {}
@@ -632,6 +707,7 @@ local function make_deck(letter, excluded_genre)
     nchord = nchord_patch_for_genre(genre),
     nmono = nmono_patch_for_genre(genre),
     ngrain = granular_patch_for_genre(genre, variation_seed),
+    automix = automix_patch_for_genre(genre, variation_seed),
     nts1_identity = nil,
     nts1_motif = nil,
     nts1_phrase = nil,
@@ -3166,6 +3242,9 @@ local function update_xfade()
     end
   end
   local position = xfade / 100
+  internal_engine.set_transition_compensation(
+    mixer_state.auto_mode == 1 and 0 or mixer_state.auto_transition
+  )
   internal_engine.set_deck_levels(math.sqrt(1 - position), math.sqrt(position))
 end
 
@@ -3189,6 +3268,8 @@ local function finish_handover()
   nmono_apply_deck(deck_a, false)
   nmono_apply_deck(deck_b, false)
   nmono_apply_deck(current_deck(), true)
+  mixer_apply_deck(deck_a, 1)
+  mixer_apply_deck(deck_b, 2)
   current_bar = MIX_BARS + 1
   step = 1
   next_bar = nil
@@ -3391,8 +3472,41 @@ function init()
   end
 
   params:add_separator("mixer_sep", "INTERNAL MIXER")
-  for part_id, part in ipairs(mixer_state.parts) do
-    local channel_id, channel_name = part_id, part
+  params:add_option(
+    "auto_mixer_mode", "auto mixer",
+    {"off", "gentle", "balanced", "assertive"}, mixer_state.auto_mode
+  )
+  params:set_action("auto_mixer_mode", function(v)
+    mixer_state.auto_mode = v
+    mixer_state.auto_amount = ({0, 0.35, 0.65, 0.9})[v]
+    mixer_apply_channel()
+  end)
+  params:add_number("auto_mixer_headroom", "auto target headroom", 60, 100, 90)
+  params:set_action("auto_mixer_headroom", function(v)
+    mixer_state.auto_headroom = v / 100
+    mixer_apply_channel()
+  end)
+  params:add_number("auto_mixer_kick_duck", "kick to bass duck", 0, 100, 30)
+  params:set_action("auto_mixer_kick_duck", function(v)
+    mixer_state.auto_kick_duck = v / 100
+    mixer_apply_channel()
+  end)
+  params:add_number("auto_mixer_melody_priority", "melody priority", 0, 100, 45)
+  params:set_action("auto_mixer_melody_priority", function(v)
+    mixer_state.auto_melody_priority = v / 100
+    mixer_apply_channel()
+  end)
+  params:add_number(
+    "auto_mixer_transition", "transition compensation", 0, 100, 25
+  )
+  params:set_action("auto_mixer_transition", function(v)
+    mixer_state.auto_transition = v / 100
+    internal_engine.set_transition_compensation(
+      mixer_state.auto_mode == 1 and 0 or mixer_state.auto_transition
+    )
+  end)
+  for _, part in ipairs(mixer_state.parts) do
+    local channel_name = part
     for _, control in ipairs({
       {"level", "level", 0, 150, 100},
       {"pan", "pan", -100, 100, 0},
@@ -3421,7 +3535,7 @@ function init()
         elseif name == "reverb_send" then
           mixer_state.channels[channel_name].reverb_send = v / 100
         end
-        mixer_apply_channel(channel_name, channel_id)
+        mixer_apply_channel()
       end)
     end
   end
@@ -4203,6 +4317,8 @@ function init()
   nmono_apply_deck(deck_a, false)
   nmono_apply_deck(deck_b, false)
   nmono_apply_deck(current_deck(), true)
+  mixer_apply_deck(deck_a, 1)
+  mixer_apply_deck(deck_b, 2)
   acid_sync_seed_param(current_deck())
   redraw()
 end

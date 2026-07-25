@@ -1,4 +1,5 @@
 local InternalEngine = {}
+local transition_compensation = 0
 
 InternalEngine.n808 = {
   tone = 0.5,
@@ -22,8 +23,25 @@ function InternalEngine.deck_id(deck, deck_a)
 end
 
 function InternalEngine.set_deck_levels(a, b)
-  call("deck_level", 1, a)
-  call("deck_level", 2, b)
+  a, b = a or 0, b or 0
+  local overlap = math.min(a, b)
+  local compensation = 1 - (overlap * transition_compensation)
+  call("deck_level", 1, a * compensation)
+  call("deck_level", 2, b * compensation)
+end
+
+function InternalEngine.set_transition_compensation(amount)
+  transition_compensation = math.max(0, math.min(0.5, amount or 0))
+end
+
+function InternalEngine.set_automix(deck_id, settings)
+  settings = settings or {}
+  call(
+    "automix_set", deck_id,
+    settings.amount or 0,
+    settings.kick_duck or 0.3,
+    settings.melody_priority or 0.45
+  )
 end
 
 function InternalEngine.set_mixer(deck_id, part_id, settings)

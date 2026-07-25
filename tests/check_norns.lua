@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.76", 1, true) then
-  fail("Script version must match PR #76")
+if not source:find("Endless DJ v1.77", 1, true) then
+  fail("Script version must match PR #77")
 end
-pass("Script version matches PR #76")
+pass("Script version matches PR #77")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -217,7 +217,7 @@ pass("Custom engine uses the supplied Crone audio context")
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
   for _, synthdef in ipairs({
-    "endlessInstrumentMixer", "endlessDelayReturn",
+    "endlessAutoMeter", "endlessInstrumentMixer", "endlessDelayReturn",
     "endlessReverbReturn", "endlessDeckMixer", "endlessMaster",
   }) do
     if not engine_source:find("SynthDef(\\" .. synthdef, 1, true) then
@@ -225,7 +225,8 @@ do
     end
   end
   for command, format in pairs({
-    mixer_set="iiffffff", fx_return_set="iff", master_set="ffff",
+    mixer_set="iiffffff", fx_return_set="iff", automix_set="ifff",
+    master_set="ffff",
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -235,6 +236,7 @@ do
   end
   for _, token in ipairs({
     "instrumentBuses", "delayBuses", "reverbBuses", "masterBus",
+    "autoControlBuses", "Amplitude.kr", "ReplaceOut.kr",
     "Compander.ar", "Limiter.ar", "FreeVerb2.ar", "CombC.ar",
     "DetectSilence.ar", "Impulse.ar(0)", "doneAction: 1", "wakePart",
   }) do
@@ -254,6 +256,22 @@ do
     if not engine_source:find(wake, 1, true) then
       fail("Silent mixer suspension is missing wake path " .. wake)
     end
+  end
+end
+for _, param in ipairs({
+  "auto_mixer_mode", "auto_mixer_headroom", "auto_mixer_kick_duck",
+  "auto_mixer_melody_priority", "auto_mixer_transition",
+}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Auto mixer is missing parameter " .. param)
+  end
+end
+for _, token in ipairs({
+  "automix_patch_for_genre", "automix=automix_patch_for_genre",
+  "mixer_apply_deck(deck_a, 1)", "mixer_apply_deck(deck_b, 2)",
+}) do
+  if not source:find(token, 1, true) then
+    fail("Per-song auto mixer is missing " .. token)
   end
 end
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
@@ -281,10 +299,13 @@ for _, param in ipairs({
 end
 do
   local previous_engine = engine
-  local mixer_received, returns_received, master_received
+  local mixer_received, returns_received, automix_received, master_received
+  local deck_levels = {}
   engine = {
     mixer_set = function(...) mixer_received = {...} end,
     fx_return_set = function(...) returns_received = {...} end,
+    automix_set = function(...) automix_received = {...} end,
+    deck_level = function(...) deck_levels[#deck_levels + 1] = {...} end,
     master_set = function(...) master_received = {...} end,
   }
   local internal = dofile("lib/internal_engine.lua")
@@ -293,6 +314,11 @@ do
     delay_send=0.4, reverb_send=0.5,
   })
   internal.set_fx_returns(2, 0.6, 0.7)
+  internal.set_automix(2, {
+    amount=0.65, kick_duck=0.3, melody_priority=0.45,
+  })
+  internal.set_transition_compensation(0.25)
+  internal.set_deck_levels(0.7, 0.7)
   internal.set_master(0.9, 0.88, 0.4, 0.52)
   engine = previous_engine
   if not mixer_received or mixer_received[1] ~= 2 or
@@ -303,12 +329,20 @@ do
       returns_received[3] ~= 0.7 then
     fail("FX return wrapper must forward both return levels")
   end
+  if not automix_received or automix_received[1] ~= 2 or
+      automix_received[2] ~= 0.65 or automix_received[4] ~= 0.45 then
+    fail("Auto mixer wrapper must forward deck and dynamic controls")
+  end
+  if not deck_levels[1] or deck_levels[1][2] >= 0.7 or
+      not deck_levels[2] or deck_levels[2][2] >= 0.7 then
+    fail("Transition compensation must reduce overlapping deck levels")
+  end
   if not master_received or master_received[3] ~= 0.4 or
       master_received[4] ~= 0.52 then
     fail("Master wrapper must forward compression and limiting controls")
   end
 end
-pass("Five-channel mixer, dual send/returns, compression, and limiting exist")
+pass("Auto mixer, five channels, dual send/returns, and mastering exist")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""

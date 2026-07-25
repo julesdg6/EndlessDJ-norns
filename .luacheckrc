@@ -3,6 +3,7 @@ std = "lua53"
 globals = {
   "_path",
   "audio",
+  "automix_patch_for_genre",
   "clock",
   "cleanup",
   "enc",
@@ -17,6 +18,7 @@ globals = {
   "metro",
   "midi",
   "mixer_apply_channel",
+  "mixer_apply_deck",
   "mixer_state",
   "n808_voice",
   "n303_apply_deck",
