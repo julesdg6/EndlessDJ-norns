@@ -3,6 +3,7 @@ std = "lua53"
 globals = {
   "_path",
   "audio",
+  "clock",
   "cleanup",
   "enc",
   "engine",
