@@ -180,9 +180,9 @@ Engine_Endless : CroneEngine {
 
 		SynthDef(\endlessSampler, {
 			arg out=0, buf=0, amp=0.8, rate=1, pan=0, start=0, finish=1,
-				cutoffControl=1, gate=1, timed=1;
+				cutoffControl=1, gate=1, timed=1, repeatDelay=0;
 			var frames, reverse, startFrame, duration, play;
-			var autoGate, envelopeGate, env, cutoff, signal;
+			var repeated, autoGate, envelopeGate, env, cutoff, signal;
 			frames = BufFrames.kr(buf);
 			reverse = rate < 0;
 			startFrame = Select.kr(reverse, [start * frames, finish * frames]);
@@ -191,11 +191,15 @@ Engine_Endless : CroneEngine {
 				1, buf, BufRateScale.kr(buf) * rate, startPos: startFrame,
 				doneAction: 0
 			);
-			autoGate = Line.kr(1, 0, duration);
+			repeated = Select.ar(repeatDelay > 0, [
+				play,
+				play + DelayN.ar(play, 0.5, repeatDelay.clip(0.01, 0.5))
+			]);
+			autoGate = Line.kr(1, 0, duration + repeatDelay.clip(0, 0.5));
 			envelopeGate = Select.kr(timed, [gate, autoGate]);
 			env = EnvGen.kr(Env.asr(0.003, 1, 0.03), envelopeGate, doneAction: 2);
 			cutoff = cutoffControl.linexp(0, 1, 180, 18000);
-			signal = LPF.ar(play, cutoff);
+			signal = LPF.ar(repeated, cutoff);
 			Out.ar(out, Pan2.ar(signal * amp * env, pan));
 		}).add;
 
@@ -441,6 +445,31 @@ Engine_Endless : CroneEngine {
 					\start, msg[6].asFloat.clip(0, 1),
 					\finish, msg[7].asFloat.clip(0, 1),
 					\cutoffControl, msg[8].asFloat.clip(0, 1)
+				]);
+				voices.add(synth);
+				if(choke > 0, { samplerChokes[deck][choke - 1] = synth; });
+			});
+		});
+
+		this.addCommand(\nsampler_repeat, "iiffffffif", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var pad = msg[2].asInteger.clip(1, 76) - 1;
+			var buffer = sampleBuffers[pad];
+			var choke = msg[9].asInteger.clip(0, 4);
+			if(buffer.notNil, {
+				var synth;
+				if(choke > 0 and: { samplerChokes[deck][choke - 1].notNil }, {
+					samplerChokes[deck][choke - 1].set(\gate, 0);
+				});
+				synth = Synth.head(context.xg, \endlessSampler, [
+					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\amp, msg[3].asFloat.clip(0, 1.5),
+					\rate, msg[4].asFloat.clip(-4, 4),
+					\pan, msg[5].asFloat.clip(-1, 1),
+					\start, msg[6].asFloat.clip(0, 1),
+					\finish, msg[7].asFloat.clip(0, 1),
+					\cutoffControl, msg[8].asFloat.clip(0, 1),
+					\repeatDelay, msg[10].asFloat.clip(0.01, 0.5)
 				]);
 				voices.add(synth);
 				if(choke > 0, { samplerChokes[deck][choke - 1] = synth; });

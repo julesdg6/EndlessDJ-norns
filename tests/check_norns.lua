@@ -480,22 +480,41 @@ do
 end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
 
-if not source:find("local sampler_repeat_clocks = {}", 1, true) or
-    not source:find("sampler_repeat_clocks[repeat_clock] = true", 1, true) or
-    not source:find("clock.cancel(clock_id)", 1, true) or
-    not source:find("sampler_repeat_clocks[repeat_clock] = nil", 1, true) then
-  fail("Sampler repeat clocks must be tracked, cancelled, and retired")
-end
 do
-  local quiet_start = source:find("local function quiet_notes()", 1, true)
-  local quiet_end = quiet_start and source:find("\nend", quiet_start, true)
-  local quiet_source = quiet_start and quiet_end and
-    source:sub(quiet_start, quiet_end) or ""
-  if not quiet_source:find("clock.cancel(clock_id)", 1, true) then
-    fail("Transport stop and cleanup must cancel pending sampler repeats")
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  if source:find("clock.run(function()", 1, true) or
+      source:find("sampler_repeat_clocks", 1, true) then
+    fail("Sampler repeats must not leave Lua clock coroutines behind")
+  end
+  if not source:find("internal_engine.sampler_repeat", 1, true) or
+      not engine_source:find(
+        'addCommand(\\nsampler_repeat, "iiffffffif"', 1, true
+      ) or
+      not engine_source:find("repeatDelay", 1, true) or
+      not engine_source:find("DelayN.ar", 1, true) then
+    fail("Sampler stutters must be scheduled inside the audio engine")
   end
 end
-pass("Sampler repeat clocks are cancelled safely during stop and cleanup")
+do
+  local previous_engine = engine
+  local received
+  engine = {
+    nsampler_repeat = function(...)
+      received = {...}
+    end
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.sampler_repeat(2, 3, 100, {
+    level=0.8, rate=1.2, pan=0.1, start=0.2, finish=0.4,
+    cutoff=0.7, choke=2,
+  }, 0.09)
+  engine = previous_engine
+  if not received or received[1] ~= 2 or received[2] ~= 3 or
+      received[9] ~= 2 or received[10] ~= 0.09 then
+    fail("Sampler repeat wrapper must forward playback and repeat delay")
+  end
+end
+pass("Sampler repeats use engine-side delay without Lua clock cleanup races")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
