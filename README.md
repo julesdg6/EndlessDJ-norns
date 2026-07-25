@@ -17,7 +17,8 @@ five Norns-native instrument roles:
 
 - `n-808`: six synthesized drum voices with per-voice levels, shared tone,
   decay, drive, and variation controls, plus per-deck open/closed-hat choking
-- `n-303`: monophonic acid/bass voice with accent and slide inputs
+- `n-303`: persistent monophonic acid/bass voice with accent, legato slide,
+  saw/square waveform, filter, envelope, decay, drive, and slide-time controls
 - `n-chord`: polyphonic chord voice and the Norns keyboard target
 - `n-mono`: general monophonic melody voice scaffold
 - `n-sampler`: 16 loadable mono sample slots
@@ -35,6 +36,13 @@ The `N-808` parameter group shapes only the internal drum engine. Its six level
 controls range from 0–150% for balancing voices, while tone, decay, drive, and
 variation affect the whole kit. These settings do not alter external T-8 MIDI
 notes or velocities.
+
+The `N-303` parameter group shapes only the internal acid voice. Each deck has
+its own persistent synth, allowing the outgoing and incoming bass lines to
+overlap during a mix. A slide on one pattern step glides into the following
+note without retriggering the amplitude or filter envelopes. Accent raises
+amplitude, cutoff, and filter-envelope depth together. A limiter bounds
+resonant and driven settings before the signal reaches the deck mixer.
 
 HARDWARE
 

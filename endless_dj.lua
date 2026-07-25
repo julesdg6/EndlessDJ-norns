@@ -2874,6 +2874,26 @@ function init()
     end)
   end
 
+  params:add_separator("n303_sep", "N-303")
+  params:add_option("n303_waveform", "n-303 waveform", {"saw", "square"}, 1)
+  params:set_action("n303_waveform", function(v)
+    internal_engine.set_n303_control("waveform", v - 1)
+  end)
+  for _, control in ipairs({
+    {"cutoff", "n-303 cutoff", 45},
+    {"resonance", "n-303 resonance", 65},
+    {"env_mod", "n-303 env mod", 55},
+    {"decay", "n-303 decay", 45},
+    {"drive", "n-303 drive", 30},
+    {"slide_time", "n-303 slide time", 35},
+  }) do
+    local name = control[1]
+    params:add_number("n303_" .. name, control[2], 0, 100, control[3])
+    params:set_action("n303_" .. name, function(v)
+      internal_engine.set_n303_control(name, v / 100)
+    end)
+  end
+
   params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
   params:set_action("t8_midi_device", function(v)
     mdev = v
