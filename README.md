@@ -133,6 +133,35 @@ The existing MPX8 events now map to matching internal factory roles when
 samples output is `internal` or `both`. External MPX8 notes, configuration, and
 the default external route remain unchanged.
 
+ADVANCED N-SAMPLER — LOOPS AND SLICES
+
+Each user pad can act as a tempo-synchronized loop or an 8/16-slice source.
+Set the pad's source BPM to the tempo at which its file was recorded. Endless
+DJ repitches playback by `current BPM / source BPM`, so it stays aligned when
+the master tempo changes. This phase uses classic sampler repitching rather
+than independent time-stretching; changing speed also changes pitch.
+
+Loop sync starts persistent nodes on bar boundaries and keeps Deck A/B nodes
+independent through the crossfader. A BPM change restarts the loop smoothly at
+the next bar. Switching samples output away from internal, stopping transport,
+cleaning up, or reloading the script releases every loop node.
+
+Slice mode divides the selected start/end range into 8 or 16 equal pieces.
+Controls provide forward, reverse, or deterministic random rearrangement,
+per-slice reverse probability, repeat/stutter probability, trigger
+probability, and Deck A/Deck B/both targeting. Choices derive from the
+generated deck's variation seed, bar, step, and pad, making them varied but
+repeatable for that song. Loop and slice modes are mutually exclusive.
+
+Suggested setup:
+
+1. Assign a rhythmic WAV to one of the 16 user pads.
+2. Set its source BPM.
+3. Choose loop sync, or choose 8/16 slices.
+4. For slices, set order, reverse, repeat, and probability amounts.
+5. Choose Deck A, Deck B, or both.
+6. Set samples output to `internal` or `both`, then start transport.
+
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
 models in future milestones.

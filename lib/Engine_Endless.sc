@@ -1,6 +1,6 @@
 Engine_Endless : CroneEngine {
 	var server, deckBuses, deckMixers, voices, sampleBuffers;
-	var samplerChokes, samplerHeld, openHats;
+	var samplerChokes, samplerHeld, samplerLoops, openHats;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
@@ -17,6 +17,7 @@ Engine_Endless : CroneEngine {
 		sampleBuffers = Array.fill(76, { nil });
 		samplerChokes = Array.fill(2, { Array.fill(4, { nil }) });
 		samplerHeld = Array.fill(2, { Array.fill(16, { nil }) });
+		samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
@@ -192,6 +193,24 @@ Engine_Endless : CroneEngine {
 			autoGate = Line.kr(1, 0, duration);
 			envelopeGate = Select.kr(timed, [gate, autoGate]);
 			env = EnvGen.kr(Env.asr(0.003, 1, 0.03), envelopeGate, doneAction: 2);
+			cutoff = cutoffControl.linexp(0, 1, 180, 18000);
+			signal = LPF.ar(play, cutoff);
+			Out.ar(out, Pan2.ar(signal * amp * env, pan));
+		}).add;
+
+		SynthDef(\endlessSamplerLoop, {
+			arg out=0, buf=0, amp=0.8, rate=1, pan=0, start=0, finish=1,
+				cutoffControl=1, gate=1;
+			var frames, startFrame, endFrame, phase, play, env, cutoff, signal;
+			frames = BufFrames.kr(buf);
+			startFrame = start.clip(0, 0.99) * frames;
+			endFrame = finish.clip(0.01, 1) * frames;
+			phase = Phasor.ar(
+				0, BufRateScale.kr(buf) * rate.abs.max(0.01),
+				startFrame, endFrame.max(startFrame + 2), startFrame
+			);
+			play = BufRd.ar(1, buf, phase, loop: 1, interpolation: 4);
+			env = EnvGen.kr(Env.asr(0.01, 1, 0.04), gate, doneAction: 2);
 			cutoff = cutoffControl.linexp(0, 1, 180, 18000);
 			signal = LPF.ar(play, cutoff);
 			Out.ar(out, Pan2.ar(signal * amp * env, pan));
@@ -439,12 +458,45 @@ Engine_Endless : CroneEngine {
 			});
 		});
 
+		this.addCommand(\nsampler_loop_on, "iiffffff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var pad = msg[2].asInteger.clip(1, 16) - 1;
+			var buffer = sampleBuffers[pad];
+			if(buffer.notNil, {
+				var synth;
+				if(samplerLoops[deck][pad].notNil, {
+					samplerLoops[deck][pad].set(\gate, 0);
+				});
+				synth = Synth.head(context.xg, \endlessSamplerLoop, [
+					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\amp, msg[3].asFloat.clip(0, 1.5),
+					\rate, msg[4].asFloat.clip(0.125, 8),
+					\pan, msg[5].asFloat.clip(-1, 1),
+					\start, msg[6].asFloat.clip(0, 0.99),
+					\finish, msg[7].asFloat.clip(0.01, 1),
+					\cutoffControl, msg[8].asFloat.clip(0, 1)
+				]);
+				voices.add(synth);
+				samplerLoops[deck][pad] = synth;
+			});
+		});
+
+		this.addCommand(\nsampler_loop_off, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var pad = msg[2].asInteger.clip(1, 16) - 1;
+			if(samplerLoops[deck][pad].notNil, {
+				samplerLoops[deck][pad].set(\gate, 0);
+				samplerLoops[deck][pad] = nil;
+			});
+		});
+
 		this.addCommand(\all_off, "", {
 			voices.do({ arg synth; synth.free; });
 			voices.clear;
 			openHats = Array.fill(2, { nil });
 			samplerChokes = Array.fill(2, { Array.fill(4, { nil }) });
 			samplerHeld = Array.fill(2, { Array.fill(16, { nil }) });
+			samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
 			n303SlidePending = Array.fill(2, { false });
 			n303Voices.do({ arg synth; synth.set(\amp, 0, \slide, 0); });
 			nmonoVoices.do({ arg synth; synth.set(\amp, 0, \gate, 0); });

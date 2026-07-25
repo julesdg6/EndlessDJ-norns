@@ -416,6 +416,70 @@ for _, role in ipairs({
 end
 pass("N-SAMPLER roles, persistent pads, full controls, gating, and variation exist")
 
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  if not engine_source:find("SynthDef(\\endlessSamplerLoop", 1, true) then
+    fail("Advanced sampler must provide a persistent loop SynthDef")
+  end
+  for command, format in pairs({
+    nsampler_loop_on="iiffffff", nsampler_loop_off="ii"
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Advanced sampler is missing " .. command .. " command")
+    end
+  end
+  if not engine_source:find("samplerLoops", 1, true) or
+      not engine_source:find("Phasor.ar", 1, true) then
+    fail("Advanced sampler must track tempo-synced loop nodes per deck")
+  end
+end
+if not source:find("sampler_advanced_tick", 1, true) or
+    not source:find("sampler_stop_all_loops", 1, true) then
+  fail("Advanced sampler sequencing and cleanup are missing")
+end
+for _, control in ipairs({
+  "source_bpm", "loop", "slices", "order",
+  "slice_reverse", "repeat_amount", "probability", "target",
+}) do
+  if not source:find('{"' .. control .. '"', 1, true) then
+    fail("Missing advanced sampler control " .. control)
+  end
+end
+for _, behavior in ipairs({
+  "bpm / settings.source_bpm",
+  "settings.slices > 0",
+  "settings.order == 2",
+  "settings.order == 3",
+  "settings.slice_reverse * 100",
+  "settings.repeat_amount * 100",
+  "settings.probability * 100",
+}) do
+  if not source:find(behavior, 1, true) then
+    fail("Missing advanced sampler behavior: " .. behavior)
+  end
+end
+do
+  local previous_engine = engine
+  local received
+  engine = {
+    nsampler_loop_on = function(...)
+      received = {...}
+    end
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.sampler_loop_on(2, 4, {
+    level=0.8, rate=1.25, pan=-0.2, start=0.1, finish=0.9, cutoff=0.7
+  })
+  engine = previous_engine
+  if not received or received[1] ~= 2 or received[2] ~= 4 or
+      received[4] ~= 1.25 or received[8] ~= 0.7 then
+    fail("Advanced sampler loop wrapper must forward deck, pad, and controls")
+  end
+end
+pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
+
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then
     fail("Missing manual output route for " .. part)
