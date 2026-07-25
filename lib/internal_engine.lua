@@ -125,6 +125,39 @@ function InternalEngine.mono(deck_id, note, velocity, length)
   call("nmono_note", deck_id, note, velocity / 127, length or 1)
 end
 
+function InternalEngine.mono_on(deck_id, note, velocity)
+  call("nmono_on", deck_id, note, velocity / 127)
+end
+
+function InternalEngine.mono_off(deck_id)
+  call("nmono_off", deck_id)
+end
+
+function InternalEngine.set_nmono(deck_id, settings)
+  call(
+    "nmono_set",
+    deck_id,
+    settings.preset,
+    settings.waveform,
+    settings.sub,
+    settings.cutoff,
+    settings.resonance,
+    settings.attack,
+    settings.release,
+    settings.glide,
+    settings.lfo_rate,
+    settings.lfo_depth,
+    settings.delay_send
+  )
+end
+
+function InternalEngine.set_nmono_control(deck_id, settings, name, value)
+  if not settings or settings[name] == nil then return false end
+  settings[name] = value
+  InternalEngine.set_nmono(deck_id, settings)
+  return true
+end
+
 function InternalEngine.sampler(deck_id, pad, velocity)
   call("nsampler_hit", deck_id, pad, velocity / 127, 1)
 end

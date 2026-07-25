@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.61", 1, true) then
-  fail("Script version must match PR #61")
+if not source:find("Endless DJ v1.63", 1, true) then
+  fail("Script version must match PR #63")
 end
-pass("Script version matches PR #61")
+pass("Script version matches PR #63")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -198,6 +198,19 @@ do
   if not engine_source:find("nchordHeld", 1, true) then
     fail("n-chord must track held notes independently for each deck")
   end
+  for command, format in pairs({
+    nmono_note="iiff", nmono_on="iif", nmono_off="i",
+    nmono_set="iiffffffffff"
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Custom engine is missing " .. command .. " command or format")
+    end
+  end
+  if not engine_source:find("nmonoVoices", 1, true) then
+    fail("n-mono must allocate one persistent voice per deck")
+  end
 end
 pass("Custom engine uses the supplied Crone audio context")
 
@@ -294,6 +307,29 @@ if source:find("engine%.attack", 1, true) then
   fail("Regression: unsupported engine.attack call")
 end
 pass("Generated n-chord poly synth and gated keyboard support exist")
+
+if not source:find("nmono_patch_for_genre", 1, true) or
+    not source:find("nmono = nmono_patch_for_genre", 1, true) then
+  fail("Every generated deck must receive a genre-shaped n-mono patch")
+end
+if not source:find("nmono_apply_deck(deck_a, false)", 1, true) or
+    not source:find("nmono_apply_deck(deck_b, false)", 1, true) then
+  fail("Deck A and Deck B n-mono patches must be applied independently")
+end
+for _, param in ipairs({"nmono_preset", "nmono_waveform"}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Missing n-mono parameter " .. param)
+  end
+end
+for _, control in ipairs({
+  "sub", "cutoff", "resonance", "attack", "release",
+  "glide", "lfo_rate", "lfo_depth", "delay_send"
+}) do
+  if not source:find('{"' .. control .. '", "n-mono ', 1, true) then
+    fail("Missing n-mono control " .. control)
+  end
+end
+pass("Generated persistent n-mono synth and controls exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then
