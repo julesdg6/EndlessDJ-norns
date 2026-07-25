@@ -137,6 +137,7 @@ sampler_state = {
   edit_pad = 1,
   pads = {},
   running = {{}, {}},
+  grains = {nil, nil},
 }
 for i = 1, 16 do
   sampler_state.pads[i] = {
@@ -144,7 +145,42 @@ for i = 1, 16 do
     start = 0, finish = 1, cutoff = 1, choke = 0, gated = false,
     loaded = false, source_bpm = 128, loop = false, slices = 0,
     order = 1, slice_reverse = 0, repeat_amount = 0,
-    probability = 1, target = 3,
+    probability = 1, target = 3, granular = false,
+    grain_position = 0.5, grain_size = 0.12, grain_density = 12,
+    grain_rate = 1, grain_spread = 0.6, grain_freeze = false,
+  }
+end
+
+granular_patch_for_genre = function(genre, seed)
+  local airy = {
+    DEEP=true, LIQUID=true, TRANCE=true, PROG=true, MELODIC=true, MINIMAL=true,
+  }
+  local dense = {
+    DNB=true, JUNGLE=true, HARDTECHNO=true, HARDSTYLE=true, SPEED=true,
+  }
+  local rhythmic = {
+    GARAGE4=true, TWO_STEP=true, BREAKS=true, JUKE=true, ELECTRO=true,
+  }
+  local family = airy[genre] and 1 or (dense[genre] and 2 or
+    (rhythmic[genre] and 3 or 4))
+  local value = math.max(1, seed or 1)
+  local function variation(amount)
+    value = (value * 1103515245 + 12345) % 2147483648
+    return ((value / 2147483648) * 2 - 1) * amount
+  end
+  local bases = {
+    {size=1.45, density=0.70, rate=0.75, spread=1.20, position=0.08},
+    {size=0.65, density=1.45, rate=1.20, spread=0.85, position=-0.05},
+    {size=0.85, density=1.15, rate=1.00, spread=0.90, position=0.04},
+    {size=1.00, density=1.00, rate=1.00, spread=1.00, position=0.00},
+  }
+  local base = bases[family]
+  return {
+    size=math.max(0.5, base.size + variation(0.12)),
+    density=math.max(0.5, base.density + variation(0.12)),
+    rate=math.max(0.5, base.rate + variation(0.08)),
+    spread=math.max(0.4, base.spread + variation(0.10)),
+    position=base.position + variation(0.04),
   }
 end
 
@@ -161,8 +197,33 @@ function sampler_playback_settings(pad)
   }
 end
 
+function sampler_grain_settings(deck, pad)
+  local source = sampler_state.pads[pad] or sampler_state.pads[1]
+  local patch = deck.ngrain or granular_patch_for_genre(
+    deck.genre, deck.variation_seed
+  )
+  local function bounded(value, low, high)
+    return math.max(low, math.min(high, value))
+  end
+  return {
+    level = source.level,
+    position = bounded(source.grain_position + patch.position, 0.01, 0.99),
+    size = bounded(source.grain_size * patch.size, 0.015, 0.5),
+    density = bounded(source.grain_density * patch.density, 1, 32),
+    rate = bounded(
+      (2 ^ (source.pitch / 12)) * source.grain_rate * patch.rate,
+      0.125, 4
+    ),
+    pan = source.pan,
+    spread = bounded(source.grain_spread * patch.spread, 0, 1),
+    cutoff = source.cutoff,
+    freeze = source.grain_freeze,
+  }
+end
+
 function sampler_reset_runtime()
   sampler_state.running = {{}, {}}
+  sampler_state.grains = {nil, nil}
 end
 
 function sampler_stop_all_loops()
@@ -172,6 +233,7 @@ function sampler_stop_all_loops()
         internal_engine.sampler_loop_off(deck_id, pad)
       end
     end
+    internal_engine.sampler_grain_off(deck_id)
   end
   sampler_reset_runtime()
 end
@@ -372,11 +434,13 @@ local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, 
                 variation_seed=12345, n303=n303_patch_for_genre("HOUSE"),
                 nchord=nchord_patch_for_genre("HOUSE"),
                 nmono=nmono_patch_for_genre("HOUSE"),
+                ngrain=granular_patch_for_genre("HOUSE", 12345),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
                 variation_seed=54321, n303=n303_patch_for_genre("TWO_STEP"),
                 nchord=nchord_patch_for_genre("TWO_STEP"),
                 nmono=nmono_patch_for_genre("TWO_STEP"),
+                ngrain=granular_patch_for_genre("TWO_STEP", 54321),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 
 local notes_off = {}
@@ -529,6 +593,7 @@ local function make_deck(letter, excluded_genre)
       genre = genres[math.random(#genres)]
     end
   end
+  local variation_seed = math.random(1, 65535)
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -537,10 +602,11 @@ local function make_deck(letter, excluded_genre)
     root = roots[math.random(#roots)],
     pc = random_pc(),
     norns_preset = math.random(#norns_presets),
-    variation_seed = math.random(1, 65535),
+    variation_seed = variation_seed,
     n303 = n303_patch_for_genre(genre),
     nchord = nchord_patch_for_genre(genre),
     nmono = nmono_patch_for_genre(genre),
+    ngrain = granular_patch_for_genre(genre, variation_seed),
     nts1_identity = nil,
     nts1_motif = nil,
     nts1_phrase = nil,
@@ -2411,12 +2477,37 @@ end
 
 function sampler_advanced_tick(deck, deck_id, bar, sequencer_step)
   if not output_router.sends_internal("samples") then return end
+  local granular_claimed = false
   for pad, settings in ipairs(sampler_state.pads) do
     local targeted = settings.target == 3 or settings.target == deck_id
+    local grain_running = sampler_state.grains[deck_id]
+    if grain_running and grain_running.pad == pad and
+      (not settings.loaded or not targeted or not settings.granular) then
+      internal_engine.sampler_grain_off(deck_id)
+      sampler_state.grains[deck_id] = nil
+    end
     if not settings.loaded or not targeted then
       if sampler_state.running[deck_id][pad] then
         internal_engine.sampler_loop_off(deck_id, pad)
         sampler_state.running[deck_id][pad] = nil
+      end
+    elseif settings.granular then
+      if not granular_claimed then
+        granular_claimed = true
+        local grain = sampler_grain_settings(deck, pad)
+        local signature = string.format(
+          "%d:%.3f:%.3f:%.3f:%.3f:%.3f:%.3f:%s",
+          pad, grain.position, grain.size, grain.density, grain.rate,
+          grain.spread, grain.cutoff, tostring(grain.freeze)
+        )
+        local previous = sampler_state.grains[deck_id]
+        if sequencer_step == 1 and
+          (not previous or previous.signature ~= signature) then
+          internal_engine.sampler_grain_on(deck_id, pad, grain)
+          sampler_state.grains[deck_id] = {
+            pad=pad, signature=signature,
+          }
+        end
       end
     elseif settings.loop then
       local playback = sampler_playback_settings(pad)
@@ -3313,6 +3404,13 @@ function init()
       {"repeat_amount", 0, 100, 0},
       {"probability", 0, 100, 100},
       {"target", 1, 3, 3},
+      {"granular", 1, 2, 1},
+      {"grain_position", 0, 100, 50},
+      {"grain_size", 15, 500, 120},
+      {"grain_density", 1, 32, 12},
+      {"grain_rate", 25, 400, 100},
+      {"grain_spread", 0, 100, 60},
+      {"grain_freeze", 1, 2, 1},
     }
     for _, spec in ipairs(controls) do
       local name, lo, hi, default = spec[1], spec[2], spec[3], spec[4]
@@ -3338,6 +3436,13 @@ function init()
         elseif name == "repeat_amount" then settings.repeat_amount = v / 100
         elseif name == "probability" then settings.probability = v / 100
         elseif name == "target" then settings.target = v
+        elseif name == "granular" then settings.granular = (v == 2)
+        elseif name == "grain_position" then settings.grain_position = v / 100
+        elseif name == "grain_size" then settings.grain_size = v / 1000
+        elseif name == "grain_density" then settings.grain_density = v
+        elseif name == "grain_rate" then settings.grain_rate = v / 100
+        elseif name == "grain_spread" then settings.grain_spread = v / 100
+        elseif name == "grain_freeze" then settings.grain_freeze = (v == 2)
         end
       end)
     end
@@ -3353,6 +3458,8 @@ function init()
       "finish", "cutoff", "choke", "gated", "source_bpm",
       "loop", "slices", "order", "slice_reverse",
       "repeat_amount", "probability", "target",
+      "granular", "grain_position", "grain_size", "grain_density",
+      "grain_rate", "grain_spread", "grain_freeze",
     }) do
       params:set(
         "nsampler_" .. name,
@@ -3373,6 +3480,11 @@ function init()
     {"slice_reverse", "n-sampler reverse slices", 0, 100, 0},
     {"repeat_amount", "n-sampler repeat", 0, 100, 0},
     {"probability", "n-sampler probability", 0, 100, 100},
+    {"grain_position", "grain position", 0, 100, 50},
+    {"grain_size", "grain size ms", 15, 500, 120},
+    {"grain_density", "grain density", 1, 32, 12},
+    {"grain_rate", "grain rate %", 25, 400, 100},
+    {"grain_spread", "grain spread", 0, 100, 60},
   }
   for _, control in ipairs(visible_controls) do
     local name = control[1]
@@ -3390,14 +3502,21 @@ function init()
     {"slices", "n-sampler slices", {"off", "8 slices", "16 slices"}},
     {"order", "n-sampler slice order", {"forward", "reverse", "random"}},
     {"target", "n-sampler target", {"deck A", "deck B", "both"}},
+    {"granular", "n-sampler granular", {"off", "on"}},
+    {"grain_freeze", "grain freeze", {"off", "on"}},
   }) do
     local name = option[1]
     params:add_option("nsampler_" .. name, option[2], option[3], 1)
     params:set_action("nsampler_" .. name, function(v)
       if name == "loop" and v == 2 then
         params:set("nsampler_slices", 1)
+        params:set("nsampler_granular", 1)
       elseif name == "slices" and v > 1 then
         params:set("nsampler_loop", 1)
+        params:set("nsampler_granular", 1)
+      elseif name == "granular" and v == 2 then
+        params:set("nsampler_loop", 1)
+        params:set("nsampler_slices", 1)
       end
       params:set("nsampler_pad_" .. sampler_state.edit_pad .. "_" .. name, v)
     end)
@@ -3429,6 +3548,21 @@ function init()
   params:set_action("nsampler_stop_loop", function()
     internal_engine.sampler_loop_off(1, sampler_state.edit_pad)
     sampler_state.running[1][sampler_state.edit_pad] = nil
+  end)
+  params:add_trigger("nsampler_start_grain", "start granular texture")
+  params:set_action("nsampler_start_grain", function()
+    local deck = current_deck()
+    local deck_id = internal_engine.deck_id(deck, deck_a)
+    internal_engine.sampler_grain_on(
+      deck_id, sampler_state.edit_pad,
+      sampler_grain_settings(deck, sampler_state.edit_pad)
+    )
+  end)
+  params:add_trigger("nsampler_stop_grain", "stop granular texture")
+  params:set_action("nsampler_stop_grain", function()
+    internal_engine.sampler_grain_off(1)
+    internal_engine.sampler_grain_off(2)
+    sampler_state.grains = {nil, nil}
   end)
   for i, role in ipairs(sampler_state.roles) do
     local pad_index, role_name = i, role

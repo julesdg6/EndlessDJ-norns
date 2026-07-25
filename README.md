@@ -162,6 +162,36 @@ Suggested setup:
 5. Choose Deck A, Deck B, or both.
 6. Set samples output to `internal` or `both`, then start transport.
 
+GRANULAR N-SAMPLER
+
+Each user pad can also become a persistent granular texture. Granular mode is
+mutually exclusive with loop and slice modes. Its controls set the centre
+position, grain size, density, playback rate, stereo spread, and freeze state.
+With freeze off, the read position scans through the sample; freeze holds the
+selected position while grains continue to play.
+
+Every generated song receives a stable genre-shaped granular patch. Ambient,
+dub, and melodic styles favour longer, airier grains; harder and faster styles
+favour shorter, denser textures; broken-beat styles use tighter rhythmic
+settings. The user pad controls remain the base settings, while the song patch
+adds bounded variation that remains stable for the life of that deck.
+
+Only one granular node can run per deck, with a maximum of 24 overlapping
+grains per node and density capped at 32 grains per second. This keeps Deck A
+and Deck B independent during a transition while bounding Norns CPU use.
+Starting another granular pad on the same deck replaces the previous texture.
+Stopping transport, changing the sample route away from internal, cleanup, and
+engine all-off release both granular nodes.
+
+To try it:
+
+1. Assign a WAV to a user pad and select that pad for editing.
+2. Enable granular mode and choose Deck A, Deck B, or both.
+3. Adjust position, size, density, rate, spread, and freeze.
+4. Set samples output to `internal` or `both` and start transport.
+5. Use `start granular texture` and `stop granular texture` for immediate
+   auditioning without waiting for the sequencer.
+
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
 models in future milestones.

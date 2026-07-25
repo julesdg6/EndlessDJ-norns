@@ -197,6 +197,26 @@ function InternalEngine.sampler_loop_off(deck_id, pad)
   call("nsampler_loop_off", deck_id, pad)
 end
 
+function InternalEngine.sampler_grain_on(deck_id, pad, settings)
+  settings = settings or {}
+  call(
+    "nsampler_grain_on", deck_id, pad,
+    settings.level or 0.65,
+    settings.position or 0.5,
+    settings.size or 0.12,
+    settings.density or 12,
+    settings.rate or 1,
+    settings.pan or 0,
+    settings.spread or 0.6,
+    settings.cutoff or 1,
+    settings.freeze and 1 or 0
+  )
+end
+
+function InternalEngine.sampler_grain_off(deck_id)
+  call("nsampler_grain_off", deck_id)
+end
+
 function InternalEngine.load_sample(pad, path)
   call("nsampler_load", pad, path)
 end
