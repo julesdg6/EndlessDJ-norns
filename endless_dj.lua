@@ -206,6 +206,17 @@ n303_patch_for_genre = function(genre)
     JUNGLE     = {0.45, 0.41, 0.52, 0.50, 0.24, 0.50, 0.27},
     BASSLINE   = {0.58, 0.43, 0.66, 0.61, 0.32, 0.56, 0.40},
     SPEED      = {0.48, 0.46, 0.62, 0.58, 0.25, 0.60, 0.25},
+    HOUSE      = {0.12, 0.38, 0.52, 0.48, 0.50, 0.28, 0.42},
+    FUNKY      = {0.18, 0.45, 0.55, 0.52, 0.55, 0.25, 0.48},
+    DIRTY      = {0.25, 0.41, 0.64, 0.60, 0.40, 0.52, 0.35},
+    GARAGE4    = {0.15, 0.42, 0.58, 0.50, 0.48, 0.30, 0.44},
+    TWO_STEP   = {0.20, 0.44, 0.58, 0.52, 0.46, 0.32, 0.46},
+    BREAKS     = {0.30, 0.40, 0.62, 0.58, 0.38, 0.42, 0.38},
+    LIQUID     = {0.22, 0.36, 0.48, 0.44, 0.62, 0.22, 0.55},
+    ELECTRO    = {0.05, 0.52, 0.68, 0.58, 0.35, 0.44, 0.30},
+    JUKE       = {0.35, 0.46, 0.64, 0.60, 0.30, 0.50, 0.32},
+    AFRO       = {0.18, 0.39, 0.50, 0.46, 0.58, 0.25, 0.52},
+    HARDSTYLE  = {0.10, 0.55, 0.72, 0.66, 0.28, 0.64, 0.28},
   }
   local profile = profiles[genre] or {0.30, 0.42, 0.57, 0.53, 0.45, 0.35, 0.40}
   local function varied(index, spread)
@@ -855,148 +866,172 @@ local drum_patterns = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={7,15}
   },
   FUNKY = {
     kick={1,5,9,11,13},
     snare={5,13},
     clap={5,13},
-    hats={3,4,7,10,11,15}
+    hats={3,4,7,10,11,15},
+    ohats={7,11,15}
   },
   DIRTY = {
     kick={1,5,9,13,16},
     snare={5,13},
     clap={5,13},
-    hats={3,7,8,11,15}
+    hats={3,7,8,11,15},
+    ohats={7,15}
   },
   TECHNO = {
     kick={1,5,9,13},
     snare={},
     clap={},
     tom={4,8,12,16},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={7,15}
   },
   GARAGE4 = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={3,4,7,10,12,15}
+    hats={3,4,7,10,12,15},
+    ohats={4,8,12,16}
   },
   TWO_STEP = {
     kick={1,7,11},
     snare={5,13},
     clap={5,13},
-    hats={3,4,7,10,12,15}
+    hats={3,4,7,10,12,15},
+    ohats={4,12}
   },
   BREAKS = {
     kick={1,4,11,15},
     snare={5,13},
     clap={},
-    hats={3,6,8,11,14,16}
+    hats={3,6,8,11,14,16},
+    ohats={6,14}
   },
   DUBSTEP = {
     kick={1,11},
     snare={9},
     clap={9},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={9}
   },
   DEEP = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={7,15}
+    hats={7,15},
+    ohats={7,15}
   },
   ACID = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={7,15}
   },
   TRANCE = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}
+    hats={1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16},
+    ohats={9}
   },
   PROG = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={1,3,5,7,9,11,13,15}
+    hats={1,3,5,7,9,11,13,15},
+    ohats={7,15}
   },
   JUNGLE = {
     kick={1,3,7,11,13},
     snare={5,9,13},
     clap={},
-    hats={2,4,6,8,10,12,14,16}
+    hats={2,4,6,8,10,12,14,16},
+    ohats={3,11}
   },
   DNB = {
     kick={1,7,11},
     snare={5,9,13},
     clap={},
-    hats={2,4,6,8,10,12,14,16}
+    hats={2,4,6,8,10,12,14,16},
+    ohats={3,11}
   },
   LIQUID = {
     kick={1,7,11},
     snare={5,9,13},
     clap={9},
-    hats={3,6,9,12,15}
+    hats={3,6,9,12,15},
+    ohats={7,15}
   },
   HARDTECHNO = {
     kick={1,5,9,13},
     snare={},
     clap={5,13},
     tom={3,7,11,15},
-    hats={2,4,6,8,10,12,14,16}
+    hats={2,4,6,8,10,12,14,16},
+    ohats={7,15}
   },
   ELECTRO = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={3,7,10,14}
+    hats={3,7,10,14},
+    ohats={5,13}
   },
   JUKE = {
     kick={1,5,7,9,11,13,15},
     snare={5,9,13},
     clap={},
-    hats={1,3,5,7,9,11,13,15}
+    hats={1,3,5,7,9,11,13,15},
+    ohats={4,8,12,16}
   },
   AFRO = {
     kick={1,5,9,13},
     snare={7,15},
     clap={5,11},
     tom={3,8,12},
-    hats={2,4,7,10,12,15}
+    hats={2,4,7,10,12,15},
+    ohats={4,9,13}
   },
   MINIMAL = {
     kick={1,9},
     snare={},
     clap={9},
-    hats={5,13}
+    hats={5,13},
+    ohats={9}
   },
   MELODIC = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={7,15}
   },
   SPEED = {
     kick={1,5,9,13},
     snare={5,13},
     clap={3,9},
-    hats={3,7,10,14}
+    hats={3,7,10,14},
+    ohats={7,11,15}
   },
   BASSLINE = {
     kick={1,5,9,13},
     snare={5,13},
     clap={5,13},
-    hats={4,8,12,16}
+    hats={4,8,12,16},
+    ohats={7,13}
   },
   HARDSTYLE = {
     kick={1,5,9,13},
     snare={9},
     clap={},
-    hats={3,7,11,15}
+    hats={3,7,11,15},
+    ohats={5,13}
   }
 }
 
@@ -1420,7 +1455,25 @@ acid_cfg.profiles = {
   HOUSE={root_weight=1.15,syncopation=0.18,gate_anchor=0.20,slide_bias=0.35,accent_bias=0.70,octave_bias=0.55},
   HARDTECHNO={root_weight=1.45,syncopation=0.14,gate_anchor=0.28,slide_bias=0.55,accent_bias=1.10,octave_bias=0.55},
   BASSLINE={root_weight=1.05,syncopation=0.28,gate_anchor=0.18,slide_bias=0.85,accent_bias=0.95,octave_bias=1.10},
-  TRANCE={root_weight=0.95,syncopation=0.16,gate_anchor=0.16,slide_bias=0.35,accent_bias=0.80,octave_bias=0.90}
+  TRANCE={root_weight=0.95,syncopation=0.16,gate_anchor=0.16,slide_bias=0.35,accent_bias=0.80,octave_bias=0.90},
+  FUNKY={root_weight=1.00,syncopation=0.25,gate_anchor=0.18,slide_bias=0.50,accent_bias=0.75,octave_bias=0.80},
+  DIRTY={root_weight=1.30,syncopation=0.15,gate_anchor=0.26,slide_bias=0.60,accent_bias=0.90,octave_bias=0.60},
+  GARAGE4={root_weight=1.10,syncopation=0.22,gate_anchor=0.22,slide_bias=0.40,accent_bias=0.75,octave_bias=0.65},
+  TWO_STEP={root_weight=0.90,syncopation=0.32,gate_anchor=0.15,slide_bias=0.55,accent_bias=0.80,octave_bias=0.85},
+  BREAKS={root_weight=1.05,syncopation=0.28,gate_anchor=0.18,slide_bias=0.45,accent_bias=0.85,octave_bias=0.75},
+  DUBSTEP={root_weight=1.40,syncopation=0.08,gate_anchor=0.40,slide_bias=0.25,accent_bias=1.10,octave_bias=0.40},
+  DEEP={root_weight=1.20,syncopation=0.12,gate_anchor=0.28,slide_bias=0.20,accent_bias=0.55,octave_bias=0.40},
+  PROG={root_weight=1.10,syncopation=0.14,gate_anchor=0.24,slide_bias=0.30,accent_bias=0.70,octave_bias=0.60},
+  JUNGLE={root_weight=1.00,syncopation=0.30,gate_anchor=0.16,slide_bias=0.40,accent_bias=0.90,octave_bias=0.85},
+  DNB={root_weight=1.10,syncopation=0.26,gate_anchor=0.20,slide_bias=0.35,accent_bias=1.00,octave_bias=0.70},
+  LIQUID={root_weight=0.95,syncopation=0.20,gate_anchor=0.16,slide_bias=0.65,accent_bias=0.70,octave_bias=0.90},
+  ELECTRO={root_weight=1.30,syncopation=0.12,gate_anchor=0.30,slide_bias=0.20,accent_bias=0.85,octave_bias=0.50},
+  JUKE={root_weight=0.85,syncopation=0.38,gate_anchor=0.12,slide_bias=0.45,accent_bias=0.90,octave_bias=1.10},
+  AFRO={root_weight=1.00,syncopation=0.28,gate_anchor=0.16,slide_bias=0.35,accent_bias=0.75,octave_bias=0.80},
+  MINIMAL={root_weight=1.45,syncopation=0.08,gate_anchor=0.40,slide_bias=0.15,accent_bias=0.60,octave_bias=0.30},
+  MELODIC={root_weight=0.90,syncopation=0.20,gate_anchor=0.14,slide_bias=0.75,accent_bias=0.75,octave_bias=1.00},
+  SPEED={root_weight=1.20,syncopation=0.18,gate_anchor=0.25,slide_bias=0.55,accent_bias=1.00,octave_bias=0.65},
+  HARDSTYLE={root_weight=1.45,syncopation=0.10,gate_anchor=0.30,slide_bias=0.30,accent_bias=1.15,octave_bias=0.45}
 }
 acid_cfg.note_min = 36
 acid_cfg.note_max = 60
@@ -2259,7 +2312,9 @@ local bass_prob = {
   DUBSTEP=0.90, TECHNO=0.65,
   -- new genres
   DEEP=0.40, MINIMAL=0.35, PROG=0.45,
-  ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85
+  ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85,
+  JUNGLE=0.85, SPEED=0.80, BREAKS=0.75, TWO_STEP=0.70,
+  ELECTRO=0.70, HARDSTYLE=0.80, AFRO=0.65, LIQUID=0.60
 }
 
 -- Per-genre block-chord sustain duration in ticks (default 10).
@@ -2273,8 +2328,9 @@ local block_chord_dur = {
 
 -- Per-genre bass note octave offset (default 0) and note length in ticks (default 1).
 -- Only genres deviating from the default are listed.
-local bass_octave = { DUBSTEP=-12, DNB=-12 }  -- sub-bass register
-local bass_len    = { DUBSTEP=3 }             -- DUBSTEP uses long, sustained bass notes
+local bass_octave = { DUBSTEP=-12, DNB=-12, HARDSTYLE=-12 }  -- sub-bass register
+-- DUBSTEP=long sustained; DEEP/MINIMAL/LIQUID/MELODIC/PROG/HARDSTYLE=breathing legato
+local bass_len    = { DUBSTEP=3, DEEP=2, MINIMAL=2, LIQUID=2, MELODIC=2, PROG=2, HARDSTYLE=2 }
 
 acid_cfg.step_index = function(acid, b, s)
   return (((b - 1) * 16) + (s - 1)) % acid.length + 1
@@ -2393,16 +2449,49 @@ local function play_drums(sec, s, b, mix_fades, deck)
     if drum_steps[3][s] and math.random() < drums_amount then
       t8_note(OHH, 70, drum_ch, 1, deck)
     end
-  elseif (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.35 * drums_amount then
+  elseif p.ohats and hit(p.ohats, s) and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
+    t8_note(OHH, 70, drum_ch, 1, deck)
+  elseif not p.ohats and (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
     t8_note(OHH, 70, drum_ch, 1, deck)
   end
 
-  -- Bar fills (always generative)
-  if b % 16 == 0 and s >= 13 and math.random() < drums_amount then
-    if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
-    if s == 14 then t8_note(TOM, 90, drum_ch, 1, deck) end
-    if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
-    if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
+  -- Bar fills: genre-specific interval and voice selection
+  local fill_interval = 16
+  if gn == "DUBSTEP" or gn == "MINIMAL" or gn == "DEEP" then
+    fill_interval = 32
+  elseif gn == "BREAKS" or gn == "DNB" or gn == "JUNGLE" or gn == "TWO_STEP" or gn == "JUKE" then
+    fill_interval = 8
+  end
+  if b % fill_interval == 0 and s >= 13 and math.random() < drums_amount then
+    if gn == "TECHNO" or gn == "HARDTECHNO" then
+      -- tom-dominant fills for techno styles
+      if s == 13 then t8_note(TOM, 92, drum_ch, 1, deck) end
+      if s == 14 then t8_note(TOM, 98, drum_ch, 1, deck) end
+      if s == 15 then t8_note(TOM, 105, drum_ch, 1, deck) end
+      if s == 16 then t8_note(CLAP, 110, drum_ch, 1, deck) end
+    elseif gn == "DUBSTEP" then
+      -- sparse half-time fill
+      if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
+      if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
+    elseif gn == "DNB" or gn == "JUNGLE" then
+      -- energetic Amen-style fills
+      if s == 13 then t8_note(SNARE, 98, drum_ch, 1, deck) end
+      if s == 14 then t8_note(SNARE, 105, drum_ch, 1, deck) end
+      if s == 15 then t8_note(TOM, 95, drum_ch, 1, deck) end
+      if s == 16 then t8_note(SNARE, 115, drum_ch, 1, deck) end
+    elseif gn == "BREAKS" then
+      -- syncopated breaks fill
+      if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
+      if s == 14 then t8_note(SNARE, 108, drum_ch, 1, deck) end
+      if s == 15 then t8_note(TOM, 92, drum_ch, 1, deck) end
+      if s == 16 then t8_note(SNARE, 112, drum_ch, 1, deck) end
+    else
+      -- default fill
+      if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
+      if s == 14 then t8_note(TOM, 90, drum_ch, 1, deck) end
+      if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
+      if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
+    end
   end
 end
 
@@ -2474,7 +2563,11 @@ local function play_chords(sec, s, deck, b, mix_fades)
   local notes = {base+triad[1], base+triad[2], base+triad[3]}
   local internal_notes = nchord_voice_notes(notes, deck.nchord)
   local patch_strum = deck.nchord.strum or 0
-  local style = choose(chord_styles[gn] or {"block"})
+  -- Pick and lock the chord style for this deck's identity on first use.
+  if not deck.chord_style then
+    deck.chord_style = choose(chord_styles[gn] or {"block"})
+  end
+  local style = deck.chord_style
   local vel = sec=="DROP" and 98 or 78
 
   if style == "block" then
