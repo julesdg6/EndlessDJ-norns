@@ -1,5 +1,6 @@
 Engine_Endless : CroneEngine {
 	var server, deckBuses, instrumentBuses, delayBuses, reverbBuses, masterBus;
+	var autoControlBuses, autoMeters;
 	var deckMixers, masterMixer, instrumentMixers, effectReturns, voices, sampleBuffers;
 	var samplerChokes, samplerHeld, samplerLoops, samplerGrains, openHats;
 	var n303Voices, n303SlidePending;
@@ -37,6 +38,7 @@ Engine_Endless : CroneEngine {
 		});
 		delayBuses = Array.fill(2, { Bus.audio(server, 2) });
 		reverbBuses = Array.fill(2, { Bus.audio(server, 2) });
+		autoControlBuses = Array.fill(2, { Bus.control(server, 2) });
 		masterBus = Bus.audio(server, 2);
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
@@ -56,11 +58,28 @@ Engine_Endless : CroneEngine {
 			("endlessChord" ++ (preset + 1)).asSymbol
 		});
 
+		SynthDef(\endlessAutoMeter, {
+			arg kickBus=0, bassBus=0, outBus=0;
+			var kickSignal, bassSignal, kickLevel, bassLevel;
+			kickSignal = In.ar(kickBus, 2);
+			bassSignal = In.ar(bassBus, 2);
+			kickLevel = Amplitude.kr(
+				kickSignal[0].abs + kickSignal[1].abs, 0.005, 0.12
+			).clip(0, 1);
+			bassLevel = Amplitude.kr(
+				bassSignal[0].abs + bassSignal[1].abs, 0.01, 0.16
+			).clip(0, 1);
+			ReplaceOut.kr(outBus, [kickLevel, bassLevel]);
+		}).add;
+
 		SynthDef(\endlessInstrumentMixer, {
 			arg inBus=0, outBus=0, delayBus=0, reverbBus=0,
+				autoBus=0, part=0,
 				level=1, pan=0, filterControl=1, saturation=0,
-				delaySend=0, reverbSend=0;
+				delaySend=0, reverbSend=0, autoAmount=0,
+				kickDuck=0.3, melodyPriority=0.45;
 			var input, cutoff, filtered, saturated, driven, signal, saturationAmount;
+			var autoLevels, kickLevel, bassLevel, sidechain, roleGain;
 			input = In.ar(inBus, 2);
 			cutoff = filterControl.linexp(0, 1, 180, 20000);
 			filtered = LPF.ar(input, Lag.kr(cutoff, 0.03));
@@ -71,6 +90,22 @@ Engine_Endless : CroneEngine {
 			signal = Balance2.ar(
 				driven[0], driven[1], Lag.kr(pan, 0.03), Lag.kr(level, 0.03)
 			);
+			autoLevels = In.kr(autoBus, 2);
+			kickLevel = autoLevels[0];
+			bassLevel = autoLevels[1];
+			sidechain = kickLevel.max(bassLevel);
+			roleGain = Select.kr(part, [
+				1,
+				(1 - (kickLevel * kickDuck * autoAmount * 0.45)).clip(0.6, 1),
+				(1 - (
+					sidechain * autoAmount * (0.62 - (melodyPriority * 0.32))
+				)).clip(0.55, 1),
+				(1 - (
+					sidechain * autoAmount * (0.52 - (melodyPriority * 0.28))
+				)).clip(0.6, 1),
+				(1 - (sidechain * autoAmount * 0.28)).clip(0.7, 1)
+			]);
+			signal = signal * Lag.kr(roleGain, 0.04);
 			Out.ar(outBus, signal);
 			Out.ar(delayBus, signal * Lag.kr(delaySend, 0.03));
 			Out.ar(reverbBus, signal * Lag.kr(reverbSend, 0.03));
@@ -455,13 +490,22 @@ Engine_Endless : CroneEngine {
 				\out, instrumentBuses[deck][3].index
 			]);
 		});
+		autoMeters = Array.fill(2, { arg deck;
+			Synth.tail(context.xg, \endlessAutoMeter, [
+				\kickBus, instrumentBuses[deck][0].index,
+				\bassBus, instrumentBuses[deck][1].index,
+				\outBus, autoControlBuses[deck].index
+			]);
+		});
 		instrumentMixers = Array.fill(2, { arg deck;
 			Array.fill(5, { arg part;
 				Synth.tail(context.xg, \endlessInstrumentMixer, [
 					\inBus, instrumentBuses[deck][part].index,
 					\outBus, deckBuses[deck].index,
 					\delayBus, delayBuses[deck].index,
-					\reverbBus, reverbBuses[deck].index
+					\reverbBus, reverbBuses[deck].index,
+					\autoBus, autoControlBuses[deck].index,
+					\part, part
 				]);
 			});
 		});
@@ -522,6 +566,17 @@ Engine_Endless : CroneEngine {
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			effectReturns[deck][0].set(\level, msg[2].asFloat.clip(0, 1.5));
 			effectReturns[deck][1].set(\level, msg[3].asFloat.clip(0, 1.5));
+		});
+
+		this.addCommand(\automix_set, "ifff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			instrumentMixers[deck].do({ arg mixer;
+				mixer.set(
+					\autoAmount, msg[2].asFloat.clip(0, 1),
+					\kickDuck, msg[3].asFloat.clip(0, 1),
+					\melodyPriority, msg[4].asFloat.clip(0, 1)
+				);
+			});
 		});
 
 		this.addCommand(\master_set, "ffff", { arg msg;
@@ -883,12 +938,14 @@ Engine_Endless : CroneEngine {
 		n303Voices.do({ arg synth; synth.free; });
 		nmonoVoices.do({ arg synth; synth.free; });
 		nchordHeld.do({ arg held; held.do({ arg synth; synth.free; }); });
+		autoMeters.do({ arg synth; synth.free; });
 		instrumentMixers.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		effectReturns.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		deckMixers.do({ arg synth; synth.free; });
 		masterMixer.free;
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
 		instrumentBuses.do({ arg deck; deck.do({ arg bus; bus.free; }); });
+		autoControlBuses.do({ arg bus; bus.free; });
 		delayBuses.do({ arg bus; bus.free; });
 		reverbBuses.do({ arg bus; bus.free; });
 		deckBuses.do({ arg bus; bus.free; });

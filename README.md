@@ -98,6 +98,21 @@ limiter ceiling are exposed in parameters. Conservative defaults preserve the
 existing mix while preventing simultaneous internal instruments or two-deck
 overlap from exceeding the configured ceiling.
 
+The auto mixer adds a musical starting balance to every generated song rather
+than imposing one fixed mix on every genre. It gives drums, bass, chords, mono,
+and samples deterministic per-song trims, with quieter chord and mono defaults
+for bass- or percussion-heavy styles. `gentle`, `balanced`, and `assertive`
+modes add progressively stronger kick/bass-aware ducking; `off` bypasses all
+automatic trims and keeps the manual channel levels unchanged. Melody priority,
+kick-to-bass ducking, target headroom, and two-deck transition compensation are
+adjustable in the `INTERNAL MIXER` parameter group.
+
+The kick and bass are measured once per deck on lightweight control buses.
+Every channel reads those shared measurements, avoiding duplicate envelope
+followers and preserving CPU headroom. Deck A and Deck B remain independent,
+and transition compensation reduces only the summed overlap while both decks
+are audible.
+
 To preserve Norns CPU headroom, silent instrument channels, idle persistent
 voices, unused effect returns, deck buses, and the master processor suspend
 their audio calculations automatically. They wake before the next note,
