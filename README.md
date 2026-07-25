@@ -116,11 +116,22 @@ layered NTS-1 routing is unchanged.
 N-SAMPLER includes 32 original mono factory risers in noise, tonal,
 metallic/digital, and hybrid impact-rise families. The library loads
 automatically, and each generated song selects one stable riser from the full
-set. Sixteen persistent file parameters allow factory slots to be replaced
-with personal WAV files. Playback supports level, rate/pitch (including
-reverse), pan, start/end position, low-pass filtering, and four choke groups.
-Missing user files are reported and skipped safely. External MPX8 triggering
-remains unchanged and is still the default route.
+set. A further 28 original factory one-shots provide four stable variants for
+each percussion accent, alternate percussion, short fill, long fill, impact,
+vocal/FX stab, and drop-accent role. Every generated song chooses its own
+repeatable role set from its variation seed.
+
+Sixteen persistent file parameters remain reserved for personal samples and do
+not overwrite the factory performance banks. Select `n-sampler edit pad` to
+change the chosen pad's level, pitch, reverse, pan, start/end position,
+low-pass filter, choke group, and one-shot/gated mode. The test and release
+parameters make every user pad immediately playable; eight factory-role test
+parameters audition the automatically selected sounds without waiting for a
+song section. Missing user files are reported and skipped safely.
+
+The existing MPX8 events now map to matching internal factory roles when
+samples output is `internal` or `both`. External MPX8 notes, configuration, and
+the default external route remain unchanged.
 
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth

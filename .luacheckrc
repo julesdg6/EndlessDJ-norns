@@ -27,6 +27,8 @@ globals = {
   "params",
   "redraw",
   "screen",
+  "sampler_playback_settings",
+  "sampler_state",
   "softcut",
   "util",
 }
