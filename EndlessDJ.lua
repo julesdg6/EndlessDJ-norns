@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.73
+-- Endless DJ v1.74
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -139,6 +139,31 @@ sampler_state = {
   running = {{}, {}},
   grains = {nil, nil},
 }
+
+mixer_state = {
+  parts = {"drums", "bass", "chords", "mono", "samples"},
+  channels = {},
+  master_level = 0.9,
+  limiter_ceiling = 0.9,
+  master_compression = 0.35,
+  master_threshold = 0.55,
+  delay_return = 0.7,
+  reverb_return = 0.7,
+}
+for _, part in ipairs(mixer_state.parts) do
+  mixer_state.channels[part] = {
+    level=1, pan=0, filter=1, saturation=0,
+    delay_send=0, reverb_send=0,
+  }
+end
+
+function mixer_apply_channel(part, part_id)
+  local settings = mixer_state.channels[part]
+  if not settings then return end
+  internal_engine.set_mixer(1, part_id, settings)
+  internal_engine.set_mixer(2, part_id, settings)
+end
+
 for i = 1, 16 do
   sampler_state.pads[i] = {
     level = 1, pitch = 0, reverse = false, pan = 0,
@@ -3364,6 +3389,90 @@ function init()
       end
     end)
   end
+
+  params:add_separator("mixer_sep", "INTERNAL MIXER")
+  for part_id, part in ipairs(mixer_state.parts) do
+    local channel_id, channel_name = part_id, part
+    for _, control in ipairs({
+      {"level", "level", 0, 150, 100},
+      {"pan", "pan", -100, 100, 0},
+      {"filter", "filter", 0, 100, 100},
+      {"saturation", "saturation", 0, 100, 0},
+      {"delay_send", "delay send", 0, 100, 0},
+      {"reverb_send", "reverb send", 0, 100, 0},
+    }) do
+      local name, label = control[1], control[2]
+      params:add_number(
+        "mix_" .. channel_name .. "_" .. name,
+        channel_name .. " " .. label,
+        control[3], control[4], control[5]
+      )
+      params:set_action("mix_" .. channel_name .. "_" .. name, function(v)
+        if name == "level" then
+          mixer_state.channels[channel_name].level = v / 100
+        elseif name == "pan" then
+          mixer_state.channels[channel_name].pan = v / 100
+        elseif name == "filter" then
+          mixer_state.channels[channel_name].filter = v / 100
+        elseif name == "saturation" then
+          mixer_state.channels[channel_name].saturation = v / 100
+        elseif name == "delay_send" then
+          mixer_state.channels[channel_name].delay_send = v / 100
+        elseif name == "reverb_send" then
+          mixer_state.channels[channel_name].reverb_send = v / 100
+        end
+        mixer_apply_channel(channel_name, channel_id)
+      end)
+    end
+  end
+
+  params:add_number("mix_delay_return", "delay return", 0, 150, 70)
+  params:set_action("mix_delay_return", function(v)
+    mixer_state.delay_return = v / 100
+    for deck_id = 1, 2 do
+      internal_engine.set_fx_returns(
+        deck_id, mixer_state.delay_return, mixer_state.reverb_return
+      )
+    end
+  end)
+  params:add_number("mix_reverb_return", "reverb return", 0, 150, 70)
+  params:set_action("mix_reverb_return", function(v)
+    mixer_state.reverb_return = v / 100
+    for deck_id = 1, 2 do
+      internal_engine.set_fx_returns(
+        deck_id, mixer_state.delay_return, mixer_state.reverb_return
+      )
+    end
+  end)
+
+  local function apply_master_settings()
+    internal_engine.set_master(
+      mixer_state.master_level,
+      mixer_state.limiter_ceiling,
+      mixer_state.master_compression,
+      mixer_state.master_threshold
+    )
+  end
+  params:add_number("mix_master_level", "master level", 0, 125, 90)
+  params:set_action("mix_master_level", function(v)
+    mixer_state.master_level = v / 100
+    apply_master_settings()
+  end)
+  params:add_number("mix_master_compression", "master compression", 0, 100, 35)
+  params:set_action("mix_master_compression", function(v)
+    mixer_state.master_compression = v / 100
+    apply_master_settings()
+  end)
+  params:add_number("mix_master_threshold", "compressor threshold", 20, 100, 55)
+  params:set_action("mix_master_threshold", function(v)
+    mixer_state.master_threshold = v / 100
+    apply_master_settings()
+  end)
+  params:add_number("mix_limiter_ceiling", "limiter ceiling", 50, 98, 90)
+  params:set_action("mix_limiter_ceiling", function(v)
+    mixer_state.limiter_ceiling = v / 100
+    apply_master_settings()
+  end)
 
   params:add_separator("nsampler_sep", "N-SAMPLER")
   for i = 1, 16 do

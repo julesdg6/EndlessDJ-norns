@@ -1,5 +1,6 @@
 Engine_Endless : CroneEngine {
-	var server, deckBuses, deckMixers, voices, sampleBuffers;
+	var server, deckBuses, instrumentBuses, delayBuses, reverbBuses, masterBus;
+	var deckMixers, masterMixer, instrumentMixers, effectReturns, voices, sampleBuffers;
 	var samplerChokes, samplerHeld, samplerLoops, samplerGrains, openHats;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
@@ -20,6 +21,12 @@ Engine_Endless : CroneEngine {
 		samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
 		samplerGrains = Array.fill(2, { nil });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
+		instrumentBuses = Array.fill(2, {
+			Array.fill(5, { Bus.audio(server, 2) })
+		});
+		delayBuses = Array.fill(2, { Bus.audio(server, 2) });
+		reverbBuses = Array.fill(2, { Bus.audio(server, 2) });
+		masterBus = Bus.audio(server, 2);
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
 		n303SlidePending = Array.fill(2, { false });
@@ -29,9 +36,63 @@ Engine_Endless : CroneEngine {
 		nchordFilterEnv = Array.fill(2, { 0.5 });
 		nchordChorus = Array.fill(2, { 0.35 });
 
+		SynthDef(\endlessInstrumentMixer, {
+			arg inBus=0, outBus=0, delayBus=0, reverbBus=0,
+				level=1, pan=0, filterControl=1, saturation=0,
+				delaySend=0, reverbSend=0;
+			var input, cutoff, filtered, saturated, driven, signal, saturationAmount;
+			input = In.ar(inBus, 2);
+			cutoff = filterControl.linexp(0, 1, 180, 20000);
+			filtered = LPF.ar(input, Lag.kr(cutoff, 0.03));
+			saturationAmount = Lag.kr(saturation, 0.03);
+			saturated = (filtered * (1 + (saturationAmount * 5))).tanh;
+			driven = (filtered * (1 - saturationAmount)) +
+				(saturated * saturationAmount);
+			signal = Balance2.ar(
+				driven[0], driven[1], Lag.kr(pan, 0.03), Lag.kr(level, 0.03)
+			);
+			Out.ar(outBus, signal);
+			Out.ar(delayBus, signal * Lag.kr(delaySend, 0.03));
+			Out.ar(reverbBus, signal * Lag.kr(reverbSend, 0.03));
+		}).add;
+
+		SynthDef(\endlessDelayReturn, { arg inBus=0, out=0, level=0.7;
+			var input, delayed;
+			input = In.ar(inBus, 2);
+			delayed = [
+				CombC.ar(input[0] + (input[1] * 0.2), 0.75, 0.375, 2.2),
+				CombC.ar(input[1] + (input[0] * 0.2), 0.75, 0.5, 2.4)
+			];
+			Out.ar(out, LeakDC.ar(delayed) * 0.45 * Lag.kr(level, 0.03));
+		}).add;
+
+		SynthDef(\endlessReverbReturn, { arg inBus=0, out=0, level=0.7;
+			var input, wet;
+			input = In.ar(inBus, 2);
+			wet = FreeVerb2.ar(input[0], input[1], 0.78, 0.72, 0.35);
+			Out.ar(out, LeakDC.ar(wet) * 0.42 * Lag.kr(level, 0.03));
+		}).add;
+
 		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
-			var signal = In.ar(inBus, 2);
-			Out.ar(out, signal * Lag.kr(level, 0.03));
+			Out.ar(out, In.ar(inBus, 2) * Lag.kr(level, 0.03));
+		}).add;
+
+		SynthDef(\endlessMaster, {
+			arg inBus=0, out=0, masterLevel=0.9, limiterCeiling=0.9,
+				compression=0.35, threshold=0.55;
+			var signal, controlled;
+			signal = In.ar(inBus, 2);
+			controlled = Compander.ar(
+				signal, signal, Lag.kr(threshold, 0.03), 1,
+				1 - (Lag.kr(compression, 0.03) * 0.75), 0.01, 0.12
+			);
+			Out.ar(
+				out,
+				Limiter.ar(
+					LeakDC.ar(controlled) * Lag.kr(masterLevel, 0.03),
+					Lag.kr(limiterCeiling, 0.03), 0.01
+				)
+			);
 		}).add;
 
 		SynthDef(\endless808, {
@@ -248,23 +309,76 @@ Engine_Endless : CroneEngine {
 		}).add;
 
 		server.sync;
-		n303Voices = deckBuses.collect({ arg bus;
+		n303Voices = Array.fill(2, { arg deck;
 			Synth.head(context.xg, \endless303, [
-				\out, bus.index
+				\out, instrumentBuses[deck][1].index
 			]);
 		});
-		nmonoVoices = deckBuses.collect({ arg bus;
-			Synth.head(context.xg, \endlessMono, [\out, bus.index]);
+		nmonoVoices = Array.fill(2, { arg deck;
+			Synth.head(context.xg, \endlessMono, [
+				\out, instrumentBuses[deck][3].index
+			]);
+		});
+		instrumentMixers = Array.fill(2, { arg deck;
+			Array.fill(5, { arg part;
+				Synth.tail(context.xg, \endlessInstrumentMixer, [
+					\inBus, instrumentBuses[deck][part].index,
+					\outBus, deckBuses[deck].index,
+					\delayBus, delayBuses[deck].index,
+					\reverbBus, reverbBuses[deck].index
+				]);
+			});
+		});
+		effectReturns = Array.fill(2, { arg deck;
+			[
+				Synth.tail(context.xg, \endlessDelayReturn, [
+					\inBus, delayBuses[deck].index, \out, deckBuses[deck].index
+				]),
+				Synth.tail(context.xg, \endlessReverbReturn, [
+					\inBus, reverbBuses[deck].index, \out, deckBuses[deck].index
+				])
+			]
 		});
 		deckMixers = deckBuses.collect({ arg bus;
 			Synth.tail(context.xg, \endlessDeckMixer, [
-				\inBus, bus.index, \out, context.out_b, \level, 1
+				\inBus, bus.index, \out, masterBus.index, \level, 1
 			]);
 		});
+		masterMixer = Synth.tail(context.xg, \endlessMaster, [
+			\inBus, masterBus.index, \out, context.out_b
+		]);
 
 		this.addCommand(\deck_level, "if", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			deckMixers[deck].set(\level, msg[2].asFloat.clip(0, 1));
+		});
+
+		this.addCommand(\mixer_set, "iiffffff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var part = msg[2].asInteger.clip(1, 5) - 1;
+			instrumentMixers[deck][part].set(
+				\level, msg[3].asFloat.clip(0, 1.5),
+				\pan, msg[4].asFloat.clip(-1, 1),
+				\filterControl, msg[5].asFloat.clip(0, 1),
+				\saturation, msg[6].asFloat.clip(0, 1),
+				\delaySend, msg[7].asFloat.clip(0, 1),
+				\reverbSend, msg[8].asFloat.clip(0, 1)
+			);
+		});
+
+		this.addCommand(\fx_return_set, "iff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			effectReturns[deck][0].set(\level, msg[2].asFloat.clip(0, 1.5));
+			effectReturns[deck][1].set(\level, msg[3].asFloat.clip(0, 1.5));
+		});
+
+		this.addCommand(\master_set, "ffff", { arg msg;
+			masterMixer.set(
+				\masterLevel, msg[1].asFloat.clip(0, 1.25),
+				\limiterCeiling, msg[2].asFloat.clip(0.5, 0.98),
+				\compression, msg[3].asFloat.clip(0, 1),
+				\threshold, msg[4].asFloat.clip(0.2, 1)
+			);
 		});
 
 		this.addCommand(\n808_hit, "iif", { arg msg;
@@ -278,7 +392,7 @@ Engine_Endless : CroneEngine {
 				});
 			});
 			synth = Synth.head(context.xg, \endless808, [
-				\out, deckBuses[deck].index, \voice, voice,
+				\out, instrumentBuses[deck][0].index, \voice, voice,
 				\amp, msg[3].asFloat.clip(0, 1), \voiceLevel, n808Levels[voice],
 				\toneControl, n808Tone, \decayControl, n808Decay,
 				\driveControl, n808Drive, \variation, n808Variation
@@ -334,7 +448,7 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\nchord_note, "iiffi", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			voices.add(Synth.head(context.xg, \endlessChord, [
-				\out, deckBuses[deck].index, \freq, msg[2].asFloat.midicps,
+				\out, instrumentBuses[deck][2].index, \freq, msg[2].asFloat.midicps,
 				\amp, msg[3].asFloat, \sustain, msg[4].asFloat * 0.12,
 				\preset, nchordPreset[deck], \brightness, nchordBrightness[deck],
 				\filterEnvAmount, nchordFilterEnv[deck], \chorus, nchordChorus[deck]
@@ -349,7 +463,7 @@ Engine_Endless : CroneEngine {
 				nchordHeld[deck][note].set(\gate, 0);
 			});
 			synth = Synth.head(context.xg, \endlessChord, [
-				\out, deckBuses[deck].index, \freq, note.midicps,
+				\out, instrumentBuses[deck][2].index, \freq, note.midicps,
 				\amp, msg[3].asFloat.clip(0, 1), \timed, 0,
 				\preset, nchordPreset[deck], \brightness, nchordBrightness[deck],
 				\filterEnvAmount, nchordFilterEnv[deck], \chorus, nchordChorus[deck]
@@ -438,7 +552,7 @@ Engine_Endless : CroneEngine {
 					samplerChokes[deck][choke - 1].set(\gate, 0);
 				});
 				synth = Synth.head(context.xg, \endlessSampler, [
-					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\out, instrumentBuses[deck][4].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.5),
 					\rate, msg[4].asFloat.clip(-4, 4),
 					\pan, msg[5].asFloat.clip(-1, 1),
@@ -462,7 +576,7 @@ Engine_Endless : CroneEngine {
 					samplerChokes[deck][choke - 1].set(\gate, 0);
 				});
 				synth = Synth.head(context.xg, \endlessSampler, [
-					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\out, instrumentBuses[deck][4].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.5),
 					\rate, msg[4].asFloat.clip(-4, 4),
 					\pan, msg[5].asFloat.clip(-1, 1),
@@ -490,7 +604,7 @@ Engine_Endless : CroneEngine {
 					samplerChokes[deck][choke - 1].set(\gate, 0);
 				});
 				synth = Synth.head(context.xg, \endlessSampler, [
-					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\out, instrumentBuses[deck][4].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.5),
 					\rate, msg[4].asFloat.clip(-4, 4),
 					\pan, msg[5].asFloat.clip(-1, 1),
@@ -524,7 +638,7 @@ Engine_Endless : CroneEngine {
 					samplerLoops[deck][pad].set(\gate, 0);
 				});
 				synth = Synth.head(context.xg, \endlessSamplerLoop, [
-					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\out, instrumentBuses[deck][4].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.5),
 					\rate, msg[4].asFloat.clip(0.125, 8),
 					\pan, msg[5].asFloat.clip(-1, 1),
@@ -555,7 +669,7 @@ Engine_Endless : CroneEngine {
 					samplerGrains[deck].set(\gate, 0);
 				});
 				samplerGrains[deck] = Synth.head(context.xg, \endlessSamplerGrain, [
-					\out, deckBuses[deck].index, \buf, buffer.bufnum,
+					\out, instrumentBuses[deck][4].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.25),
 					\position, msg[4].asFloat.clip(0, 1),
 					\grainSize, msg[5].asFloat.clip(0.015, 0.5),
@@ -601,8 +715,15 @@ Engine_Endless : CroneEngine {
 		n303Voices.do({ arg synth; synth.free; });
 		nmonoVoices.do({ arg synth; synth.free; });
 		nchordHeld.do({ arg held; held.do({ arg synth; synth.free; }); });
+		instrumentMixers.do({ arg deck; deck.do({ arg synth; synth.free; }); });
+		effectReturns.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		deckMixers.do({ arg synth; synth.free; });
+		masterMixer.free;
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
+		instrumentBuses.do({ arg deck; deck.do({ arg bus; bus.free; }); });
+		delayBuses.do({ arg bus; bus.free; });
+		reverbBuses.do({ arg bus; bus.free; });
 		deckBuses.do({ arg bus; bus.free; });
+		masterBus.free;
 	}
 }

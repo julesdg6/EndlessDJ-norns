@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.73", 1, true) then
-  fail("Script version must match PR #73")
+if not source:find("Endless DJ v1.74", 1, true) then
+  fail("Script version must match PR #74")
 end
-pass("Script version matches PR #73")
+pass("Script version matches PR #74")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -213,6 +213,92 @@ do
   end
 end
 pass("Custom engine uses the supplied Crone audio context")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  for _, synthdef in ipairs({
+    "endlessInstrumentMixer", "endlessDelayReturn",
+    "endlessReverbReturn", "endlessDeckMixer", "endlessMaster",
+  }) do
+    if not engine_source:find("SynthDef(\\" .. synthdef, 1, true) then
+      fail("Internal mixer is missing " .. synthdef)
+    end
+  end
+  for command, format in pairs({
+    mixer_set="iiffffff", fx_return_set="iff", master_set="ffff",
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Internal mixer is missing " .. command .. " command or format")
+    end
+  end
+  for _, token in ipairs({
+    "instrumentBuses", "delayBuses", "reverbBuses", "masterBus",
+    "Compander.ar", "Limiter.ar", "FreeVerb2.ar", "CombC.ar",
+  }) do
+    if not engine_source:find(token, 1, true) then
+      fail("Internal mixer is missing architecture token " .. token)
+    end
+  end
+  if engine_source:find("\\out, deckBuses[deck].index, \\voice", 1, true) or
+      engine_source:find("\\out, deckBuses[deck].index, \\buf", 1, true) then
+    fail("Internal voices must feed instrument channels before deck buses")
+  end
+end
+for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
+  if not source:find('"' .. part .. '"', 1, true) then
+    fail("Internal mixer is missing channel " .. part)
+  end
+end
+if not source:find('"mix_" .. channel_name .. "_" .. name', 1, true) then
+  fail("Internal mixer parameter generation is missing")
+end
+for _, control in ipairs({
+  "level", "pan", "filter", "saturation", "delay_send", "reverb_send",
+}) do
+  if not source:find('{"' .. control .. '"', 1, true) then
+    fail("Internal mixer is missing channel control " .. control)
+  end
+end
+for _, param in ipairs({
+  "mix_delay_return", "mix_reverb_return", "mix_master_level",
+  "mix_master_compression", "mix_master_threshold", "mix_limiter_ceiling",
+}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Internal mixer is missing parameter " .. param)
+  end
+end
+do
+  local previous_engine = engine
+  local mixer_received, returns_received, master_received
+  engine = {
+    mixer_set = function(...) mixer_received = {...} end,
+    fx_return_set = function(...) returns_received = {...} end,
+    master_set = function(...) master_received = {...} end,
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.set_mixer(2, 4, {
+    level=0.8, pan=-0.2, filter=0.7, saturation=0.3,
+    delay_send=0.4, reverb_send=0.5,
+  })
+  internal.set_fx_returns(2, 0.6, 0.7)
+  internal.set_master(0.9, 0.88, 0.4, 0.52)
+  engine = previous_engine
+  if not mixer_received or mixer_received[1] ~= 2 or
+      mixer_received[2] ~= 4 or mixer_received[8] ~= 0.5 then
+    fail("Mixer wrapper must forward deck, channel, and six controls")
+  end
+  if not returns_received or returns_received[1] ~= 2 or
+      returns_received[3] ~= 0.7 then
+    fail("FX return wrapper must forward both return levels")
+  end
+  if not master_received or master_received[3] ~= 0.4 or
+      master_received[4] ~= 0.52 then
+    fail("Master wrapper must forward compression and limiting controls")
+  end
+end
+pass("Five-channel mixer, dual send/returns, compression, and limiting exist")
 
 for _, control in ipairs({"tone", "decay", "drive", "variation"}) do
   if not source:find('"n808_" .. name', 1, true) or
