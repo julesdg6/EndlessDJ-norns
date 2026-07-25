@@ -151,7 +151,7 @@ local mixing = false
 
 local xfade = 0
 local manual_xfade = false
-local generation = 2
+local generation = 0
 
 local drum_ch = 9
 local bass_ch = 8
@@ -425,9 +425,14 @@ local function j6_program_change(num)
   chord_midi_out:cc(80, 0, j6_pc_ch)
 end
 
-local function make_deck(letter)
+local function make_deck(letter, excluded_genre)
   generation = generation + 1
   local genre = genres[math.random(#genres)]
+  if excluded_genre and #genres > 1 then
+    while genre == excluded_genre do
+      genre = genres[math.random(#genres)]
+    end
+  end
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -3038,6 +3043,11 @@ end
 
 function init()
   math.randomseed(os.time())
+  generation = 0
+  deck_a = make_deck("A")
+  deck_b = make_deck("B", deck_a.genre)
+  deck_a.active = true
+  deck_b.active = false
 
   midi_out = midi.connect(mdev)
   chord_midi_out = midi.connect(chord_mdev)

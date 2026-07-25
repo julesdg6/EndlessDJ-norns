@@ -10,6 +10,10 @@ The script should continuously generate complete, DJ-structured electronic track
 
 Think of it as an endless AI/procedural DJ using external Roland AIRA hardware.
 
+On every script launch, both virtual decks are generated through the normal
+song-creation path. Deck A starts active, Deck B is queued, and their initial
+genres are selected randomly without duplicating one another.
+
 INTERNAL INSTRUMENTS / TRAVEL MODE
 
 Endless DJ includes one custom SuperCollider engine named `Endless`. It provides
