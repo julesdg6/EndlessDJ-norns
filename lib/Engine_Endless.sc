@@ -11,9 +11,9 @@ Engine_Endless : CroneEngine {
 		sampleBuffers = Array.fill(16, { nil });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 
-		SynthDef(\endlessDeckMixer, { arg inBus=0, level=1;
+		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
 			var signal = In.ar(inBus, 2);
-			Out.ar(Crone.output, signal * Lag.kr(level, 0.03));
+			Out.ar(out, signal * Lag.kr(level, 0.03));
 		}).add;
 
 		SynthDef(\endless808, { arg out=0, voice=1, amp=0.8;
@@ -58,8 +58,11 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, Pan2.ar(signal * amp));
 		}).add;
 
+		server.sync;
 		deckMixers = deckBuses.collect({ arg bus;
-			Synth.tail(server, \endlessDeckMixer, [\inBus, bus.index, \level, 1]);
+			Synth.tail(context.xg, \endlessDeckMixer, [
+				\inBus, bus.index, \out, context.out_b, \level, 1
+			]);
 		});
 
 		this.addCommand(\deck_level, "if", { arg msg;
@@ -69,7 +72,7 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\n808_hit, "iif", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			voices.add(Synth.head(server, \endless808, [
+			voices.add(Synth.head(context.xg, \endless808, [
 				\out, deckBuses[deck].index, \voice, msg[2].asInteger.clip(0, 6),
 				\amp, msg[3].asFloat.clip(0, 1)
 			]));
@@ -78,7 +81,7 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\n303_note, "iiffii", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			var freq = msg[2].asFloat.midicps;
-			voices.add(Synth.head(server, \endless303, [
+			voices.add(Synth.head(context.xg, \endless303, [
 				\out, deckBuses[deck].index, \freq, freq, \amp, msg[3].asFloat,
 				\sustain, msg[4].asFloat * 0.12, \accent, msg[5], \slide, msg[6]
 			]));
@@ -86,7 +89,7 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\nchord_note, "iiffi", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			voices.add(Synth.head(server, \endlessChord, [
+			voices.add(Synth.head(context.xg, \endlessChord, [
 				\out, deckBuses[deck].index, \freq, msg[2].asFloat.midicps,
 				\amp, msg[3].asFloat, \sustain, msg[4].asFloat * 0.12, \preset, msg[5]
 			]));
@@ -94,7 +97,7 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\nmono_note, "iiff", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			voices.add(Synth.head(server, \endlessMono, [
+			voices.add(Synth.head(context.xg, \endlessMono, [
 				\out, deckBuses[deck].index, \freq, msg[2].asFloat.midicps,
 				\amp, msg[3].asFloat, \sustain, msg[4].asFloat * 0.12
 			]));
@@ -111,7 +114,7 @@ Engine_Endless : CroneEngine {
 			var pad = msg[2].asInteger.clip(1, 16) - 1;
 			var buffer = sampleBuffers[pad];
 			if(buffer.notNil, {
-				voices.add(Synth.head(server, \endlessSampler, [
+				voices.add(Synth.head(context.xg, \endlessSampler, [
 					\out, deckBuses[deck].index, \buf, buffer.bufnum,
 					\amp, msg[3].asFloat, \rate, msg[4].asFloat
 				]));
