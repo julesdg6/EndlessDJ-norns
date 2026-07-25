@@ -169,6 +169,18 @@ function InternalEngine.sampler(deck_id, pad, velocity, settings)
   )
 end
 
+function InternalEngine.sampler_repeat(deck_id, pad, velocity, settings, delay)
+  settings = settings or {}
+  call(
+    "nsampler_repeat", deck_id, pad,
+    velocity / 127 * (settings.level or 1),
+    settings.rate or 1, settings.pan or 0,
+    settings.start or 0, settings.finish or 1,
+    settings.cutoff or 1, settings.choke or 0,
+    delay or 0.08
+  )
+end
+
 function InternalEngine.sampler_on(deck_id, pad, velocity, settings)
   settings = settings or {}
   call(

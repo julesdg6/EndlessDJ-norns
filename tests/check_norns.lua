@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.69", 1, true) then
-  fail("Script version must match PR #69")
+if not source:find("Endless DJ v1.73", 1, true) then
+  fail("Script version must match PR #73")
 end
-pass("Script version matches PR #69")
+pass("Script version matches PR #73")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -479,6 +479,42 @@ do
   end
 end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  if source:find("clock.run(function()", 1, true) or
+      source:find("sampler_repeat_clocks", 1, true) then
+    fail("Sampler repeats must not leave Lua clock coroutines behind")
+  end
+  if not source:find("internal_engine.sampler_repeat", 1, true) or
+      not engine_source:find(
+        'addCommand(\\nsampler_repeat, "iiffffffif"', 1, true
+      ) or
+      not engine_source:find("repeatDelay", 1, true) or
+      not engine_source:find("DelayN.ar", 1, true) then
+    fail("Sampler stutters must be scheduled inside the audio engine")
+  end
+end
+do
+  local previous_engine = engine
+  local received
+  engine = {
+    nsampler_repeat = function(...)
+      received = {...}
+    end
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.sampler_repeat(2, 3, 100, {
+    level=0.8, rate=1.2, pan=0.1, start=0.2, finish=0.4,
+    cutoff=0.7, choke=2,
+  }, 0.09)
+  engine = previous_engine
+  if not received or received[1] ~= 2 or received[2] ~= 3 or
+      received[9] ~= 2 or received[10] ~= 0.09 then
+    fail("Sampler repeat wrapper must forward playback and repeat delay")
+  end
+end
+pass("Sampler repeats use engine-side delay without Lua clock cleanup races")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""

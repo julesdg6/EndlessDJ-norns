@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.69
+-- Endless DJ v1.73
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -2545,18 +2545,13 @@ function sampler_advanced_tick(deck, deck_id, bar, sequencer_step)
           local magnitude = math.abs(playback.rate) * bpm / settings.source_bpm
           playback.rate = reverse_chance < settings.slice_reverse * 100
             and -magnitude or magnitude
-          internal_engine.sampler(deck_id, pad, 100, playback)
           local repeat_chance = (seed * 31337 + 19) % 100
           if repeat_chance < settings.repeat_amount * 100 then
-            local repeated = {
-              level=playback.level, rate=playback.rate, pan=playback.pan,
-              start=playback.start, finish=playback.finish,
-              cutoff=playback.cutoff, choke=playback.choke,
-            }
-            clock.run(function()
-              clock.sleep(60 / bpm / 8)
-              internal_engine.sampler(deck_id, pad, 92, repeated)
-            end)
+            internal_engine.sampler_repeat(
+              deck_id, pad, 100, playback, 60 / bpm / 8
+            )
+          else
+            internal_engine.sampler(deck_id, pad, 100, playback)
           end
         end
       end
