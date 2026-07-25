@@ -1,5 +1,5 @@
 Engine_Endless : CroneEngine {
-	var server, deckBuses, deckMixers, voices, sampleBuffers, openHats;
+	var server, deckBuses, deckMixers, voices, sampleBuffers, samplerChokes, openHats;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
@@ -13,7 +13,8 @@ Engine_Endless : CroneEngine {
 	alloc {
 		server = context.server;
 		voices = List.new;
-		sampleBuffers = Array.fill(16, { nil });
+		sampleBuffers = Array.fill(48, { nil });
+		samplerChokes = Array.fill(2, { Array.fill(4, { nil }) });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
@@ -173,9 +174,26 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, Limiter.ar(output * env * amp, 0.82, 0.01));
 		}).add;
 
-		SynthDef(\endlessSampler, { arg out=0, buf=0, amp=0.8, rate=1;
-			var signal = PlayBuf.ar(1, buf, BufRateScale.kr(buf) * rate, doneAction: 2);
-			Out.ar(out, Pan2.ar(signal * amp));
+		SynthDef(\endlessSampler, {
+			arg out=0, buf=0, amp=0.8, rate=1, pan=0, start=0, finish=1,
+				cutoffControl=1, gate=1;
+			var frames, reverse, startFrame, duration, play, env, cutoff, signal;
+			frames = BufFrames.kr(buf);
+			reverse = rate < 0;
+			startFrame = Select.kr(reverse, [start * frames, finish * frames]);
+			duration = ((finish - start).abs * BufDur.kr(buf) / rate.abs.max(0.01)).max(0.01);
+			play = PlayBuf.ar(
+				1, buf, BufRateScale.kr(buf) * rate, startPos: startFrame,
+				doneAction: 0
+			);
+			env = EnvGen.kr(
+				Env.asr(0.003, 1, 0.03),
+				gate * Line.kr(1, 0, duration),
+				doneAction: 2
+			);
+			cutoff = cutoffControl.linexp(0, 1, 180, 18000);
+			signal = LPF.ar(play, cutoff);
+			Out.ar(out, Pan2.ar(signal * amp * env, pan));
 		}).add;
 
 		server.sync;
@@ -353,20 +371,32 @@ Engine_Endless : CroneEngine {
 		});
 
 		this.addCommand(\nsampler_load, "is", { arg msg;
-			var pad = msg[1].asInteger.clip(1, 16) - 1;
+			var pad = msg[1].asInteger.clip(1, 48) - 1;
 			if(sampleBuffers[pad].notNil, { sampleBuffers[pad].free; });
 			sampleBuffers[pad] = Buffer.readChannel(server, msg[2].asString, channels: [0]);
 		});
 
-		this.addCommand(\nsampler_hit, "iiff", { arg msg;
+		this.addCommand(\nsampler_hit, "iiffffffi", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			var pad = msg[2].asInteger.clip(1, 16) - 1;
+			var pad = msg[2].asInteger.clip(1, 48) - 1;
 			var buffer = sampleBuffers[pad];
+			var choke = msg[9].asInteger.clip(0, 4);
 			if(buffer.notNil, {
-				voices.add(Synth.head(context.xg, \endlessSampler, [
+				var synth;
+				if(choke > 0 and: { samplerChokes[deck][choke - 1].notNil }, {
+					samplerChokes[deck][choke - 1].set(\gate, 0);
+				});
+				synth = Synth.head(context.xg, \endlessSampler, [
 					\out, deckBuses[deck].index, \buf, buffer.bufnum,
-					\amp, msg[3].asFloat, \rate, msg[4].asFloat
-				]));
+					\amp, msg[3].asFloat.clip(0, 1.5),
+					\rate, msg[4].asFloat.clip(-4, 4),
+					\pan, msg[5].asFloat.clip(-1, 1),
+					\start, msg[6].asFloat.clip(0, 1),
+					\finish, msg[7].asFloat.clip(0, 1),
+					\cutoffControl, msg[8].asFloat.clip(0, 1)
+				]);
+				voices.add(synth);
+				if(choke > 0, { samplerChokes[deck][choke - 1] = synth; });
 			});
 		});
 
@@ -374,6 +404,7 @@ Engine_Endless : CroneEngine {
 			voices.do({ arg synth; synth.free; });
 			voices.clear;
 			openHats = Array.fill(2, { nil });
+			samplerChokes = Array.fill(2, { Array.fill(4, { nil }) });
 			n303SlidePending = Array.fill(2, { false });
 			n303Voices.do({ arg synth; synth.set(\amp, 0, \slide, 0); });
 			nmonoVoices.do({ arg synth; synth.set(\amp, 0, \gate, 0); });
