@@ -163,6 +163,18 @@ do
   if not engine_source:find("Limiter.ar", 1, true) then
     fail("n-303 must bound resonant and driven output")
   end
+  for command, format in pairs({
+    nchord_on="iifi", nchord_off="ii", nchord_all_off="i", nchord_set="iifff"
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Custom engine is missing " .. command .. " command or format")
+    end
+  end
+  if not engine_source:find("nchordHeld", 1, true) then
+    fail("n-chord must track held notes independently for each deck")
+  end
 end
 pass("Custom engine uses the supplied Crone audio context")
 
@@ -234,10 +246,31 @@ end
 if not source:find("internal_engine.chord", 1, true) then
   fail("Norns instrument must target the internal n-chord voice")
 end
+if not source:find("internal_engine.chord_on", 1, true) or
+    not source:find("internal_engine.chord_off", 1, true) then
+  fail("Norns grid keyboard must use gated n-chord note on/off commands")
+end
+if not source:find("nchord_patch_for_genre", 1, true) or
+    not source:find("nchord = nchord_patch_for_genre", 1, true) then
+  fail("Every generated deck must receive a genre-shaped n-chord patch")
+end
+if not source:find("nchord_voice_notes", 1, true) then
+  fail("n-chord must apply generated inversion and octave spread")
+end
+for _, param in ipairs({"nchord_preset", "nchord_inversion", "nchord_spread", "nchord_strum"}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Missing n-chord parameter " .. param)
+  end
+end
+for _, control in ipairs({"brightness", "filter_env", "chorus"}) do
+  if not source:find('{"' .. control .. '", "n-chord ', 1, true) then
+    fail("Missing n-chord parameter nchord_" .. control)
+  end
+end
 if source:find("engine%.attack", 1, true) then
   fail("Regression: unsupported engine.attack call")
 end
-pass("Norns instrument (n-chord) support exists")
+pass("Generated n-chord poly synth and gated keyboard support exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then

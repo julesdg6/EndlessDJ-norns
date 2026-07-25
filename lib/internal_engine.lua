@@ -91,6 +91,36 @@ function InternalEngine.chord(deck_id, note, velocity, length, preset)
   call("nchord_note", deck_id, note, velocity / 127, length or 1, preset or 1)
 end
 
+function InternalEngine.chord_on(deck_id, note, velocity, preset)
+  call("nchord_on", deck_id, note, velocity / 127, preset or 1)
+end
+
+function InternalEngine.chord_off(deck_id, note)
+  call("nchord_off", deck_id, note)
+end
+
+function InternalEngine.chord_all_off(deck_id)
+  call("nchord_all_off", deck_id)
+end
+
+function InternalEngine.set_nchord(deck_id, settings)
+  call(
+    "nchord_set",
+    deck_id,
+    settings.preset,
+    settings.brightness,
+    settings.filter_env,
+    settings.chorus
+  )
+end
+
+function InternalEngine.set_nchord_control(deck_id, settings, name, value)
+  if not settings or settings[name] == nil then return false end
+  settings[name] = value
+  InternalEngine.set_nchord(deck_id, settings)
+  return true
+end
+
 function InternalEngine.mono(deck_id, note, velocity, length)
   call("nmono_note", deck_id, note, velocity / 127, length or 1)
 end

@@ -222,11 +222,54 @@ n303_patch_for_genre = function(genre)
   }
 end
 
+nchord_patch_for_genre = function(genre)
+  local preset_groups = {
+    HOUSE={1,2,7}, FUNKY={1,5,7}, DIRTY={1,3,7}, TECHNO={1,3,7},
+    GARAGE4={1,2,8}, TWO_STEP={2,5,8}, BREAKS={3,7,8},
+    DUBSTEP={2,3,8}, DEEP={2,4,5}, ACID={1,3,7}, TRANCE={3,4,6},
+    PROG={2,4,6}, JUNGLE={3,5,8}, DNB={2,5,8}, LIQUID={2,4,6},
+    HARDTECHNO={1,3,7}, ELECTRO={3,5,8}, JUKE={1,5,8},
+    AFRO={2,5,7}, MINIMAL={1,2,5}, MELODIC={2,4,6},
+    SPEED={1,3,8}, BASSLINE={1,2,8}, HARDSTYLE={1,3,7},
+  }
+  local choices = preset_groups[genre] or {1,2,7}
+  local function varied(base, spread)
+    return math.max(0, math.min(1, base + ((math.random() * 2 - 1) * spread)))
+  end
+  local spacious = genre == "DEEP" or genre == "LIQUID" or genre == "MELODIC" or
+    genre == "TRANCE" or genre == "PROG"
+  return {
+    preset = choices[math.random(#choices)],
+    inversion = math.random(0, 2),
+    spread = spacious and math.random(1, 2) or math.random(0, 1),
+    strum = (genre == "HOUSE" or genre == "TECHNO" or genre == "HARDTECHNO")
+      and math.random(0, 1) or math.random(0, 2),
+    brightness = varied(spacious and 0.48 or 0.58, 0.14),
+    filter_env = varied(spacious and 0.42 or 0.62, 0.13),
+    chorus = varied(spacious and 0.68 or 0.34, 0.14),
+  }
+end
+
+nchord_voice_notes = function(notes, patch)
+  local voiced = {notes[1], notes[2], notes[3]}
+  local inversion = math.max(0, math.min(2, patch.inversion or 0))
+  for _ = 1, inversion do
+    local note = table.remove(voiced, 1)
+    table.insert(voiced, note + 12)
+  end
+  table.sort(voiced)
+  if (patch.spread or 0) >= 1 then voiced[1] = voiced[1] - 12 end
+  if (patch.spread or 0) >= 2 then voiced[3] = voiced[3] + 12 end
+  return voiced
+end
+
 local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, pc=0, norns_preset=1,
                 variation_seed=12345, n303=n303_patch_for_genre("HOUSE"),
+                nchord=nchord_patch_for_genre("HOUSE"),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
                 variation_seed=54321, n303=n303_patch_for_genre("TWO_STEP"),
+                nchord=nchord_patch_for_genre("TWO_STEP"),
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 
 local notes_off = {}
@@ -384,6 +427,7 @@ local function make_deck(letter)
     norns_preset = math.random(#norns_presets),
     variation_seed = math.random(1, 65535),
     n303 = n303_patch_for_genre(genre),
+    nchord = nchord_patch_for_genre(genre),
     nts1_identity = nil,
     nts1_motif = nil,
     nts1_phrase = nil,
@@ -418,6 +462,20 @@ n303_apply_deck = function(deck, sync_params)
     "cutoff", "resonance", "env_mod", "decay", "drive", "slide_time"
   }) do
     params:set("n303_" .. name, math.floor(deck.n303[name] * 100 + 0.5), true)
+  end
+end
+
+nchord_apply_deck = function(deck, sync_params)
+  if not deck then return end
+  deck.nchord = deck.nchord or nchord_patch_for_genre(deck.genre)
+  internal_engine.set_nchord(internal_engine.deck_id(deck, deck_a), deck.nchord)
+  if not sync_params then return end
+  params:set("nchord_preset", deck.nchord.preset, true)
+  params:set("nchord_inversion", deck.nchord.inversion, true)
+  params:set("nchord_spread", deck.nchord.spread, true)
+  params:set("nchord_strum", deck.nchord.strum, true)
+  for _, name in ipairs({"brightness", "filter_env", "chorus"}) do
+    params:set("nchord_" .. name, math.floor(deck.nchord[name] * 100 + 0.5), true)
   end
 end
 
@@ -586,30 +644,40 @@ local function t8_note(note, vel, ch, len_ticks, deck, opts)
   end
 end
 
-local function chord_note(note, vel, len_ticks, deck)
+local function chord_note(note, vel, len_ticks, deck, internal_note, internal_delay)
   if output_router.sends_external("chords") then
     note_on_to(chord_midi_out, note, vel, chord_ch, len_ticks)
   end
   if deck and output_router.sends_internal("chords") then
-    internal_engine.chord(
-      internal_engine.deck_id(deck, deck_a),
-      note,
-      vel,
-      len_ticks,
-      deck.norns_preset or norns_preset_idx
-    )
+    if internal_delay and internal_delay > 0 then
+      table.insert(internal_notes_pending, {
+        t = tick + internal_delay,
+        deck = deck,
+        note = internal_note or note,
+        velocity = vel,
+        length = len_ticks,
+      })
+    else
+      internal_engine.chord(
+        internal_engine.deck_id(deck, deck_a),
+        internal_note or note,
+        vel,
+        len_ticks,
+        deck.nchord and deck.nchord.preset or 1
+      )
+    end
   end
 end
 
-local function chord_note_delayed(note, vel, delay_ticks, len_ticks, deck)
+local function chord_note_delayed(note, vel, delay_ticks, len_ticks, deck, internal_note, internal_delay)
   if output_router.sends_external("chords") then
     note_delayed(chord_midi_out, note, vel, chord_ch, delay_ticks, len_ticks)
   end
   if deck and output_router.sends_internal("chords") then
     table.insert(internal_notes_pending, {
-      t = tick + delay_ticks,
+      t = tick + (internal_delay or delay_ticks),
       deck = deck,
-      note = note,
+      note = internal_note or note,
       velocity = vel,
       length = len_ticks,
     })
@@ -652,7 +720,7 @@ local function service_pending_notes()
           e.note,
           e.velocity,
           e.length,
-          e.deck.norns_preset or norns_preset_idx
+          e.deck.nchord and e.deck.nchord.preset or 1
         )
       end
       table.remove(internal_notes_pending, i)
@@ -1152,29 +1220,29 @@ local function kb_note_on(note)
   elseif kb_target == 2 then
     if chord_midi_out then chord_midi_out:note_on(note, 100, chord_ch) end
   elseif kb_target == 3 then
-    internal_engine.chord(
+    internal_engine.chord_on(
       internal_engine.deck_id(current_deck(), deck_a),
       note,
       100,
-      4,
-      current_deck().norns_preset or norns_preset_idx
+      current_deck().nchord and current_deck().nchord.preset or 1
     )
   end
 end
 
-local function kb_note_off(note)
+local function kb_note_off(note, held_deck_id)
   if kb_target == 1 then
     if nts1_midi_out then nts1_midi_out:note_off(note, 0, nts1_ch) end
   elseif kb_target == 2 then
     if chord_midi_out then chord_midi_out:note_off(note, 0, chord_ch) end
+  elseif kb_target == 3 then
+    internal_engine.chord_off(held_deck_id or internal_engine.deck_id(current_deck(), deck_a), note)
   end
-  -- n-chord keyboard notes use a short self-terminating envelope.
 end
 
 -- Send note-off for every currently held keyboard note and clear pressed state.
 local function kb_all_notes_off()
-  for note, _ in pairs(kb_pressed) do
-    kb_note_off(note)
+  for note, held_deck_id in pairs(kb_pressed) do
+    kb_note_off(note, type(held_deck_id) == "number" and held_deck_id or nil)
   end
   kb_pressed = {}
 end
@@ -1207,11 +1275,13 @@ local function grid_key(x, y, z)
     -- Right half, lower rows (y=5-8): chromatic keyboard
     local note = kb_note_for(x, y)
     if z > 0 then
-      kb_pressed[note] = true
+      kb_pressed[note] = kb_target == 3
+        and internal_engine.deck_id(current_deck(), deck_a) or true
       kb_note_on(note)
     else
+      local held_deck_id = kb_pressed[note]
       kb_pressed[note] = nil
-      kb_note_off(note)
+      kb_note_off(note, type(held_deck_id) == "number" and held_deck_id or nil)
     end
     grid_redraw(step)
   end
@@ -2402,34 +2472,36 @@ local function play_chords(sec, s, deck, b, mix_fades)
   local triad = prog[(math.floor((b-1)/2) % #prog) + 1]
   local base = deck.root + 12
   local notes = {base+triad[1], base+triad[2], base+triad[3]}
+  local internal_notes = nchord_voice_notes(notes, deck.nchord)
+  local patch_strum = deck.nchord.strum or 0
   local style = choose(chord_styles[gn] or {"block"})
   local vel = sec=="DROP" and 98 or 78
 
   if style == "block" then
     local dur = block_chord_dur[gn] or 10
-    for _,n in ipairs(notes) do
-      chord_note(n, vel, dur, deck)
+    for i,n in ipairs(notes) do
+      chord_note(n, vel, dur, deck, internal_notes[i], (i - 1) * patch_strum)
     end
   elseif style == "up" then
     for i,n in ipairs(notes) do
-      chord_note_delayed(n, vel, i-1, 8, deck)
+      chord_note_delayed(n, vel, i-1, 8, deck, internal_notes[i], i-1)
     end
   elseif style == "updown" then
-    chord_note_delayed(notes[1], vel, 0, 5, deck)
-    chord_note_delayed(notes[2], vel, 1, 5, deck)
-    chord_note_delayed(notes[3], vel, 2, 5, deck)
-    chord_note_delayed(notes[2], vel, 3, 5, deck)
+    chord_note_delayed(notes[1], vel, 0, 5, deck, internal_notes[1], 0)
+    chord_note_delayed(notes[2], vel, 1, 5, deck, internal_notes[2], 1)
+    chord_note_delayed(notes[3], vel, 2, 5, deck, internal_notes[3], 2)
+    chord_note_delayed(notes[2], vel, 3, 5, deck, internal_notes[2], 3)
   elseif style == "strum" then
     for i,n in ipairs(notes) do
-      chord_note_delayed(n, vel, i-1, 12, deck)
+      chord_note_delayed(n, vel, i-1, 12, deck, internal_notes[i], i-1)
     end
   elseif style == "stab" then
-    for _,n in ipairs(notes) do
-      chord_note(n, vel+12, 3, deck)
+    for i,n in ipairs(notes) do
+      chord_note(n, vel+12, 3, deck, internal_notes[i], (i - 1) * patch_strum)
     end
   elseif style == "offbeat" then
-    for _,n in ipairs(notes) do
-      chord_note_delayed(n, vel, 2, 4, deck)
+    for i,n in ipairs(notes) do
+      chord_note_delayed(n, vel, 2, 4, deck, internal_notes[i], 2 + ((i - 1) * patch_strum))
     end
   end
   grid_j6_level = 8
@@ -2711,6 +2783,9 @@ local function finish_handover()
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
   n303_apply_deck(current_deck(), true)
+  nchord_apply_deck(deck_a, false)
+  nchord_apply_deck(deck_b, false)
+  nchord_apply_deck(current_deck(), true)
   current_bar = MIX_BARS + 1
   step = 1
   next_bar = nil
@@ -2947,6 +3022,44 @@ function init()
       local deck = current_deck()
       internal_engine.set_n303_control(
         internal_engine.deck_id(deck, deck_a), deck.n303, name, v / 100
+      )
+    end)
+  end
+
+  params:add_separator("nchord_sep", "N-CHORD")
+  params:add_option("nchord_preset", "n-chord sound", {
+    "house stab", "deep chord", "rave chord", "soft pad",
+    "organ", "strings", "detuned saw", "digital pluck"
+  }, 1)
+  params:set_action("nchord_preset", function(v)
+    local deck = current_deck()
+    internal_engine.set_nchord_control(
+      internal_engine.deck_id(deck, deck_a), deck.nchord, "preset", v
+    )
+  end)
+  for _, control in ipairs({
+    {"inversion", "n-chord inversion", 0, 2, 0},
+    {"spread", "n-chord octave spread", 0, 2, 0},
+    {"strum", "n-chord strum", 0, 3, 0},
+  }) do
+    local name = control[1]
+    params:add_number("nchord_" .. name, control[2], control[3], control[4], control[5])
+    params:set_action("nchord_" .. name, function(v)
+      local deck = current_deck()
+      deck.nchord[name] = v
+    end)
+  end
+  for _, control in ipairs({
+    {"brightness", "n-chord brightness", 50},
+    {"filter_env", "n-chord filter env", 50},
+    {"chorus", "n-chord chorus", 35},
+  }) do
+    local name = control[1]
+    params:add_number("nchord_" .. name, control[2], 0, 100, control[3])
+    params:set_action("nchord_" .. name, function(v)
+      local deck = current_deck()
+      internal_engine.set_nchord_control(
+        internal_engine.deck_id(deck, deck_a), deck.nchord, name, v / 100
       )
     end)
   end
@@ -3342,6 +3455,9 @@ function init()
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
   n303_apply_deck(current_deck(), true)
+  nchord_apply_deck(deck_a, false)
+  nchord_apply_deck(deck_b, false)
+  nchord_apply_deck(current_deck(), true)
   acid_sync_seed_param(current_deck())
   redraw()
 end

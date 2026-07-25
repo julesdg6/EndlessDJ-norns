@@ -19,7 +19,8 @@ five Norns-native instrument roles:
   decay, drive, and variation controls, plus per-deck open/closed-hat choking
 - `n-303`: persistent monophonic acid/bass voice with accent, legato slide,
   saw/square waveform, filter, envelope, decay, drive, and slide-time controls
-- `n-chord`: polyphonic chord voice and the Norns keyboard target
+- `n-chord`: gated polyphonic chord voice with eight sound models, generated
+  voicings and patches, and the Norns keyboard target
 - `n-mono`: general monophonic melody voice scaffold
 - `n-sampler`: 16 loadable mono sample slots
 
@@ -45,6 +46,15 @@ pattern step glides into the following note without retriggering the amplitude
 or filter envelopes. Accent raises amplitude, cutoff, and filter-envelope depth
 together. A limiter bounds resonant and driven settings before the signal
 reaches the deck mixer.
+
+Each song also receives an independent, genre-shaped N-CHORD patch. The patch
+selects one of eight starting sounds (house stab, deep chord, rave chord, soft
+pad, organ, strings, detuned saw, or digital pluck) and generates inversion,
+octave spread, strum, brightness, filter-envelope, and chorus settings. These
+settings affect only the internal voice; external J-6 notes and timing remain
+unchanged. The `N-CHORD` parameter group follows and edits the current deck.
+Grid keyboard notes targeting Norns now remain gated until their pads are
+released.
 
 HARDWARE
 
