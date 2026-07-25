@@ -1,5 +1,7 @@
 Engine_Endless : CroneEngine {
-	var server, deckBuses, deckMixers, voices, sampleBuffers;
+	var server, deckBuses, deckMixers, voices, sampleBuffers, openHats;
+	var n808Tone=0.5, n808Decay=0.5, n808Drive=0.25, n808Variation=0.15;
+	var n808Levels;
 
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
@@ -10,23 +12,44 @@ Engine_Endless : CroneEngine {
 		voices = List.new;
 		sampleBuffers = Array.fill(16, { nil });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
+		openHats = Array.fill(2, { nil });
+		n808Levels = Array.fill(6, { 1.0 });
 
 		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
 			var signal = In.ar(inBus, 2);
 			Out.ar(out, signal * Lag.kr(level, 0.03));
 		}).add;
 
-		SynthDef(\endless808, { arg out=0, voice=1, amp=0.8;
-			var env, pitchEnv, tone, noise, signal;
-			env = EnvGen.kr(Env.perc(0.001, Select.kr(voice, #[0.45, 0.22, 0.18, 0.3, 0.08, 0.45, 0.16])), doneAction: 2);
-			pitchEnv = EnvGen.kr(Env.perc(0.001, 0.06, 45, -8));
-			tone = SinOsc.ar(Select.kr(voice, #[55, 52, 180, 110, 6500, 5200, 190]) + pitchEnv);
-			noise = BPF.ar(WhiteNoise.ar, Select.kr(voice, #[900, 1800, 1400, 900, 7800, 6200, 2200]), 0.45);
-			signal = SelectX.ar(Clip.kr(voice, 0, 6), [
-				tone, (tone * 0.55) + (noise * 0.7), noise, tone,
-				HPF.ar(noise, 5500), HPF.ar(noise, 4500), (tone * 0.4) + noise
-			]);
-			Out.ar(out, Pan2.ar((signal * env * amp).tanh));
+		SynthDef(\endless808, {
+			arg out=0, voice=1, amp=0.8, voiceLevel=1, toneControl=0.5,
+				decayControl=0.5, driveControl=0.25, variation=0.15;
+			var env, pitchEnv, noise, metallic, signal, voiceSignals;
+			var baseDecay, decay, toneScale, randomPitch, driven;
+			baseDecay = Select.kr(voice, #[0.48, 0.24, 0.20, 0.32, 0.075, 0.55]);
+			decay = baseDecay * decayControl.linexp(0, 1, 0.45, 1.8);
+			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
+			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
+			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
+			pitchEnv = EnvGen.kr(Env.perc(0.001, 0.07, 62, -8));
+			noise = WhiteNoise.ar;
+			metallic = Mix(Pulse.ar(
+				[4210, 5470, 6250, 7820, 9100, 10300] * toneScale * (1 + randomPitch),
+				0.5
+			)) / 6;
+			voiceSignals = [
+				(SinOsc.ar((48 * toneScale * (1 + randomPitch)) + pitchEnv) * 1.2)
+					+ (HPF.ar(noise, 5000) * EnvGen.kr(Env.perc(0.001, 0.012)) * 0.13),
+				(SinOsc.ar(185 * toneScale * (1 + randomPitch)) * 0.36)
+					+ (BPF.ar(noise, 1850 * toneScale, 0.55) * 0.92),
+				BPF.ar(noise, 1350 * toneScale, 0.7)
+					* (1 + (Pulse.kr(32, 0.35) * 0.35)),
+				SinOsc.ar((112 * toneScale * (1 + randomPitch)) + (pitchEnv * 0.35)),
+				HPF.ar(metallic + (noise * 0.18), 6100 * toneScale),
+				HPF.ar(metallic + (noise * 0.22), 4600 * toneScale)
+			];
+			signal = SelectX.ar(Clip.kr(voice, 0, 5), voiceSignals);
+			driven = (signal * (1 + (driveControl * 7))).tanh;
+			Out.ar(out, Pan2.ar(driven * env * amp * voiceLevel));
 		}).add;
 
 		SynthDef(\endless303, { arg out=0, freq=110, amp=0.7, sustain=0.2, accent=0, slide=0;
@@ -72,10 +95,39 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\n808_hit, "iif", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			voices.add(Synth.head(context.xg, \endless808, [
-				\out, deckBuses[deck].index, \voice, msg[2].asInteger.clip(0, 6),
-				\amp, msg[3].asFloat.clip(0, 1)
-			]));
+			var voice = msg[2].asInteger.clip(0, 5);
+			var synth;
+			if([4, 5].includes(voice), {
+				if(openHats[deck].notNil, {
+					openHats[deck].free;
+					openHats[deck] = nil;
+				});
+			});
+			synth = Synth.head(context.xg, \endless808, [
+				\out, deckBuses[deck].index, \voice, voice,
+				\amp, msg[3].asFloat.clip(0, 1), \voiceLevel, n808Levels[voice],
+				\toneControl, n808Tone, \decayControl, n808Decay,
+				\driveControl, n808Drive, \variation, n808Variation
+			]);
+			voices.add(synth);
+			if(voice == 5, {
+				openHats[deck] = synth;
+				synth.onFree({
+					if(openHats[deck] === synth, { openHats[deck] = nil; });
+				});
+			});
+		});
+
+		this.addCommand(\n808_set, "ffff", { arg msg;
+			n808Tone = msg[1].asFloat.clip(0, 1);
+			n808Decay = msg[2].asFloat.clip(0, 1);
+			n808Drive = msg[3].asFloat.clip(0, 1);
+			n808Variation = msg[4].asFloat.clip(0, 1);
+		});
+
+		this.addCommand(\n808_level, "if", { arg msg;
+			var voice = msg[1].asInteger.clip(0, 5);
+			n808Levels[voice] = msg[2].asFloat.clip(0, 1.5);
 		});
 
 		this.addCommand(\n303_note, "iiffii", { arg msg;
@@ -124,6 +176,7 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\all_off, "", {
 			voices.do({ arg synth; synth.free; });
 			voices.clear;
+			openHats = Array.fill(2, { nil });
 		});
 	}
 

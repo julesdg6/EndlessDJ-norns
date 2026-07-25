@@ -15,7 +15,8 @@ INTERNAL INSTRUMENTS / TRAVEL MODE
 Endless DJ includes one custom SuperCollider engine named `Endless`. It provides
 five Norns-native instrument roles:
 
-- `n-808`: six synthesized drum voices
+- `n-808`: six synthesized drum voices with per-voice levels, shared tone,
+  decay, drive, and variation controls, plus per-deck open/closed-hat choking
 - `n-303`: monophonic acid/bass voice with accent and slide inputs
 - `n-chord`: polyphonic chord voice and the Norns keyboard target
 - `n-mono`: general monophonic melody voice scaffold
@@ -29,6 +30,11 @@ can each be set manually to `off`, `external`, `internal`, or `both`. Every rout
 defaults to `external`, preserving the existing T-8, J-6, NTS-1, and MPX8 MIDI
 behaviour after upgrading. Use `internal` for a Norns-only travel rig, or `both`
 to layer the internal voice with the connected hardware.
+
+The `N-808` parameter group shapes only the internal drum engine. Its six level
+controls range from 0–150% for balancing voices, while tone, decay, drive, and
+variation affect the whole kit. These settings do not alter external T-8 MIDI
+notes or velocities.
 
 HARDWARE
 
