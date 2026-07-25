@@ -239,6 +239,7 @@ function sampler_stop_all_loops()
 end
 
 local playing = false
+local sampler_repeat_clocks = {}
 local bpm = 128
 local ppqn = 4
 local tick = 0
@@ -688,6 +689,11 @@ local function nts1_reset_deck_identities()
 end
 
 local function quiet_notes()
+  for clock_id in pairs(sampler_repeat_clocks) do
+    clock.cancel(clock_id)
+  end
+  sampler_repeat_clocks = {}
+
   if midi_out then
     for ch=1,16 do
       for n=0,127 do
@@ -2553,10 +2559,15 @@ function sampler_advanced_tick(deck, deck_id, bar, sequencer_step)
               start=playback.start, finish=playback.finish,
               cutoff=playback.cutoff, choke=playback.choke,
             }
-            clock.run(function()
+            local repeat_clock
+            repeat_clock = clock.run(function()
               clock.sleep(60 / bpm / 8)
-              internal_engine.sampler(deck_id, pad, 92, repeated)
+              if sampler_repeat_clocks[repeat_clock] then
+                internal_engine.sampler(deck_id, pad, 92, repeated)
+                sampler_repeat_clocks[repeat_clock] = nil
+              end
             end)
+            sampler_repeat_clocks[repeat_clock] = true
           end
         end
       end

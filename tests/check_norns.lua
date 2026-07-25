@@ -480,6 +480,23 @@ do
 end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
 
+if not source:find("local sampler_repeat_clocks = {}", 1, true) or
+    not source:find("sampler_repeat_clocks[repeat_clock] = true", 1, true) or
+    not source:find("clock.cancel(clock_id)", 1, true) or
+    not source:find("sampler_repeat_clocks[repeat_clock] = nil", 1, true) then
+  fail("Sampler repeat clocks must be tracked, cancelled, and retired")
+end
+do
+  local quiet_start = source:find("local function quiet_notes()", 1, true)
+  local quiet_end = quiet_start and source:find("\nend", quiet_start, true)
+  local quiet_source = quiet_start and quiet_end and
+    source:sub(quiet_start, quiet_end) or ""
+  if not quiet_source:find("clock.cancel(clock_id)", 1, true) then
+    fail("Transport stop and cleanup must cancel pending sampler repeats")
+  end
+end
+pass("Sampler repeat clocks are cancelled safely during stop and cleanup")
+
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find("SynthDef(\\endlessSamplerGrain", 1, true) or
