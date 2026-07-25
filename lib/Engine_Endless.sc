@@ -3,8 +3,6 @@ Engine_Endless : CroneEngine {
 	var n303Voices, n303SlidePending;
 	var n808Tone=0.5, n808Decay=0.5, n808Drive=0.25, n808Variation=0.15;
 	var n808Levels;
-	var n303Waveform=0, n303Cutoff=0.45, n303Resonance=0.65, n303EnvMod=0.55;
-	var n303Decay=0.45, n303Drive=0.3, n303SlideTime=0.35;
 
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
@@ -116,10 +114,7 @@ Engine_Endless : CroneEngine {
 		server.sync;
 		n303Voices = deckBuses.collect({ arg bus;
 			Synth.head(context.xg, \endless303, [
-				\out, bus.index, \waveform, n303Waveform,
-				\cutoffControl, n303Cutoff, \resonanceControl, n303Resonance,
-				\envMod, n303EnvMod, \decayControl, n303Decay,
-				\driveControl, n303Drive, \slideControl, n303SlideTime
+				\out, bus.index
 			]);
 		});
 		deckMixers = deckBuses.collect({ arg bus;
@@ -184,22 +179,17 @@ Engine_Endless : CroneEngine {
 			n303SlidePending[deck] = msg[6].asInteger > 0;
 		});
 
-		this.addCommand(\n303_set, "fffffff", { arg msg;
-			n303Waveform = msg[1].asFloat.clip(0, 1);
-			n303Cutoff = msg[2].asFloat.clip(0, 1);
-			n303Resonance = msg[3].asFloat.clip(0, 1);
-			n303EnvMod = msg[4].asFloat.clip(0, 1);
-			n303Decay = msg[5].asFloat.clip(0, 1);
-			n303Drive = msg[6].asFloat.clip(0, 1);
-			n303SlideTime = msg[7].asFloat.clip(0, 1);
-			n303Voices.do({ arg synth;
-				synth.set(
-					\waveform, n303Waveform, \cutoffControl, n303Cutoff,
-					\resonanceControl, n303Resonance, \envMod, n303EnvMod,
-					\decayControl, n303Decay, \driveControl, n303Drive,
-					\slideControl, n303SlideTime
-				);
-			});
+		this.addCommand(\n303_set, "ifffffff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			n303Voices[deck].set(
+				\waveform, msg[2].asFloat.clip(0, 1),
+				\cutoffControl, msg[3].asFloat.clip(0, 1),
+				\resonanceControl, msg[4].asFloat.clip(0, 1),
+				\envMod, msg[5].asFloat.clip(0, 1),
+				\decayControl, msg[6].asFloat.clip(0, 1),
+				\driveControl, msg[7].asFloat.clip(0, 1),
+				\slideControl, msg[8].asFloat.clip(0, 1)
+			);
 		});
 
 		this.addCommand(\nchord_note, "iiffi", { arg msg;

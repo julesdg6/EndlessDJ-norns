@@ -37,12 +37,14 @@ controls range from 0–150% for balancing voices, while tone, decay, drive, and
 variation affect the whole kit. These settings do not alter external T-8 MIDI
 notes or velocities.
 
-The `N-303` parameter group shapes only the internal acid voice. Each deck has
-its own persistent synth, allowing the outgoing and incoming bass lines to
-overlap during a mix. A slide on one pattern step glides into the following
-note without retriggering the amplitude or filter envelopes. Accent raises
-amplitude, cutoff, and filter-envelope depth together. A limiter bounds
-resonant and driven settings before the signal reaches the deck mixer.
+Each generated song receives a stable, genre-shaped N-303 patch with bounded
+random variation. The two decks retain independent patches, allowing distinct
+outgoing and incoming bass timbres to overlap during a mix. The `N-303`
+parameter group displays and edits the current deck's patch. A slide on one
+pattern step glides into the following note without retriggering the amplitude
+or filter envelopes. Accent raises amplitude, cutoff, and filter-envelope depth
+together. A limiter bounds resonant and driven settings before the signal
+reaches the deck mixer.
 
 HARDWARE
 

@@ -191,10 +191,43 @@ local genres = {
 
 local roots = {45,47,48,50,52,53,55}
 
+n303_patch_for_genre = function(genre)
+  local profiles = {
+    ACID       = {0.10, 0.50, 0.82, 0.76, 0.53, 0.46, 0.55},
+    TECHNO     = {0.15, 0.44, 0.70, 0.62, 0.38, 0.48, 0.38},
+    HARDTECHNO = {0.10, 0.52, 0.76, 0.68, 0.32, 0.66, 0.32},
+    DEEP       = {0.45, 0.29, 0.43, 0.38, 0.62, 0.22, 0.48},
+    MINIMAL    = {0.35, 0.33, 0.56, 0.44, 0.42, 0.26, 0.52},
+    TRANCE     = {0.10, 0.58, 0.64, 0.72, 0.54, 0.34, 0.45},
+    PROG       = {0.20, 0.48, 0.56, 0.58, 0.60, 0.28, 0.50},
+    MELODIC    = {0.25, 0.50, 0.52, 0.62, 0.58, 0.26, 0.47},
+    DUBSTEP    = {0.65, 0.30, 0.48, 0.42, 0.30, 0.58, 0.28},
+    DNB        = {0.55, 0.38, 0.50, 0.48, 0.25, 0.54, 0.24},
+    JUNGLE     = {0.45, 0.41, 0.52, 0.50, 0.24, 0.50, 0.27},
+    BASSLINE   = {0.58, 0.43, 0.66, 0.61, 0.32, 0.56, 0.40},
+    SPEED      = {0.48, 0.46, 0.62, 0.58, 0.25, 0.60, 0.25},
+  }
+  local profile = profiles[genre] or {0.30, 0.42, 0.57, 0.53, 0.45, 0.35, 0.40}
+  local function varied(index, spread)
+    return math.max(0, math.min(1, profile[index] + ((math.random() * 2 - 1) * spread)))
+  end
+  return {
+    waveform = math.random() < profile[1] and 1 or 0,
+    cutoff = varied(2, 0.11),
+    resonance = varied(3, 0.09),
+    env_mod = varied(4, 0.10),
+    decay = varied(5, 0.10),
+    drive = varied(6, 0.09),
+    slide_time = varied(7, 0.10),
+  }
+end
+
 local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, pc=0, norns_preset=1,
-                variation_seed=12345, mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
+                variation_seed=12345, n303=n303_patch_for_genre("HOUSE"),
+                mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
-                variation_seed=54321, mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
+                variation_seed=54321, n303=n303_patch_for_genre("TWO_STEP"),
+                mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 
 local notes_off = {}
 local notes_pending = {}
@@ -340,15 +373,17 @@ end
 
 local function make_deck(letter)
   generation = generation + 1
+  local genre = genres[math.random(#genres)]
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
-    genre = genres[math.random(#genres)],
+    genre = genre,
     active = false,
     angle = math.random() * math.pi * 2,
     root = roots[math.random(#roots)],
     pc = random_pc(),
     norns_preset = math.random(#norns_presets),
     variation_seed = math.random(1, 65535),
+    n303 = n303_patch_for_genre(genre),
     nts1_identity = nil,
     nts1_motif = nil,
     nts1_phrase = nil,
@@ -371,6 +406,19 @@ end
 
 local function next_deck()
   return deck_a.active and deck_b or deck_a
+end
+
+n303_apply_deck = function(deck, sync_params)
+  if not deck then return end
+  deck.n303 = deck.n303 or n303_patch_for_genre(deck.genre)
+  internal_engine.set_n303(internal_engine.deck_id(deck, deck_a), deck.n303)
+  if not sync_params then return end
+  params:set("n303_waveform", deck.n303.waveform + 1, true)
+  for _, name in ipairs({
+    "cutoff", "resonance", "env_mod", "decay", "drive", "slide_time"
+  }) do
+    params:set("n303_" .. name, math.floor(deck.n303[name] * 100 + 0.5), true)
+  end
 end
 
 local function nts1_reset_deck_identities()
@@ -2660,6 +2708,9 @@ local function finish_handover()
     deck_b = make_deck("B")
   end
 
+  n303_apply_deck(deck_a, false)
+  n303_apply_deck(deck_b, false)
+  n303_apply_deck(current_deck(), true)
   current_bar = MIX_BARS + 1
   step = 1
   next_bar = nil
@@ -2877,7 +2928,10 @@ function init()
   params:add_separator("n303_sep", "N-303")
   params:add_option("n303_waveform", "n-303 waveform", {"saw", "square"}, 1)
   params:set_action("n303_waveform", function(v)
-    internal_engine.set_n303_control("waveform", v - 1)
+    local deck = current_deck()
+    internal_engine.set_n303_control(
+      internal_engine.deck_id(deck, deck_a), deck.n303, "waveform", v - 1
+    )
   end)
   for _, control in ipairs({
     {"cutoff", "n-303 cutoff", 45},
@@ -2890,7 +2944,10 @@ function init()
     local name = control[1]
     params:add_number("n303_" .. name, control[2], 0, 100, control[3])
     params:set_action("n303_" .. name, function(v)
-      internal_engine.set_n303_control(name, v / 100)
+      local deck = current_deck()
+      internal_engine.set_n303_control(
+        internal_engine.deck_id(deck, deck_a), deck.n303, name, v / 100
+      )
     end)
   end
 
@@ -3282,6 +3339,9 @@ function init()
 
   update_clock()
   grid_connect()
+  n303_apply_deck(deck_a, false)
+  n303_apply_deck(deck_b, false)
+  n303_apply_deck(current_deck(), true)
   acid_sync_seed_param(current_deck())
   redraw()
 end

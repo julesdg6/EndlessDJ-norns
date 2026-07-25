@@ -157,6 +157,9 @@ do
   if not engine_source:find("addCommand(\\n303_set", 1, true) then
     fail("Custom engine is missing n303_set command")
   end
+  if not engine_source:find('addCommand(\\n303_set, "ifffffff"', 1, true) then
+    fail("n303_set must address one deck followed by seven patch controls")
+  end
   if not engine_source:find("Limiter.ar", 1, true) then
     fail("n-303 must bound resonant and driven output")
   end
@@ -193,7 +196,34 @@ end
 if not source:find("internal_engine.set_n303_control", 1, true) then
   fail("n-303 parameters must be forwarded through the internal engine wrapper")
 end
-pass("n-303 persistent acid voice and performance controls exist")
+if not source:find("n303_patch_for_genre", 1, true) or
+    not source:find("n303 = n303_patch_for_genre", 1, true) then
+  fail("Every generated deck must receive a genre-shaped n-303 patch")
+end
+if not source:find("n303_apply_deck(deck_a, false)", 1, true) or
+    not source:find("n303_apply_deck(deck_b, false)", 1, true) then
+  fail("Deck A and Deck B n-303 patches must be applied independently")
+end
+do
+  local previous_engine = engine
+  local received
+  engine = {
+    n303_set = function(...)
+      received = {...}
+    end
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  local patch = {
+    waveform=1, cutoff=0.2, resonance=0.3, env_mod=0.4,
+    decay=0.5, drive=0.6, slide_time=0.7
+  }
+  internal.set_n303(2, patch)
+  engine = previous_engine
+  if not received or received[1] ~= 2 or received[8] ~= patch.slide_time then
+    fail("n-303 wrapper must send the target deck and all seven patch controls")
+  end
+end
+pass("n-303 uses independent, genre-shaped per-song patches")
 
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
