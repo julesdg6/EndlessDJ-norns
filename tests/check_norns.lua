@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.74", 1, true) then
-  fail("Script version must match PR #74")
+if not source:find("Endless DJ v1.76", 1, true) then
+  fail("Script version must match PR #76")
 end
-pass("Script version matches PR #74")
+pass("Script version matches PR #76")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -236,6 +236,7 @@ do
   for _, token in ipairs({
     "instrumentBuses", "delayBuses", "reverbBuses", "masterBus",
     "Compander.ar", "Limiter.ar", "FreeVerb2.ar", "CombC.ar",
+    "DetectSilence.ar", "Impulse.ar(0)", "doneAction: 1", "wakePart",
   }) do
     if not engine_source:find(token, 1, true) then
       fail("Internal mixer is missing architecture token " .. token)
@@ -244,6 +245,15 @@ do
   if engine_source:find("\\out, deckBuses[deck].index, \\voice", 1, true) or
       engine_source:find("\\out, deckBuses[deck].index, \\buf", 1, true) then
     fail("Internal voices must feed instrument channels before deck buses")
+  end
+  for _, wake in ipairs({
+    "this.wakePart(deck, 0)", "this.wakePart(deck, 1)",
+    "this.wakePart(deck, 2)", "this.wakePart(deck, 3)",
+    "this.wakePart(deck, 4)",
+  }) do
+    if not engine_source:find(wake, 1, true) then
+      fail("Silent mixer suspension is missing wake path " .. wake)
+    end
   end
 end
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
@@ -299,6 +309,38 @@ do
   end
 end
 pass("Five-channel mixer, dual send/returns, compression, and limiting exist")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  for _, voice in ipairs({
+    "Kick", "Snare", "Clap", "Tom", "ClosedHat", "OpenHat",
+  }) do
+    if not engine_source:find("SynthDef(\\endless808" .. voice, 1, true) then
+      fail("n-808 CPU optimization is missing dedicated " .. voice .. " SynthDef")
+    end
+  end
+  if engine_source:find("voiceSignals", 1, true) then
+    fail("n-808 must not calculate all six drum voices for every hit")
+  end
+end
+pass("n-808 calculates only the requested drum voice")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  for _, token in ipairs({
+    "nchordSynthDefs = Array.fill(8",
+    "SynthDef(nchordSynthDefs[presetIndex]",
+    "nchordSynthDefs[nchordPreset[deck] - 1]",
+  }) do
+    if not engine_source:find(token, 1, true) then
+      fail("n-chord CPU optimization is missing " .. token)
+    end
+  end
+  if engine_source:find("presetIndex, signals", 1, true) then
+    fail("n-chord must not calculate all eight sound models for every note")
+  end
+end
+pass("n-chord calculates only the selected sound model")
 
 for _, control in ipairs({"tone", "decay", "drive", "variation"}) do
   if not source:find('"n808_" .. name', 1, true) or
