@@ -15,6 +15,8 @@ globals = {
   "metro",
   "midi",
   "n808_voice",
+  "n303_apply_deck",
+  "n303_patch_for_genre",
   "output_router",
   "params",
   "redraw",

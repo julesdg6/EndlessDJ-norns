@@ -7,16 +7,6 @@ InternalEngine.n808 = {
   variation = 0.15,
 }
 
-InternalEngine.n303 = {
-  waveform = 0,
-  cutoff = 0.45,
-  resonance = 0.65,
-  env_mod = 0.55,
-  decay = 0.45,
-  drive = 0.3,
-  slide_time = 0.35,
-}
-
 local function call(command, ...)
   local fn = engine and engine[command]
   if type(fn) ~= "function" then return false end
@@ -76,10 +66,10 @@ function InternalEngine.bass(deck_id, note, velocity, length, accent, slide)
   )
 end
 
-function InternalEngine.set_n303()
-  local settings = InternalEngine.n303
+function InternalEngine.set_n303(deck_id, settings)
   call(
     "n303_set",
+    deck_id,
     settings.waveform,
     settings.cutoff,
     settings.resonance,
@@ -90,10 +80,10 @@ function InternalEngine.set_n303()
   )
 end
 
-function InternalEngine.set_n303_control(name, value)
-  if InternalEngine.n303[name] == nil then return false end
-  InternalEngine.n303[name] = value
-  InternalEngine.set_n303()
+function InternalEngine.set_n303_control(deck_id, settings, name, value)
+  if not settings or settings[name] == nil then return false end
+  settings[name] = value
+  InternalEngine.set_n303(deck_id, settings)
   return true
 end
 
