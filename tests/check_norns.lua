@@ -17,9 +17,9 @@ end
 
 local function find_script()
   local candidates = {
+    "EndlessDJ.lua",
     "endless_dj.lua",
     "endlessdj.lua",
-    "EndlessDJ.lua",
     "endless_dj/endless_dj.lua"
   }
   for _, path in ipairs(candidates) do

@@ -16,7 +16,7 @@ genres are selected randomly without duplicating one another.
 
 INSTALLING AND UPDATING ON NORNS
 
-Install the complete repository, not only `endless_dj.lua` or the files in
+Install the complete repository, not only `EndlessDJ.lua` or the files in
 `lib`. N-SAMPLER's factory sounds live under
 `samples/factory/risers`, so partial updates will leave the sampler silent.
 
@@ -24,13 +24,17 @@ From Maiden's command line, this command downloads merged `main`, including all
 32 riser WAV files, and copies it over the installed script:
 
 ```lua
-os.execute("cd /tmp && curl -fL https://github.com/julesdg6/EndlessDJ-norns/archive/refs/heads/main.tar.gz -o EndlessDJ-main.tar.gz && tar -xzf EndlessDJ-main.tar.gz && mkdir -p /home/we/dust/code/EndlessDJ && cp -R EndlessDJ-norns-main/. /home/we/dust/code/EndlessDJ/")
+os.execute("cd /tmp && curl -fL https://github.com/julesdg6/EndlessDJ-norns/archive/refs/heads/main.tar.gz -o EndlessDJ-main.tar.gz && tar -xzf EndlessDJ-main.tar.gz && mkdir -p /home/we/dust/code/EndlessDJ && rm -f /home/we/dust/code/EndlessDJ/endless_dj.lua && cp -R EndlessDJ-norns-main/. /home/we/dust/code/EndlessDJ/")
 ```
 
 After installing or updating `Engine_Endless.sc`, restart Norns from
 `SYSTEM → RESET → restart`. This lets SuperCollider recompile the custom
 engine. Script parameter sets remain in `/home/we/dust/data/EndlessDJ` and are
 not replaced by the command above.
+
+`EndlessDJ.lua` is the canonical Norns entrypoint. The update command removes
+the obsolete lowercase `endless_dj.lua` left by v1.65, preventing duplicate
+scripts in Maiden and ensuring Norns launches the updated version.
 
 Verify that the complete factory library arrived:
 

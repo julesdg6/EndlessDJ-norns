@@ -1,4 +1,4 @@
--- endless_dj.lua
+-- EndlessDJ.lua
 -- Endless DJ v1.66
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
