@@ -26,6 +26,33 @@ function InternalEngine.set_deck_levels(a, b)
   call("deck_level", 2, b)
 end
 
+function InternalEngine.set_mixer(deck_id, part_id, settings)
+  settings = settings or {}
+  call(
+    "mixer_set", deck_id, part_id,
+    settings.level or 1,
+    settings.pan or 0,
+    settings.filter or 1,
+    settings.saturation or 0,
+    settings.delay_send or 0,
+    settings.reverb_send or 0
+  )
+end
+
+function InternalEngine.set_fx_returns(deck_id, delay_level, reverb_level)
+  call("fx_return_set", deck_id, delay_level or 0.7, reverb_level or 0.7)
+end
+
+function InternalEngine.set_master(level, ceiling, compression, threshold)
+  call(
+    "master_set",
+    level or 0.9,
+    ceiling or 0.9,
+    compression or 0.35,
+    threshold or 0.55
+  )
+end
+
 function InternalEngine.all_off()
   call("all_off")
 end

@@ -77,6 +77,27 @@ five Norns-native instrument roles:
 The engine mixes internal Deck A and Deck B through separate stereo buses. The
 existing Endless DJ crossfader drives those buses with an equal-power curve.
 
+INTERNAL MIXER
+
+Every internal instrument now feeds its own stereo channel before reaching its
+Deck A/B bus. The five channels are drums, bass, chords, mono, and samples.
+Each channel has level, pan, low-pass filter, saturation, delay-send, and
+reverb-send controls. The same performance settings are applied to the
+corresponding channel on both decks, while their audio and effects remain
+independent through transitions.
+
+Two shared FX buses exist per deck. Every channel can send independently to
+the tempo-neutral stereo delay or reverb bus, and the delay and reverb return
+levels are adjustable. This bus layout is also the foundation for later live
+resampling, because a future recorder can capture the complete post-channel,
+post-effects deck signal.
+
+The master stage applies adjustable stereo compression followed by a
+look-ahead limiter. Master level, compressor amount, compressor threshold, and
+limiter ceiling are exposed in parameters. Conservative defaults preserve the
+existing mix while preventing simultaneous internal instruments or two-deck
+overlap from exceeding the configured ceiling.
+
 In the `OUTPUT ROUTING` parameter group, drums, bass, chords, mono, and samples
 can each be set manually to `off`, `external`, `internal`, or `both`. Every route
 defaults to `external`, preserving the existing T-8, J-6, NTS-1, and MPX8 MIDI

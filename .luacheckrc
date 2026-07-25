@@ -16,6 +16,8 @@ globals = {
   "key",
   "metro",
   "midi",
+  "mixer_apply_channel",
+  "mixer_state",
   "n808_voice",
   "n303_apply_deck",
   "n303_patch_for_genre",
