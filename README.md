@@ -242,6 +242,38 @@ To try it:
 5. Use `start granular texture` and `stop granular texture` for immediate
    auditioning without waiting for the sequencer.
 
+LIVE RESAMPLING
+
+Two dedicated stereo capture slots can record Deck A post-FX, Deck B post-FX,
+or the combined master mix. Recording is armed from parameters and begins on
+the next bar boundary, with selectable lengths of 1, 2, 4, or 8 bars. Each
+slot is capped at 32 seconds, keeping total buffer memory predictable on Norns.
+The capture slots are separate from the 16 user pads and 60 factory samples,
+so recording never overwrites the installed sample library.
+
+Captured audio can be sent to Deck A, Deck B, or both as a one-shot, persistent
+loop, selected 8/16 slice, or CPU-bounded granular texture. Playback level and
+rate are shared controls; slice number and the granular position, size,
+density, spread, and freeze controls shape the selected replay mode. Resampled
+audio enters the destination deck's sample mixer channel, so its channel
+filter, saturation, effects sends, auto-mixing, crossfade, and mastering remain
+active.
+
+To capture a transition or phrase:
+
+1. Start Endless DJ playback.
+2. Choose the source, capture slot, and bar length.
+3. Trigger `arm quantized recording`; Maiden reports when the slot starts and
+   when it is ready.
+4. Choose the destination and replay mode.
+5. Trigger `play captured audio`; use `stop resampling` to stop record arming,
+   active recording, loops, or granular playback.
+
+Because replay passes through the internal sample channel, recording the master
+while a captured loop is already playing will intentionally capture that loop
+again. Lower the resample level or stop existing resample playback first when
+you do not want layered generations.
+
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
 models in future milestones.

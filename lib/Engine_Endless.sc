@@ -3,6 +3,7 @@ Engine_Endless : CroneEngine {
 	var autoControlBuses, autoMeters;
 	var deckMixers, masterMixer, instrumentMixers, effectReturns, voices, sampleBuffers;
 	var samplerChokes, samplerHeld, samplerLoops, samplerGrains, openHats;
+	var resampleBuffers, resampleRecorders, resamplePlayers;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
@@ -32,6 +33,11 @@ Engine_Endless : CroneEngine {
 		samplerHeld = Array.fill(2, { Array.fill(16, { nil }) });
 		samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
 		samplerGrains = Array.fill(2, { nil });
+		resampleBuffers = Array.fill(2, {
+			Buffer.alloc(server, (server.sampleRate * 32).asInteger, 2)
+		});
+		resampleRecorders = Array.fill(2, { nil });
+		resamplePlayers = Array.fill(2, { Array.fill(2, { nil }) });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 		instrumentBuses = Array.fill(2, {
 			Array.fill(5, { Bus.audio(server, 2) })
@@ -479,6 +485,65 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, Limiter.ar(LPF.ar(signal, cutoff) * amp * env, 0.9, 0.01));
 		}).add;
 
+		SynthDef(\endlessResampleRecord, {
+			arg inBus=0, buf=0, duration=1, gate=1;
+			var input, stop;
+			input = In.ar(inBus, 2);
+			RecordBuf.ar(
+				input, buf, offset: 0, recLevel: 1, preLevel: 0,
+				run: gate, loop: 0, trigger: 1, doneAction: 2
+			);
+			stop = Line.kr(0, 1, duration.clip(0.1, 32), doneAction: 2);
+		}).add;
+
+		SynthDef(\endlessResamplePlayer, {
+			arg out=0, buf=0, amp=0.8, rate=1, start=0, finish=1,
+				loop=0, gate=1;
+			var frames, startFrame, finishFrame, phase, signal, duration, autoGate;
+			var envelopeGate, env;
+			frames = BufFrames.kr(buf);
+			startFrame = start.clip(0, 0.99) * frames;
+			finishFrame = finish.clip(0.01, 1) * frames;
+			phase = Phasor.ar(
+				0, BufRateScale.kr(buf) * rate,
+				startFrame, finishFrame.max(startFrame + 2), startFrame
+			);
+			signal = BufRd.ar(2, buf, phase, loop: loop, interpolation: 4);
+			duration = (
+				(finish - start).abs * BufDur.kr(buf) / rate.abs.max(0.01)
+			).max(0.01);
+			autoGate = Line.kr(1, 0, duration);
+			envelopeGate = Select.kr(loop, [autoGate, gate]);
+			env = EnvGen.kr(Env.asr(0.005, 1, 0.04), envelopeGate, doneAction: 2);
+			Out.ar(out, signal * amp * env);
+		}).add;
+
+		SynthDef(\endlessResampleGrain, {
+			arg out=0, buf=0, amp=0.65, position=0.5, grainSize=0.12,
+				density=12, rate=1, spread=0.6, cutoffControl=1,
+				finish=1, freeze=0, gate=1;
+			var recordedDuration, scan, grainPosition, trigger, pan, signal, env;
+			recordedDuration = (BufDur.kr(buf) * finish.clip(0.01, 1)).max(0.05);
+			scan = LFSaw.kr(
+				rate.abs.max(0.05) / recordedDuration,
+				position.linlin(0, 1, -1, 1)
+			).range(0.005, finish.clip(0.01, 1));
+			grainPosition = Select.kr(freeze.clip(0, 1), [
+				scan,
+				position.clip(0.005, 0.995) * finish.clip(0.01, 1)
+			]);
+			trigger = Impulse.kr(density.clip(1, 24));
+			pan = LFNoise1.kr(density.clip(1, 24)).range(spread.neg, spread);
+			signal = GrainBuf.ar(
+				2, trigger, grainSize.clip(0.02, 0.4), buf,
+				rate.clip(-2, 2), grainPosition, 2, pan,
+				envbufnum: -1, maxGrains: 16
+			);
+			env = EnvGen.kr(Env.asr(0.04, 1, 0.12), gate, doneAction: 2);
+			signal = LPF.ar(signal, cutoffControl.linexp(0, 1, 180, 18000));
+			Out.ar(out, Limiter.ar(signal * amp * env, 0.85, 0.01));
+		}).add;
+
 		server.sync;
 		n303Voices = Array.fill(2, { arg deck;
 			Synth.head(context.xg, \endless303, [
@@ -915,6 +980,88 @@ Engine_Endless : CroneEngine {
 			});
 		});
 
+		this.addCommand(\resample_start, "iif", { arg msg;
+			var source = msg[1].asInteger.clip(1, 3) - 1;
+			var slot = msg[2].asInteger.clip(1, 2) - 1;
+			var sourceBus = [
+				deckBuses[0].index, deckBuses[1].index, masterBus.index
+			].at(source);
+			if(resampleRecorders[slot].notNil, {
+				resampleRecorders[slot].free;
+			});
+			resampleBuffers[slot].zero;
+			deckMixers.do({ arg mixer; mixer.run(true); });
+			masterMixer.run(true);
+			resampleRecorders[slot] = Synth.tail(context.xg, \endlessResampleRecord, [
+				\inBus, sourceBus, \buf, resampleBuffers[slot].bufnum,
+				\duration, msg[3].asFloat.clip(0.1, 32)
+			]);
+		});
+
+		this.addCommand(\resample_record_stop, "i", { arg msg;
+			var slot = msg[1].asInteger.clip(1, 2) - 1;
+			if(resampleRecorders[slot].notNil, {
+				resampleRecorders[slot].free;
+				resampleRecorders[slot] = nil;
+			});
+		});
+
+		this.addCommand(\resample_play, "iiiffff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var slot = msg[2].asInteger.clip(1, 2) - 1;
+			var mode = msg[3].asInteger.clip(1, 3);
+			if(resamplePlayers[deck][slot].notNil, {
+				resamplePlayers[deck][slot].set(\gate, 0);
+			});
+			this.wakePart(deck, 4);
+			resamplePlayers[deck][slot] = Synth.head(
+				context.xg, \endlessResamplePlayer, [
+					\out, instrumentBuses[deck][4].index,
+					\buf, resampleBuffers[slot].bufnum,
+					\amp, msg[4].asFloat.clip(0, 1.25),
+					\rate, msg[5].asFloat.clip(0.25, 2),
+					\start, msg[6].asFloat.clip(0, 0.99),
+					\finish, msg[7].asFloat.clip(0.01, 1),
+					\loop, (mode == 2).asInteger
+				]
+			);
+			voices.add(resamplePlayers[deck][slot]);
+		});
+
+		this.addCommand(\resample_grain_on, "iiffffffffi", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var slot = msg[2].asInteger.clip(1, 2) - 1;
+			if(resamplePlayers[deck][slot].notNil, {
+				resamplePlayers[deck][slot].set(\gate, 0);
+			});
+			this.wakePart(deck, 4);
+			resamplePlayers[deck][slot] = Synth.head(
+				context.xg, \endlessResampleGrain, [
+					\out, instrumentBuses[deck][4].index,
+					\buf, resampleBuffers[slot].bufnum,
+					\amp, msg[3].asFloat.clip(0, 1.25),
+					\position, msg[4].asFloat.clip(0, 1),
+					\grainSize, msg[5].asFloat.clip(0.02, 0.4),
+					\density, msg[6].asFloat.clip(1, 24),
+					\rate, msg[7].asFloat.clip(-2, 2),
+					\spread, msg[8].asFloat.clip(0, 1),
+					\cutoffControl, msg[9].asFloat.clip(0, 1),
+					\finish, msg[10].asFloat.clip(0.01, 1),
+					\freeze, msg[11].asInteger.clip(0, 1)
+				]
+			);
+			voices.add(resamplePlayers[deck][slot]);
+		});
+
+		this.addCommand(\resample_stop, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var slot = msg[2].asInteger.clip(1, 2) - 1;
+			if(resamplePlayers[deck][slot].notNil, {
+				resamplePlayers[deck][slot].set(\gate, 0);
+				resamplePlayers[deck][slot] = nil;
+			});
+		});
+
 		this.addCommand(\all_off, "", {
 			voices.do({ arg synth; synth.free; });
 			voices.clear;
@@ -923,6 +1070,9 @@ Engine_Endless : CroneEngine {
 			samplerHeld = Array.fill(2, { Array.fill(16, { nil }) });
 			samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
 			samplerGrains = Array.fill(2, { nil });
+			resampleRecorders.do({ arg synth; if(synth.notNil, { synth.free; }); });
+			resampleRecorders = Array.fill(2, { nil });
+			resamplePlayers = Array.fill(2, { Array.fill(2, { nil }) });
 			n303SlidePending = Array.fill(2, { false });
 			n303Voices.do({ arg synth; synth.set(\amp, 0, \slide, 0); });
 			nmonoVoices.do({ arg synth; synth.set(\amp, 0, \gate, 0); });
@@ -938,12 +1088,14 @@ Engine_Endless : CroneEngine {
 		n303Voices.do({ arg synth; synth.free; });
 		nmonoVoices.do({ arg synth; synth.free; });
 		nchordHeld.do({ arg held; held.do({ arg synth; synth.free; }); });
+		resampleRecorders.do({ arg synth; if(synth.notNil, { synth.free; }); });
 		autoMeters.do({ arg synth; synth.free; });
 		instrumentMixers.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		effectReturns.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		deckMixers.do({ arg synth; synth.free; });
 		masterMixer.free;
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
+		resampleBuffers.do({ arg buffer; buffer.free; });
 		instrumentBuses.do({ arg deck; deck.do({ arg bus; bus.free; }); });
 		autoControlBuses.do({ arg bus; bus.free; });
 		delayBuses.do({ arg bus; bus.free; });

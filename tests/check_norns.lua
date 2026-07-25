@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.77", 1, true) then
-  fail("Script version must match PR #77")
+if not source:find("Endless DJ v1.78", 1, true) then
+  fail("Script version must match PR #78")
 end
-pass("Script version matches PR #77")
+pass("Script version matches PR #78")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -736,6 +736,93 @@ do
   end
 end
 pass("CPU-bounded, genre-shaped Deck A/B granular playback and freeze exist")
+
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  for _, synthdef in ipairs({
+    "endlessResampleRecord", "endlessResamplePlayer", "endlessResampleGrain",
+  }) do
+    if not engine_source:find("SynthDef(\\" .. synthdef, 1, true) then
+      fail("Live resampling is missing " .. synthdef)
+    end
+  end
+  for command, format in pairs({
+    resample_start="iif", resample_record_stop="i",
+    resample_play="iiiffff", resample_grain_on="iiffffffffi",
+    resample_stop="ii",
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("Live resampling is missing " .. command .. " command or format")
+    end
+  end
+  for _, token in ipairs({
+    "resampleBuffers = Array.fill(2", "server.sampleRate * 32",
+    "RecordBuf.ar", "BufRd.ar(2", "maxGrains: 16",
+    "resampleBuffers.do({ arg buffer; buffer.free; })",
+  }) do
+    if not engine_source:find(token, 1, true) then
+      fail("Live resampling is missing safety token " .. token)
+    end
+  end
+end
+for _, param in ipairs({
+  "resample_source", "resample_slot", "resample_bars",
+  "resample_destination", "resample_mode", "resample_level",
+  "resample_rate", "resample_slice", "resample_record",
+  "resample_play", "resample_stop",
+}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Live resampling is missing parameter " .. param)
+  end
+end
+for _, token in ipairs({
+  "resample_service()", "resample_state.pending",
+  "request.bars * 16", "clip.duration / 32",
+  "if not playing then",
+}) do
+  if not source:find(token, 1, true) then
+    fail("Quantized resampling is missing " .. token)
+  end
+end
+do
+  local previous_engine = engine
+  local start_received, play_received, grain_received, stop_received
+  engine = {
+    resample_start = function(...) start_received = {...} end,
+    resample_play = function(...) play_received = {...} end,
+    resample_grain_on = function(...) grain_received = {...} end,
+    resample_stop = function(...) stop_received = {...} end,
+  }
+  local internal = dofile("lib/internal_engine.lua")
+  internal.resample_start(3, 2, 40)
+  internal.resample_play(2, 1, 2, {
+    level=0.7, rate=1.25, start=0.1, finish=0.8,
+  })
+  internal.resample_grain_on(1, 2, {
+    level=0.6, position=0.3, size=0.08, density=10,
+    rate=0.75, spread=0.7, cutoff=0.8, finish=0.5, freeze=true,
+  })
+  internal.resample_stop(2, 1)
+  engine = previous_engine
+  if not start_received or start_received[1] ~= 3 or
+      start_received[2] ~= 2 or start_received[3] ~= 32 then
+    fail("Resample recording wrapper must cap captures at 32 seconds")
+  end
+  if not play_received or play_received[1] ~= 2 or
+      play_received[3] ~= 2 or play_received[7] ~= 0.8 then
+    fail("Resample player wrapper must forward deck, slot, mode, and range")
+  end
+  if not grain_received or grain_received[4] ~= 0.3 or
+      grain_received[10] ~= 0.5 or grain_received[11] ~= 1 then
+    fail("Resample granular wrapper must forward bounded texture controls")
+  end
+  if not stop_received or stop_received[1] ~= 2 or stop_received[2] ~= 1 then
+    fail("Resample stop wrapper must address one slot on one deck")
+  end
+end
+pass("Quantized dual-slot post-FX live resampling and replay exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then

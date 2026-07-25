@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.77
+-- Endless DJ v1.78
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -140,6 +140,28 @@ sampler_state = {
   grains = {nil, nil},
 }
 
+resample_state = {
+  slot = 1,
+  source = 1,
+  bars = 1,
+  destination = 1,
+  mode = 1,
+  level = 0.8,
+  rate = 1,
+  slice = 1,
+  grain_position = 0.5,
+  grain_size = 0.12,
+  grain_density = 12,
+  grain_spread = 0.6,
+  grain_freeze = false,
+  pending = nil,
+  recording = nil,
+  slots = {
+    {ready=false, duration=0},
+    {ready=false, duration=0},
+  },
+}
+
 mixer_state = {
   parts = {"drums", "bass", "chords", "mono", "samples"},
   channels = {},
@@ -268,6 +290,118 @@ local ppqn = 4
 local tick = 0
 local phrase_bars = 128
 local step = 1
+
+function resample_begin(request)
+  local seconds = math.min(32, request.bars * 4 * 60 / bpm)
+  internal_engine.resample_start(request.source, request.slot, seconds)
+  resample_state.recording = {
+    slot=request.slot,
+    bars=request.bars,
+    seconds=seconds,
+    ticks=request.bars * 16,
+  }
+  resample_state.slots[request.slot].ready = false
+  print(
+    "Endless DJ: recording resample slot " .. request.slot ..
+    " for " .. request.bars .. " bar(s)"
+  )
+end
+
+function resample_finish_recording()
+  local recording = resample_state.recording
+  if not recording then return end
+  internal_engine.resample_record_stop(recording.slot)
+  resample_state.slots[recording.slot] = {
+    ready=true,
+    duration=recording.seconds,
+  }
+  print("Endless DJ: resample slot " .. recording.slot .. " ready")
+  resample_state.recording = nil
+end
+
+function resample_service()
+  if resample_state.pending and step == 1 then
+    local request = resample_state.pending
+    resample_state.pending = nil
+    resample_begin(request)
+    return
+  end
+  if resample_state.recording then
+    resample_state.recording.ticks = resample_state.recording.ticks - 1
+    if resample_state.recording.ticks <= 0 then
+      resample_finish_recording()
+    end
+  end
+end
+
+function resample_request_record()
+  if not playing then
+    print("Endless DJ: start playback before quantized resampling")
+    return
+  end
+  if resample_state.recording then resample_finish_recording() end
+  resample_state.pending = {
+    source=resample_state.source,
+    slot=resample_state.slot,
+    bars=resample_state.bars,
+  }
+  print("Endless DJ: resample armed for next bar")
+end
+
+function resample_destinations()
+  if resample_state.destination == 3 then return {1, 2} end
+  return {resample_state.destination}
+end
+
+function resample_play()
+  local slot = resample_state.slot
+  local clip = resample_state.slots[slot]
+  if not clip.ready then
+    print("Endless DJ: resample slot " .. slot .. " is empty")
+    return
+  end
+  local finish = math.max(0.01, math.min(1, clip.duration / 32))
+  local mode = resample_state.mode
+  local start = 0
+  if mode == 3 or mode == 4 then
+    local slices = mode == 3 and 8 or 16
+    local selected = math.max(1, math.min(slices, resample_state.slice))
+    start = finish * ((selected - 1) / slices)
+    finish = finish * (selected / slices)
+  end
+  for _, deck_id in ipairs(resample_destinations()) do
+    if mode == 5 then
+      internal_engine.resample_grain_on(deck_id, slot, {
+        level=resample_state.level,
+        position=resample_state.grain_position,
+        size=resample_state.grain_size,
+        density=resample_state.grain_density,
+        rate=resample_state.rate,
+        spread=resample_state.grain_spread,
+        cutoff=1,
+        finish=finish,
+        freeze=resample_state.grain_freeze,
+      })
+    else
+      internal_engine.resample_play(deck_id, slot, mode == 2 and 2 or 1, {
+        level=resample_state.level,
+        rate=resample_state.rate,
+        start=start,
+        finish=finish,
+      })
+    end
+  end
+end
+
+function resample_stop()
+  resample_state.pending = nil
+  if resample_state.recording then resample_finish_recording() end
+  for deck_id = 1, 2 do
+    for slot = 1, 2 do
+      internal_engine.resample_stop(deck_id, slot)
+    end
+  end
+end
 
 -- Mixing spans the last 32 bars of the phrase, split into four 8-bar phases:
 --   Phase 1 (bars 97-104):  fade kick between decks
@@ -3306,6 +3440,7 @@ local metro_clock
 local function clock_tick()
   if not playing then return end
 
+  resample_service()
   service_note_offs()
   service_pending_notes()
   start_mix_if_needed()
@@ -3789,6 +3924,75 @@ function init()
       mpx8_trigger(pad_index, 100, current_deck(), role_name)
     end)
   end
+
+  params:add_separator("resample_sep", "LIVE RESAMPLING")
+  params:add_option(
+    "resample_source", "record source",
+    {"deck A post-FX", "deck B post-FX", "master mix"}, 1
+  )
+  params:set_action("resample_source", function(v)
+    resample_state.source = v
+  end)
+  params:add_option("resample_slot", "capture slot", {"slot 1", "slot 2"}, 1)
+  params:set_action("resample_slot", function(v)
+    resample_state.slot = v
+  end)
+  params:add_option("resample_bars", "record length", {"1 bar", "2 bars", "4 bars", "8 bars"}, 1)
+  params:set_action("resample_bars", function(v)
+    resample_state.bars = ({1, 2, 4, 8})[v]
+  end)
+  params:add_option(
+    "resample_destination", "play destination",
+    {"deck A", "deck B", "both"}, 1
+  )
+  params:set_action("resample_destination", function(v)
+    resample_state.destination = v
+  end)
+  params:add_option(
+    "resample_mode", "play mode",
+    {"one-shot", "loop", "8-slice", "16-slice", "granular"}, 1
+  )
+  params:set_action("resample_mode", function(v)
+    resample_state.mode = v
+  end)
+  params:add_number("resample_level", "resample level", 0, 125, 80)
+  params:set_action("resample_level", function(v)
+    resample_state.level = v / 100
+  end)
+  params:add_number("resample_rate", "resample rate", 25, 200, 100)
+  params:set_action("resample_rate", function(v)
+    resample_state.rate = v / 100
+  end)
+  params:add_number("resample_slice", "slice", 1, 16, 1)
+  params:set_action("resample_slice", function(v)
+    resample_state.slice = v
+  end)
+  params:add_number("resample_grain_position", "resample grain position", 0, 100, 50)
+  params:set_action("resample_grain_position", function(v)
+    resample_state.grain_position = v / 100
+  end)
+  params:add_number("resample_grain_size", "resample grain size ms", 20, 400, 120)
+  params:set_action("resample_grain_size", function(v)
+    resample_state.grain_size = v / 1000
+  end)
+  params:add_number("resample_grain_density", "resample grain density", 1, 24, 12)
+  params:set_action("resample_grain_density", function(v)
+    resample_state.grain_density = v
+  end)
+  params:add_number("resample_grain_spread", "resample grain spread", 0, 100, 60)
+  params:set_action("resample_grain_spread", function(v)
+    resample_state.grain_spread = v / 100
+  end)
+  params:add_option("resample_grain_freeze", "resample grain freeze", {"off", "on"}, 1)
+  params:set_action("resample_grain_freeze", function(v)
+    resample_state.grain_freeze = v == 2
+  end)
+  params:add_trigger("resample_record", "arm quantized recording")
+  params:set_action("resample_record", resample_request_record)
+  params:add_trigger("resample_play", "play captured audio")
+  params:set_action("resample_play", resample_play)
+  params:add_trigger("resample_stop", "stop resampling")
+  params:set_action("resample_stop", resample_stop)
 
   params:add_separator("n808_sep", "N-808")
   for _, control in ipairs({
@@ -4324,6 +4528,7 @@ function init()
 end
 
 function cleanup()
+  resample_stop()
   quiet_notes()
   kb_all_notes_off()
   grid_clear()
