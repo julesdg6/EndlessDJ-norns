@@ -39,6 +39,11 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
+if not source:find("Endless DJ v1.61", 1, true) then
+  fail("Script version must match PR #61")
+end
+pass("Script version matches PR #61")
+
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
     fail("Missing required entry point: " .. name .. "()")
