@@ -130,11 +130,20 @@ do
   if not engine_source then
     fail("Missing custom SuperCollider engine")
   end
-  if engine_source:find("server.sync", 1, true) then
-    fail("Engine alloc must not block on server.sync; Crone waits for alloc to return")
+  if engine_source:find("Crone.output", 1, true) then
+    fail("Custom engines must route through their CroneAudioContext, not Crone.output")
+  end
+  if not engine_source:find("context.out_b", 1, true) then
+    fail("Custom engine must route its mixer to context.out_b")
+  end
+  if not engine_source:find("context.xg", 1, true) then
+    fail("Custom engine synths must belong to context.xg")
+  end
+  if not engine_source:find("server.sync", 1, true) then
+    fail("Custom engine must wait for SynthDef uploads before creating mixer nodes")
   end
 end
-pass("Custom engine allocation contains no blocking server sync")
+pass("Custom engine uses the supplied Crone audio context")
 
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
