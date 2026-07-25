@@ -20,7 +20,7 @@ engine.name = "Endless"
 
 output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
-sample_library = include("EndlessDJ/lib/sample_library")
+local sample_library = include("EndlessDJ/lib/sample_library")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad

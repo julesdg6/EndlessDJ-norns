@@ -28,4 +28,5 @@ globals = {
   "redraw",
   "screen",
   "softcut",
+  "util",
 }
