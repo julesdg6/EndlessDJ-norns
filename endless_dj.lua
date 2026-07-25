@@ -1,5 +1,5 @@
 -- endless_dj.lua
--- Endless DJ v1.63
+-- Endless DJ v1.65
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
