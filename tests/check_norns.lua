@@ -236,7 +236,7 @@ do
   for _, token in ipairs({
     "instrumentBuses", "delayBuses", "reverbBuses", "masterBus",
     "Compander.ar", "Limiter.ar", "FreeVerb2.ar", "CombC.ar",
-    "DetectSilence.ar", "doneAction: 1", "wakePart",
+    "DetectSilence.ar", "Impulse.ar(0)", "doneAction: 1", "wakePart",
   }) do
     if not engine_source:find(token, 1, true) then
       fail("Internal mixer is missing architecture token " .. token)

@@ -71,7 +71,7 @@ Engine_Endless : CroneEngine {
 			Out.ar(delayBus, signal * Lag.kr(delaySend, 0.03));
 			Out.ar(reverbBus, signal * Lag.kr(reverbSend, 0.03));
 			DetectSilence.ar(
-				signal[0].abs + signal[1].abs, 0.0001, 0.75, doneAction: 1
+				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 0.75, doneAction: 1
 			);
 		}).add;
 
@@ -85,7 +85,7 @@ Engine_Endless : CroneEngine {
 			delayed = LeakDC.ar(delayed) * 0.45 * Lag.kr(level, 0.03);
 			Out.ar(out, delayed);
 			DetectSilence.ar(
-				delayed[0].abs + delayed[1].abs, 0.0001, 1.0, doneAction: 1
+				delayed[0].abs + delayed[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
 			);
 		}).add;
 
@@ -95,7 +95,7 @@ Engine_Endless : CroneEngine {
 			wet = FreeVerb2.ar(input[0], input[1], 0.78, 0.72, 0.35);
 			wet = LeakDC.ar(wet) * 0.42 * Lag.kr(level, 0.03);
 			Out.ar(out, wet);
-			DetectSilence.ar(wet[0].abs + wet[1].abs, 0.0001, 1.0, doneAction: 1);
+			DetectSilence.ar(wet[0].abs + wet[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1);
 		}).add;
 
 		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
@@ -103,7 +103,7 @@ Engine_Endless : CroneEngine {
 			signal = In.ar(inBus, 2) * Lag.kr(level, 0.03);
 			Out.ar(out, signal);
 			DetectSilence.ar(
-				signal[0].abs + signal[1].abs, 0.0001, 1.0, doneAction: 1
+				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
 			);
 		}).add;
 
@@ -124,7 +124,7 @@ Engine_Endless : CroneEngine {
 				)
 			);
 			DetectSilence.ar(
-				signal[0].abs + signal[1].abs, 0.0001, 1.0, doneAction: 1
+				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
 			);
 		}).add;
 
@@ -259,7 +259,7 @@ Engine_Endless : CroneEngine {
 			signal = Pan2.ar(signal);
 			Out.ar(out, signal);
 			DetectSilence.ar(
-				signal[0].abs + signal[1].abs, 0.0001, 0.8, doneAction: 1
+				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 0.8, doneAction: 1
 			);
 		}).add;
 
@@ -339,7 +339,7 @@ Engine_Endless : CroneEngine {
 			output = Limiter.ar(output * env * amp, 0.82, 0.01);
 			Out.ar(out, output);
 			DetectSilence.ar(
-				output[0].abs + output[1].abs, 0.0001, 0.8, doneAction: 1
+				output[0].abs + output[1].abs + Impulse.ar(0), 0.0001, 0.8, doneAction: 1
 			);
 		}).add;
 
