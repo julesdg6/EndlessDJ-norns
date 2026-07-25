@@ -98,6 +98,16 @@ limiter ceiling are exposed in parameters. Conservative defaults preserve the
 existing mix while preventing simultaneous internal instruments or two-deck
 overlap from exceeding the configured ceiling.
 
+To preserve Norns CPU headroom, silent instrument channels, idle persistent
+voices, unused effect returns, deck buses, and the master processor suspend
+their audio calculations automatically. They wake before the next note,
+sample, loop, granular voice, effect send, or crossfade-level change, so this
+power saving does not alter sequencing or mixer controls.
+
+The six n-808 voices also use separate synthesis graphs. A hat hit therefore
+calculates only the requested hat rather than simultaneously calculating and
+discarding the kick, snare, clap, tom, and other hat models.
+
 In the `OUTPUT ROUTING` parameter group, drums, bass, chords, mono, and samples
 can each be set manually to `off`, `external`, `internal`, or `both`. Every route
 defaults to `external`, preserving the existing T-8, J-6, NTS-1, and MPX8 MIDI
