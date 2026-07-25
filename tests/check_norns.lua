@@ -325,6 +325,23 @@ do
 end
 pass("n-808 calculates only the requested drum voice")
 
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  for _, token in ipairs({
+    "nchordSynthDefs = Array.fill(8",
+    "SynthDef(nchordSynthDefs[presetIndex]",
+    "nchordSynthDefs[nchordPreset[deck] - 1]",
+  }) do
+    if not engine_source:find(token, 1, true) then
+      fail("n-chord CPU optimization is missing " .. token)
+    end
+  end
+  if engine_source:find("presetIndex, signals", 1, true) then
+    fail("n-chord must not calculate all eight sound models for every note")
+  end
+end
+pass("n-chord calculates only the selected sound model")
+
 for _, control in ipairs({"tone", "decay", "drive", "variation"}) do
   if not source:find('"n808_" .. name', 1, true) or
       not source:find('{"' .. control .. '", "n-808 ' .. control, 1, true) then

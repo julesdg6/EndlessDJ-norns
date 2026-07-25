@@ -5,6 +5,7 @@ Engine_Endless : CroneEngine {
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
+	var nchordSynthDefs;
 	var delaySends, reverbSends;
 	var n808SynthDefs;
 	var n808Tone=0.5, n808Decay=0.5, n808Drive=0.25, n808Variation=0.15;
@@ -51,6 +52,9 @@ Engine_Endless : CroneEngine {
 		nchordBrightness = Array.fill(2, { 0.5 });
 		nchordFilterEnv = Array.fill(2, { 0.5 });
 		nchordChorus = Array.fill(2, { 0.35 });
+		nchordSynthDefs = Array.fill(8, { arg preset;
+			("endlessChord" ++ (preset + 1)).asSymbol
+		});
 
 		SynthDef(\endlessInstrumentMixer, {
 			arg inBus=0, outBus=0, delayBus=0, reverbBus=0,
@@ -263,44 +267,72 @@ Engine_Endless : CroneEngine {
 			);
 		}).add;
 
-		SynthDef(\endlessChord, {
-			arg out=0, freq=220, amp=0.5, sustain=0.5, preset=1, timed=1,
-				gate=1, brightness=0.5, filterEnvAmount=0.5, chorus=0.35;
-			var presetIndex, autoGate, envelopeGate, attack, release, env, filterEnv;
-			var detune, saw, pulse, organ, digital, signals, osc, cutoff, filtered;
-			var dry, wet, output;
-			presetIndex = preset.clip(1, 8) - 1;
-			autoGate = Line.kr(1, 0, sustain.max(0.03));
-			envelopeGate = Select.kr(timed, [gate, autoGate]);
-			attack = Select.kr(presetIndex, #[0.004, 0.02, 0.003, 0.35, 0.01, 0.18, 0.015, 0.002]);
-			release = Select.kr(presetIndex, #[0.16, 0.75, 0.22, 1.8, 0.35, 1.35, 0.55, 0.12]);
-			env = EnvGen.kr(Env.asr(attack, 1, release, -4), envelopeGate, doneAction: 2);
-			filterEnv = EnvGen.kr(Env.asr(0.003, 1, release * 0.7, -5), envelopeGate);
-			detune = Select.kr(presetIndex, #[0.006, 0.009, 0.018, 0.012, 0.002, 0.007, 0.015, 0.003]);
-			saw = Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3;
-			pulse = Mix(Pulse.ar(freq * [1, 2], [0.48, 0.35], [0.7, 0.3]));
-			organ = Mix(SinOsc.ar(freq * [1, 2, 3], 0, [0.65, 0.25, 0.1]));
-			digital = (LFTri.ar(freq) * 0.65) + (Pulse.ar(freq * 2, 0.2) * 0.25);
-			signals = [
-				saw, (saw * 0.75) + (SinOsc.ar(freq * 0.5) * 0.25),
-				saw + (Pulse.ar(freq * 1.5, 0.42) * 0.25),
-				VarSaw.ar(freq * [0.997, 1.003], 0, 0.55).sum * 0.45,
-				organ, (saw * 0.72) + (pulse * 0.28), saw, digital
-			];
-			osc = SelectX.ar(presetIndex, signals);
-			cutoff = (
-				brightness.linexp(0, 1, 280, 7200)
-				+ (filterEnv * filterEnvAmount * 5000)
-			).clip(100, 12000);
-			filtered = RLPF.ar(osc, cutoff, 0.28);
-			dry = Pan2.ar(filtered);
-			wet = [
-				DelayC.ar(filtered, 0.03, SinOsc.kr(0.23, 0).range(0.008, 0.022)),
-				DelayC.ar(filtered, 0.03, SinOsc.kr(0.19, pi).range(0.009, 0.024))
-			];
-			output = XFade2.ar(dry, wet, chorus.linlin(0, 1, -1, 1));
-			Out.ar(out, Limiter.ar(output * env * amp, 0.85, 0.01));
-		}).add;
+		8.do({ arg presetIndex;
+			SynthDef(nchordSynthDefs[presetIndex], {
+				arg out=0, freq=220, amp=0.5, sustain=0.5, timed=1,
+					gate=1, brightness=0.5, filterEnvAmount=0.5, chorus=0.35;
+				var autoGate, envelopeGate, attack, release, env, filterEnv;
+				var detune, osc, cutoff, filtered, dry, wet, output;
+				autoGate = Line.kr(1, 0, sustain.max(0.03));
+				envelopeGate = Select.kr(timed, [gate, autoGate]);
+				attack = #[0.004, 0.02, 0.003, 0.35, 0.01, 0.18, 0.015, 0.002][presetIndex];
+				release = #[0.16, 0.75, 0.22, 1.8, 0.35, 1.35, 0.55, 0.12][presetIndex];
+				detune = #[0.006, 0.009, 0.018, 0.012, 0.002, 0.007, 0.015, 0.003][presetIndex];
+				env = EnvGen.kr(
+					Env.asr(attack, 1, release, -4), envelopeGate, doneAction: 2
+				);
+				filterEnv = EnvGen.kr(
+					Env.asr(0.003, 1, release * 0.7, -5), envelopeGate
+				);
+				osc = switch(presetIndex,
+					0, {
+						Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3
+					},
+					1, {
+						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3 * 0.75)
+							+ (SinOsc.ar(freq * 0.5) * 0.25)
+					},
+					2, {
+						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3)
+							+ (Pulse.ar(freq * 1.5, 0.42) * 0.25)
+					},
+					3, {
+						VarSaw.ar(freq * [0.997, 1.003], 0, 0.55).sum * 0.45
+					},
+					4, {
+						Mix(SinOsc.ar(freq * [1, 2, 3], 0, [0.65, 0.25, 0.1]))
+					},
+					5, {
+						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3 * 0.72)
+							+ (Mix(Pulse.ar(
+								freq * [1, 2], [0.48, 0.35], [0.7, 0.3]
+							)) * 0.28)
+					},
+					6, {
+						Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3
+					},
+					7, {
+						(LFTri.ar(freq) * 0.65) + (Pulse.ar(freq * 2, 0.2) * 0.25)
+					}
+				);
+				cutoff = (
+					brightness.linexp(0, 1, 280, 7200)
+					+ (filterEnv * filterEnvAmount * 5000)
+				).clip(100, 12000);
+				filtered = RLPF.ar(osc, cutoff, 0.28);
+				dry = Pan2.ar(filtered);
+				wet = [
+					DelayC.ar(
+						filtered, 0.03, SinOsc.kr(0.23, 0).range(0.008, 0.022)
+					),
+					DelayC.ar(
+						filtered, 0.03, SinOsc.kr(0.19, pi).range(0.009, 0.024)
+					)
+				];
+				output = XFade2.ar(dry, wet, chorus.linlin(0, 1, -1, 1));
+				Out.ar(out, Limiter.ar(output * env * amp, 0.85, 0.01));
+			}).add;
+		});
 
 		SynthDef(\endlessMono, {
 			arg out=0, freq=220, amp=0, sustain=0.2, mode=0, gate=0, t_trig=0,
@@ -571,10 +603,11 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\nchord_note, "iiffi", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			this.wakePart(deck, 2);
-			voices.add(Synth.head(context.xg, \endlessChord, [
+			voices.add(Synth.head(
+				context.xg, nchordSynthDefs[nchordPreset[deck] - 1], [
 				\out, instrumentBuses[deck][2].index, \freq, msg[2].asFloat.midicps,
 				\amp, msg[3].asFloat, \sustain, msg[4].asFloat * 0.12,
-				\preset, nchordPreset[deck], \brightness, nchordBrightness[deck],
+				\brightness, nchordBrightness[deck],
 				\filterEnvAmount, nchordFilterEnv[deck], \chorus, nchordChorus[deck]
 			]));
 		});
@@ -587,10 +620,11 @@ Engine_Endless : CroneEngine {
 			if(nchordHeld[deck][note].notNil, {
 				nchordHeld[deck][note].set(\gate, 0);
 			});
-			synth = Synth.head(context.xg, \endlessChord, [
+			synth = Synth.head(
+				context.xg, nchordSynthDefs[nchordPreset[deck] - 1], [
 				\out, instrumentBuses[deck][2].index, \freq, note.midicps,
 				\amp, msg[3].asFloat.clip(0, 1), \timed, 0,
-				\preset, nchordPreset[deck], \brightness, nchordBrightness[deck],
+				\brightness, nchordBrightness[deck],
 				\filterEnvAmount, nchordFilterEnv[deck], \chorus, nchordChorus[deck]
 			]);
 			nchordHeld[deck][note] = synth;

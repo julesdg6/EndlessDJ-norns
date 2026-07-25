@@ -108,6 +108,10 @@ The six n-808 voices also use separate synthesis graphs. A hat hit therefore
 calculates only the requested hat rather than simultaneously calculating and
 discarding the kick, snare, clap, tom, and other hat models.
 
+The eight n-chord sound models are likewise compiled as separate graphs. Each
+note calculates only its song's selected chord model instead of all eight
+models, which keeps polyphonic chord entrances within the Norns audio budget.
+
 In the `OUTPUT ROUTING` parameter group, drums, bass, chords, mono, and samples
 can each be set manually to `off`, `external`, `internal`, or `both`. Every route
 defaults to `external`, preserving the existing T-8, J-6, NTS-1, and MPX8 MIDI
