@@ -150,6 +150,16 @@ do
   if not engine_source:find("openHats", 1, true) then
     fail("n-808 must maintain per-deck open-hat state for choking")
   end
+  if not engine_source:find("n303Voices", 1, true) or
+      not engine_source:find("n303SlidePending", 1, true) then
+    fail("n-303 must maintain a persistent voice and slide state per deck")
+  end
+  if not engine_source:find("addCommand(\\n303_set", 1, true) then
+    fail("Custom engine is missing n303_set command")
+  end
+  if not engine_source:find("Limiter.ar", 1, true) then
+    fail("n-303 must bound resonant and driven output")
+  end
 end
 pass("Custom engine uses the supplied Crone audio context")
 
@@ -169,6 +179,21 @@ if not source:find("internal_engine.set_n808_control", 1, true) or
   fail("n-808 parameters must be forwarded through the internal engine wrapper")
 end
 pass("n-808 performance controls and per-voice levels exist")
+
+if not source:find('"n303_waveform"', 1, true) then
+  fail("Missing n-303 waveform parameter")
+end
+for _, control in ipairs({
+  "cutoff", "resonance", "env_mod", "decay", "drive", "slide_time"
+}) do
+  if not source:find('{"' .. control .. '", "n-303 ', 1, true) then
+    fail("Missing n-303 " .. control .. " performance parameter")
+  end
+end
+if not source:find("internal_engine.set_n303_control", 1, true) then
+  fail("n-303 parameters must be forwarded through the internal engine wrapper")
+end
+pass("n-303 persistent acid voice and performance controls exist")
 
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")

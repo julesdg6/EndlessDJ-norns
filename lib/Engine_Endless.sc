@@ -1,7 +1,10 @@
 Engine_Endless : CroneEngine {
 	var server, deckBuses, deckMixers, voices, sampleBuffers, openHats;
+	var n303Voices, n303SlidePending;
 	var n808Tone=0.5, n808Decay=0.5, n808Drive=0.25, n808Variation=0.15;
 	var n808Levels;
+	var n303Waveform=0, n303Cutoff=0.45, n303Resonance=0.65, n303EnvMod=0.55;
+	var n303Decay=0.45, n303Drive=0.3, n303SlideTime=0.35;
 
 	*new { arg context, doneCallback;
 		^super.new(context, doneCallback);
@@ -14,6 +17,7 @@ Engine_Endless : CroneEngine {
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
+		n303SlidePending = Array.fill(2, { false });
 
 		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
 			var signal = In.ar(inBus, 2);
@@ -52,12 +56,40 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, Pan2.ar(driven * env * amp * voiceLevel));
 		}).add;
 
-		SynthDef(\endless303, { arg out=0, freq=110, amp=0.7, sustain=0.2, accent=0, slide=0;
-			var env = EnvGen.kr(Env.perc(0.005, sustain.max(0.04), 1, -4), doneAction: 2);
-			var cutoffEnv = EnvGen.kr(Env.perc(0.002, sustain.max(0.08), 4200, -5));
-			var osc = Saw.ar(Lag.kr(freq, Select.kr(slide, #[0.002, 0.08])));
-			var signal = RLPF.ar(osc, (350 + cutoffEnv + (accent * 1200)).clip(80, 12000), 0.18);
-			Out.ar(out, Pan2.ar((signal * env * amp * (1 + (accent * 0.35))).tanh));
+		SynthDef(\endless303, {
+			arg out=0, freq=110, amp=0, sustain=0.18, accent=0, slide=0,
+				waveform=0, cutoffControl=0.45, resonanceControl=0.65,
+				envMod=0.55, decayControl=0.45, driveControl=0.3,
+				slideControl=0.35, t_trig=0;
+			var pitch, saw, square, osc, ampEnv, filterEnv, cutoff, rq, signal;
+			var accentGain, driveGain;
+			pitch = Lag.kr(
+				freq,
+				Select.kr(slide, [0.002, slideControl.linexp(0, 1, 0.025, 0.22)])
+			);
+			saw = Saw.ar(pitch);
+			square = Pulse.ar(pitch, 0.5);
+			osc = SelectX.ar(waveform.clip(0, 1), [saw, square]);
+			ampEnv = EnvGen.kr(
+				Env.perc(0.003, sustain.max(decayControl.linexp(0, 1, 0.07, 0.8)), 1, -4),
+				t_trig
+			);
+			filterEnv = EnvGen.kr(
+				Env.perc(0.002, decayControl.linexp(0, 1, 0.06, 1.2), 1, -5),
+				t_trig
+			);
+			cutoff = (
+				cutoffControl.linexp(0, 1, 90, 4200)
+				+ (filterEnv * envMod * 7200 * (1 + (accent * 0.65)))
+				+ (accent * 650)
+			).clip(70, 12000);
+			rq = resonanceControl.linlin(0, 1, 0.8, 0.08);
+			signal = RLPF.ar(osc, cutoff, rq);
+			accentGain = 1 + (accent * 0.45);
+			driveGain = driveControl.linexp(0, 1, 1, 12);
+			signal = LeakDC.ar((signal * driveGain).tanh) / driveGain.sqrt;
+			signal = Limiter.ar(signal * ampEnv * amp * accentGain, 0.85, 0.01);
+			Out.ar(out, Pan2.ar(signal));
 		}).add;
 
 		SynthDef(\endlessChord, { arg out=0, freq=220, amp=0.5, sustain=0.5, preset=1;
@@ -82,6 +114,14 @@ Engine_Endless : CroneEngine {
 		}).add;
 
 		server.sync;
+		n303Voices = deckBuses.collect({ arg bus;
+			Synth.head(context.xg, \endless303, [
+				\out, bus.index, \waveform, n303Waveform,
+				\cutoffControl, n303Cutoff, \resonanceControl, n303Resonance,
+				\envMod, n303EnvMod, \decayControl, n303Decay,
+				\driveControl, n303Drive, \slideControl, n303SlideTime
+			]);
+		});
 		deckMixers = deckBuses.collect({ arg bus;
 			Synth.tail(context.xg, \endlessDeckMixer, [
 				\inBus, bus.index, \out, context.out_b, \level, 1
@@ -132,11 +172,34 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\n303_note, "iiffii", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			var freq = msg[2].asFloat.midicps;
-			voices.add(Synth.head(context.xg, \endless303, [
-				\out, deckBuses[deck].index, \freq, freq, \amp, msg[3].asFloat,
-				\sustain, msg[4].asFloat * 0.12, \accent, msg[5], \slide, msg[6]
-			]));
+			var legato = n303SlidePending[deck];
+			var controls = [
+				\freq, msg[2].asFloat.midicps, \amp, msg[3].asFloat.clip(0, 1),
+				\sustain, msg[4].asFloat.clip(1, 16) * 0.12,
+				\accent, msg[5].asInteger.clip(0, 1),
+				\slide, if(legato, { 1 }, { 0 })
+			];
+			if(legato.not, { controls = controls ++ [\t_trig, 1]; });
+			n303Voices[deck].set(*controls);
+			n303SlidePending[deck] = msg[6].asInteger > 0;
+		});
+
+		this.addCommand(\n303_set, "fffffff", { arg msg;
+			n303Waveform = msg[1].asFloat.clip(0, 1);
+			n303Cutoff = msg[2].asFloat.clip(0, 1);
+			n303Resonance = msg[3].asFloat.clip(0, 1);
+			n303EnvMod = msg[4].asFloat.clip(0, 1);
+			n303Decay = msg[5].asFloat.clip(0, 1);
+			n303Drive = msg[6].asFloat.clip(0, 1);
+			n303SlideTime = msg[7].asFloat.clip(0, 1);
+			n303Voices.do({ arg synth;
+				synth.set(
+					\waveform, n303Waveform, \cutoffControl, n303Cutoff,
+					\resonanceControl, n303Resonance, \envMod, n303EnvMod,
+					\decayControl, n303Decay, \driveControl, n303Drive,
+					\slideControl, n303SlideTime
+				);
+			});
 		});
 
 		this.addCommand(\nchord_note, "iiffi", { arg msg;
@@ -177,11 +240,14 @@ Engine_Endless : CroneEngine {
 			voices.do({ arg synth; synth.free; });
 			voices.clear;
 			openHats = Array.fill(2, { nil });
+			n303SlidePending = Array.fill(2, { false });
+			n303Voices.do({ arg synth; synth.set(\amp, 0, \slide, 0); });
 		});
 	}
 
 	free {
 		voices.do({ arg synth; synth.free; });
+		n303Voices.do({ arg synth; synth.free; });
 		deckMixers.do({ arg synth; synth.free; });
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
 		deckBuses.do({ arg bus; bus.free; });
