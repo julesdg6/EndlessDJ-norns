@@ -58,7 +58,6 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, Pan2.ar(signal * amp));
 		}).add;
 
-		server.sync;
 		deckMixers = deckBuses.collect({ arg bus;
 			Synth.tail(server, \endlessDeckMixer, [\inBus, bus.index, \level, 1]);
 		});

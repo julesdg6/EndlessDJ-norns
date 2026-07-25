@@ -125,6 +125,17 @@ for _, module in ipairs({"output_router", "internal_engine"}) do
 end
 pass("Internal modules use the installed EndlessDJ folder")
 
+do
+  local engine_source = read_file("lib/Engine_Endless.sc")
+  if not engine_source then
+    fail("Missing custom SuperCollider engine")
+  end
+  if engine_source:find("server.sync", 1, true) then
+    fail("Engine alloc must not block on server.sync; Crone waits for alloc to return")
+  end
+end
+pass("Custom engine allocation contains no blocking server sync")
+
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
 end
