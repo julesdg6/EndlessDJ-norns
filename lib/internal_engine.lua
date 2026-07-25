@@ -158,8 +158,15 @@ function InternalEngine.set_nmono_control(deck_id, settings, name, value)
   return true
 end
 
-function InternalEngine.sampler(deck_id, pad, velocity)
-  call("nsampler_hit", deck_id, pad, velocity / 127, 1)
+function InternalEngine.sampler(deck_id, pad, velocity, settings)
+  settings = settings or {}
+  call(
+    "nsampler_hit", deck_id, pad,
+    velocity / 127 * (settings.level or 1),
+    settings.rate or 1, settings.pan or 0,
+    settings.start or 0, settings.finish or 1,
+    settings.cutoff or 1, settings.choke or 0
+  )
 end
 
 function InternalEngine.load_sample(pad, path)

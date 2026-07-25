@@ -27,7 +27,8 @@ five Norns-native instrument roles:
   voicings and patches, and the Norns keyboard target
 - `n-mono`: persistent monophonic lead/bass/pluck/FX voice with generated
   per-song patches
-- `n-sampler`: 16 loadable mono sample slots
+- `n-sampler`: 16 user pads plus 32 bundled original risers with flexible
+  playback controls, selected independently per generated song
 
 The engine mixes internal Deck A and Deck B through separate stereo buses. The
 existing Endless DJ crossfader drives those buses with an equal-power curve.
@@ -67,6 +68,19 @@ sub level, resonant filter, attack/release, glide, LFO rate/depth, and stereo
 delay send. One persistent voice is allocated to each deck, so melodic notes
 retrigger safely while pitch glide and effects remain continuous. External and
 layered NTS-1 routing is unchanged.
+
+N-SAMPLER includes 32 original mono factory risers in noise, tonal,
+metallic/digital, and hybrid impact-rise families. The library loads
+automatically, and each generated song selects one stable riser from the full
+set. Sixteen persistent file parameters allow factory slots to be replaced
+with personal WAV files. Playback supports level, rate/pitch (including
+reverse), pan, start/end position, low-pass filtering, and four choke groups.
+Missing user files are reported and skipped safely. External MPX8 triggering
+remains unchanged and is still the default route.
+
+The internal architecture also leaves room for genre-selected 808, 909,
+LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
+models in future milestones.
 
 HARDWARE
 

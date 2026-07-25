@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.63", 1, true) then
-  fail("Script version must match PR #63")
+if not source:find("Endless DJ v1.65", 1, true) then
+  fail("Script version must match PR #65")
 end
-pass("Script version matches PR #63")
+pass("Script version matches PR #65")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -330,6 +330,42 @@ for _, control in ipairs({
   end
 end
 pass("Generated persistent n-mono synth and controls exist")
+
+if not source:find('include("EndlessDJ/lib/sample_library")', 1, true) then
+  fail("Missing Norns-safe sample library include")
+end
+if not source:find("sample_library.load_factory", 1, true) or
+    not source:find("sample_library.riser_for_seed", 1, true) then
+  fail("Factory risers must load automatically and vary stably per song")
+end
+if not source:find('params:add_file("nsampler_pad_"', 1, true) then
+  fail("N-SAMPLER must expose persistent user sample assignments")
+end
+do
+  local engine_source = read_file("lib/Engine_Endless.sc") or ""
+  if not engine_source:find('addCommand(\\nsampler_hit, "iiffffffi"', 1, true) then
+    fail("N-SAMPLER playback controls/choke command is missing")
+  end
+  if not engine_source:find("Array.fill(48", 1, true) or
+      not engine_source:find("samplerChokes", 1, true) then
+    fail("N-SAMPLER must allocate 16 user + 32 factory buffers and choke state")
+  end
+end
+do
+  local p = io.popen("find samples/factory/risers -type f -name '*.wav' | sort")
+  if not p then fail("Could not inspect factory risers") end
+  local count = 0
+  for wav in p:lines() do
+    local header = read_file(wav)
+    if not header or header:sub(1, 4) ~= "RIFF" or header:sub(9, 12) ~= "WAVE" then
+      fail("Invalid factory WAV: " .. wav)
+    end
+    count = count + 1
+  end
+  p:close()
+  if count ~= 32 then fail("Expected 32 factory risers, found " .. count) end
+end
+pass("N-SAMPLER factory library, assignments, playback controls, and song variation exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then

@@ -1,5 +1,5 @@
 -- endless_dj.lua
--- Endless DJ v1.63
+-- Endless DJ v1.65
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -20,6 +20,7 @@ engine.name = "Endless"
 
 output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
+local sample_library = include("EndlessDJ/lib/sample_library")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
@@ -507,6 +508,7 @@ local function make_deck(letter, excluded_genre)
   if acid_build_deck_state then
     deck.acid = acid_build_deck_state(deck)
   end
+  deck.riser_sample = sample_library.riser_for_seed(deck.variation_seed)
   return deck
 end
 
@@ -2339,8 +2341,8 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel, deck)
-  if output_router.sends_external("samples") and mpx8_midi_out then
+local function mpx8_trigger(pad_idx, vel, deck, internal_pad)
+  if output_router.sends_external("samples") and mpx8_enabled and mpx8_midi_out then
     local note = mpx8_pads[pad_idx]
     if note then
       mpx8_midi_out:note_on(note, vel, mpx8_ch)
@@ -2348,7 +2350,9 @@ local function mpx8_trigger(pad_idx, vel, deck)
     end
   end
   if output_router.sends_internal("samples") and deck then
-    internal_engine.sampler(internal_engine.deck_id(deck, deck_a), pad_idx, vel)
+    internal_engine.sampler(
+      internal_engine.deck_id(deck, deck_a), internal_pad or pad_idx, vel
+    )
   end
 end
 
@@ -2833,8 +2837,9 @@ end
 -- One-shot transition samples (riser, impact, drop accent) fire at most once
 -- per deck so they are not duplicated when both virtual decks are playing.
 local function play_mpx8(sec, s, deck, b, mix_fades)
-  if not mpx8_enabled then return end
-  if not mpx8_midi_out then return end
+  if not output_router.sends_internal("samples") and
+      (not output_router.sends_external("samples") or
+       not mpx8_enabled or not mpx8_midi_out) then return end
   -- MPX8 is a bar-level device; only act at the start of each bar
   if s ~= 1 then return end
 
@@ -2842,7 +2847,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- Riser fires once at the first bar of BUILD
   if sec == "BUILD" and b == 81 and not deck.mpx8_riser_fired then
     deck.mpx8_riser_fired = true
-    mpx8_trigger(6, 100, deck)  -- pad 6: riser
+    mpx8_trigger(6, 100, deck, deck.riser_sample)  -- stable per-song factory riser
   end
 
   -- Impact and drop accent fire once at the first bar of DROP
@@ -3112,6 +3117,7 @@ end
 function init()
   math.randomseed(os.time())
   generation = 0
+  sample_library.scan()
   deck_a = make_deck("A")
   deck_b = make_deck("B", deck_a.genre)
   deck_a.active = true
@@ -3127,6 +3133,7 @@ function init()
 
   scan_acapellas()
   setup_softcut()
+  sample_library.load_factory(internal_engine)
 
   local dev_names = midi_device_names()
 
@@ -3145,6 +3152,19 @@ function init()
     params:add_option(part .. "_output", route_param[2], output_router.OPTIONS, output_router.EXTERNAL)
     params:set_action(part .. "_output", function(v)
       output_router.set(part, v)
+    end)
+  end
+
+  params:add_separator("nsampler_sep", "N-SAMPLER")
+  for i = 1, 16 do
+    local pad = i
+    params:add_file("nsampler_pad_" .. i, "n-sampler pad " .. i)
+    params:set_action("nsampler_pad_" .. i, function(path)
+      if path and path ~= "-" and util.file_exists(path) then
+        internal_engine.load_sample(pad, path)
+      elseif path and path ~= "-" then
+        print("Endless DJ: sample not found: " .. path)
+      end
     end)
   end
 
