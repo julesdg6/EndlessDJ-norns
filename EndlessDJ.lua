@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.66
+-- Endless DJ v1.67
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -129,6 +129,33 @@ local mpx8_ch = 10 -- MIDI channel 10 (General MIDI drum channel); matches MPX8 
 --   5=low tom(43)  6=mid tom(47)  7=crash(49)  8=ride(51)
 -- Endless DJ semantics still map to these pads by index (see params labels).
 local mpx8_pads = {36, 38, 42, 46, 43, 47, 49, 51}
+sampler_state = {
+  roles = {
+    "perc_accent", "alt_perc", "short_fill", "long_fill",
+    "impact", "riser", "vocal_stab", "drop_accent",
+  },
+  edit_pad = 1,
+  pads = {},
+}
+for i = 1, 16 do
+  sampler_state.pads[i] = {
+    level = 1, pitch = 0, reverse = false, pan = 0,
+    start = 0, finish = 1, cutoff = 1, choke = 0, gated = false,
+  }
+end
+
+function sampler_playback_settings(pad)
+  local source = sampler_state.pads[pad] or sampler_state.pads[1]
+  return {
+    level = source.level,
+    rate = (source.reverse and -1 or 1) * (2 ^ (source.pitch / 12)),
+    pan = source.pan,
+    start = math.min(source.start, source.finish - 0.01),
+    finish = math.max(source.finish, source.start + 0.01),
+    cutoff = source.cutoff,
+    choke = source.choke,
+  }
+end
 
 local playing = false
 local bpm = 128
@@ -508,7 +535,11 @@ local function make_deck(letter, excluded_genre)
   if acid_build_deck_state then
     deck.acid = acid_build_deck_state(deck)
   end
-  deck.riser_sample = sample_library.riser_for_seed(deck.variation_seed)
+  deck.sample_roles = {}
+  for index, role in ipairs(sampler_state.roles) do
+    deck.sample_roles[role] =
+      sample_library.role_for_seed(role, deck.variation_seed + index * 97)
+  end
   return deck
 end
 
@@ -2341,7 +2372,7 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel, deck, internal_pad)
+local function mpx8_trigger(pad_idx, vel, deck, internal_role)
   if output_router.sends_external("samples") and mpx8_enabled and mpx8_midi_out then
     local note = mpx8_pads[pad_idx]
     if note then
@@ -2350,9 +2381,11 @@ local function mpx8_trigger(pad_idx, vel, deck, internal_pad)
     end
   end
   if output_router.sends_internal("samples") and deck then
-    internal_engine.sampler(
-      internal_engine.deck_id(deck, deck_a), internal_pad or pad_idx, vel
-    )
+    local role = internal_role or sampler_state.roles[pad_idx]
+    local slot = deck.sample_roles and deck.sample_roles[role]
+    if slot then
+      internal_engine.sampler(internal_engine.deck_id(deck, deck_a), slot, vel)
+    end
   end
 end
 
@@ -2847,7 +2880,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- Riser fires once at the first bar of BUILD
   if sec == "BUILD" and b == 81 and not deck.mpx8_riser_fired then
     deck.mpx8_riser_fired = true
-    mpx8_trigger(6, 100, deck, deck.riser_sample)  -- stable per-song factory riser
+    mpx8_trigger(6, 100, deck, "riser")
   end
 
   -- Impact and drop accent fire once at the first bar of DROP
@@ -3165,6 +3198,104 @@ function init()
       elseif path and path ~= "-" then
         print("Endless DJ: sample not found: " .. path)
       end
+    end)
+
+    local controls = {
+      {"level", 0, 150, 100},
+      {"pitch", -24, 24, 0},
+      {"reverse", 1, 2, 1},
+      {"pan", -100, 100, 0},
+      {"start", 0, 99, 0},
+      {"finish", 1, 100, 100},
+      {"cutoff", 0, 100, 100},
+      {"choke", 0, 4, 0},
+      {"gated", 1, 2, 1},
+    }
+    for _, spec in ipairs(controls) do
+      local name, lo, hi, default = spec[1], spec[2], spec[3], spec[4]
+      local id = "nsampler_pad_" .. pad .. "_" .. name
+      params:add_number(id, id, lo, hi, default)
+      params:hide(id)
+      params:set_action(id, function(v)
+        local settings = sampler_state.pads[pad]
+        if name == "level" then settings.level = v / 100
+        elseif name == "pitch" then settings.pitch = v
+        elseif name == "reverse" then settings.reverse = (v == 2)
+        elseif name == "pan" then settings.pan = v / 100
+        elseif name == "start" then settings.start = v / 100
+        elseif name == "finish" then settings.finish = v / 100
+        elseif name == "cutoff" then settings.cutoff = v / 100
+        elseif name == "choke" then settings.choke = v
+        elseif name == "gated" then settings.gated = (v == 2)
+        end
+      end)
+    end
+  end
+
+  local pad_names = {}
+  for i = 1, 16 do pad_names[i] = "pad " .. i end
+  params:add_option("nsampler_edit_pad", "n-sampler edit pad", pad_names, 1)
+  params:set_action("nsampler_edit_pad", function(v)
+    sampler_state.edit_pad = v
+    for _, name in ipairs({
+      "level", "pitch", "reverse", "pan", "start",
+      "finish", "cutoff", "choke", "gated",
+    }) do
+      params:set(
+        "nsampler_" .. name,
+        params:get("nsampler_pad_" .. v .. "_" .. name)
+      )
+    end
+  end)
+
+  local visible_controls = {
+    {"level", "n-sampler level", 0, 150, 100},
+    {"pitch", "n-sampler pitch", -24, 24, 0},
+    {"pan", "n-sampler pan", -100, 100, 0},
+    {"start", "n-sampler start", 0, 99, 0},
+    {"finish", "n-sampler end", 1, 100, 100},
+    {"cutoff", "n-sampler filter", 0, 100, 100},
+    {"choke", "n-sampler choke", 0, 4, 0},
+  }
+  for _, control in ipairs(visible_controls) do
+    local name = control[1]
+    params:add_number(
+      "nsampler_" .. name, control[2], control[3], control[4], control[5]
+    )
+    params:set_action("nsampler_" .. name, function(v)
+      params:set("nsampler_pad_" .. sampler_state.edit_pad .. "_" .. name, v)
+    end)
+  end
+  for _, option in ipairs({
+    {"reverse", "n-sampler reverse", {"off", "on"}},
+    {"gated", "n-sampler mode", {"one-shot", "gated"}},
+  }) do
+    local name = option[1]
+    params:add_option("nsampler_" .. name, option[2], option[3], 1)
+    params:set_action("nsampler_" .. name, function(v)
+      params:set("nsampler_pad_" .. sampler_state.edit_pad .. "_" .. name, v)
+    end)
+  end
+
+  params:add_trigger("nsampler_test_pad", "n-sampler test pad")
+  params:set_action("nsampler_test_pad", function()
+    local settings = sampler_state.pads[sampler_state.edit_pad]
+    local playback = sampler_playback_settings(sampler_state.edit_pad)
+    if settings.gated then
+      internal_engine.sampler_on(1, sampler_state.edit_pad, 100, playback)
+    else
+      internal_engine.sampler(1, sampler_state.edit_pad, 100, playback)
+    end
+  end)
+  params:add_trigger("nsampler_release_pad", "n-sampler release pad")
+  params:set_action("nsampler_release_pad", function()
+    internal_engine.sampler_off(1, sampler_state.edit_pad)
+  end)
+  for i, role in ipairs(sampler_state.roles) do
+    local pad_index, role_name = i, role
+    params:add_trigger("nsampler_test_" .. role, "test " .. role:gsub("_", " "))
+    params:set_action("nsampler_test_" .. role, function()
+      mpx8_trigger(pad_index, 100, current_deck(), role_name)
     end)
   end
 

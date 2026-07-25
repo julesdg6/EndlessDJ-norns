@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.66", 1, true) then
-  fail("Script version must match PR #66")
+if not source:find("Endless DJ v1.67", 1, true) then
+  fail("Script version must match PR #67")
 end
-pass("Script version matches PR #66")
+pass("Script version matches PR #67")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -335,8 +335,8 @@ if not source:find('include("EndlessDJ/lib/sample_library")', 1, true) then
   fail("Missing Norns-safe sample library include")
 end
 if not source:find("sample_library.load_factory", 1, true) or
-    not source:find("sample_library.riser_for_seed", 1, true) then
-  fail("Factory risers must load automatically and vary stably per song")
+    not source:find("sample_library.role_for_seed", 1, true) then
+  fail("Factory sampler roles must load automatically and vary stably per song")
 end
 if not source:find('params:add_file("nsampler_pad_"', 1, true) then
   fail("N-SAMPLER must expose persistent user sample assignments")
@@ -346,9 +346,21 @@ do
   if not engine_source:find('addCommand(\\nsampler_hit, "iiffffffi"', 1, true) then
     fail("N-SAMPLER playback controls/choke command is missing")
   end
-  if not engine_source:find("Array.fill(48", 1, true) or
+  for command, format in pairs({
+    nsampler_on="iiffffffi", nsampler_off="ii"
+  }) do
+    if not engine_source:find(
+        "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
+      ) then
+      fail("N-SAMPLER is missing gated command " .. command)
+    end
+  end
+  if not engine_source:find("Array.fill(76", 1, true) or
       not engine_source:find("samplerChokes", 1, true) then
-    fail("N-SAMPLER must allocate 16 user + 32 factory buffers and choke state")
+    fail("N-SAMPLER must allocate user, riser, role buffers and choke state")
+  end
+  if not engine_source:find("samplerHeld", 1, true) then
+    fail("N-SAMPLER must track gated user pads independently per deck")
   end
 end
 do
@@ -365,7 +377,44 @@ do
   p:close()
   if count ~= 32 then fail("Expected 32 factory risers, found " .. count) end
 end
-pass("N-SAMPLER factory library, assignments, playback controls, and song variation exist")
+do
+  local p = io.popen("find samples/factory/oneshots -type f -name '*.wav' | sort")
+  if not p then fail("Could not inspect factory role one-shots") end
+  local count = 0
+  for wav in p:lines() do
+    local header = read_file(wav)
+    if not header or header:sub(1, 4) ~= "RIFF" or header:sub(9, 12) ~= "WAVE" then
+      fail("Invalid factory role WAV: " .. wav)
+    end
+    count = count + 1
+  end
+  p:close()
+  if count ~= 28 then fail("Expected 28 factory role one-shots, found " .. count) end
+end
+for _, param in ipairs({
+  "nsampler_edit_pad", "nsampler_test_pad", "nsampler_release_pad",
+}) do
+  if not source:find('"' .. param .. '"', 1, true) then
+    fail("Missing N-SAMPLER user control " .. param)
+  end
+end
+for _, label in ipairs({
+  "level", "pitch", "reverse", "pan", "start",
+  "finish", "cutoff", "choke", "gated",
+}) do
+  if not source:find('{"' .. label .. '"', 1, true) then
+    fail("Missing N-SAMPLER per-pad control " .. label)
+  end
+end
+for _, role in ipairs({
+  "perc_accent", "alt_perc", "short_fill", "long_fill",
+  "impact", "riser", "vocal_stab", "drop_accent",
+}) do
+  if not source:find('"' .. role .. '"', 1, true) then
+    fail("Missing N-SAMPLER factory role " .. role)
+  end
+end
+pass("N-SAMPLER roles, persistent pads, full controls, gating, and variation exist")
 
 for _, part in ipairs({"drums", "bass", "chords", "mono", "samples"}) do
   if not source:find('{"' .. part .. '", "' .. part .. ' output"}', 1, true) then
