@@ -115,6 +115,16 @@ if not source:find('"Endless"', 1, true) then
 end
 pass("Custom Endless engine selected")
 
+if source:find('include("EndlessDJ-norns/', 1, true) then
+  fail("Norns module includes must use the installed EndlessDJ folder, not the repository name")
+end
+for _, module in ipairs({"output_router", "internal_engine"}) do
+  if not source:find('include("EndlessDJ/lib/' .. module .. '")', 1, true) then
+    fail("Missing Norns-safe include path for " .. module)
+  end
+end
+pass("Internal modules use the installed EndlessDJ folder")
+
 if not source:find("play_norns_instrument", 1, true) then
   fail("Missing play_norns_instrument function")
 end
