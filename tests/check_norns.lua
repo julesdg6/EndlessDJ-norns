@@ -764,6 +764,7 @@ do
     "resampleBuffers = Array.fill(2", "server.sampleRate * 32",
     "In.ar(inBus, 2)", "Synth.after(sourceNode", "RecordBuf.ar",
     "captureBuses = Array.fill(3", "endlessCaptureTap",
+    'addPoll("resample_record_peak_1"', "PeakFollower.kr",
     "PlayBuf.ar(", "maxGrains: 16",
     "resampleBuffers.do({ arg buffer; buffer.free; })",
   }) do

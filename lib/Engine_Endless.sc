@@ -5,6 +5,7 @@ Engine_Endless : CroneEngine {
 	var deckMixers, masterMixer, instrumentMixers, effectReturns, voices, sampleBuffers;
 	var samplerChokes, samplerHeld, samplerLoops, samplerGrains, openHats;
 	var resampleBuffers, resampleRecorders, resamplePlayers;
+	var resampleMeterBuses;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
@@ -39,6 +40,7 @@ Engine_Endless : CroneEngine {
 		});
 		resampleRecorders = Array.fill(2, { nil });
 		resamplePlayers = Array.fill(2, { Array.fill(2, { nil }) });
+		resampleMeterBuses = Array.fill(2, { Bus.control(server, 1) });
 		deckBuses = Array.fill(2, { Bus.audio(server, 2) });
 		instrumentBuses = Array.fill(2, {
 			Array.fill(5, { Bus.audio(server, 2) })
@@ -492,9 +494,13 @@ Engine_Endless : CroneEngine {
 		}).add;
 
 		SynthDef(\endlessResampleRecord, {
-			arg inBus=0, buf=0, duration=1;
-			var input, stop;
+			arg inBus=0, buf=0, meterBus=0, duration=1;
+			var input, peak, stop;
 			input = In.ar(inBus, 2);
+			peak = PeakFollower.kr(
+				(input[0].abs + input[1].abs).clip(0, 2), 0.9999
+			);
+			ReplaceOut.kr(meterBus, peak);
 			RecordBuf.ar(input, buf, recLevel: 1, preLevel: 0, loop: 0);
 			stop = Line.kr(0, 1, duration.clip(0.1, 32), doneAction: 2);
 		}).add;
@@ -1006,8 +1012,16 @@ Engine_Endless : CroneEngine {
 			// avoids relying on feedback-bus behaviour for an ordinary tap.
 			resampleRecorders[slot] = Synth.after(sourceNode, \endlessResampleRecord, [
 				\inBus, sourceBus, \buf, resampleBuffers[slot].bufnum,
+				\meterBus, resampleMeterBuses[slot].index,
 				\duration, msg[3].asFloat.clip(0.1, 32)
 			]);
+		});
+
+		this.addPoll("resample_record_peak_1", {
+			resampleMeterBuses[0].getSynchronous;
+		});
+		this.addPoll("resample_record_peak_2", {
+			resampleMeterBuses[1].getSynchronous;
 		});
 
 		this.addCommand(\resample_record_stop, "i", { arg msg;
@@ -1109,6 +1123,7 @@ Engine_Endless : CroneEngine {
 		masterMixer.free;
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
 		resampleBuffers.do({ arg buffer; buffer.free; });
+		resampleMeterBuses.do({ arg bus; bus.free; });
 		instrumentBuses.do({ arg deck; deck.do({ arg bus; bus.free; }); });
 		autoControlBuses.do({ arg bus; bus.free; });
 		delayBuses.do({ arg bus; bus.free; });
