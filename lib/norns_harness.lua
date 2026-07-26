@@ -57,7 +57,7 @@ end
 
 function Harness.new(options)
   options = options or {}
-  local self = {
+  local instance = {
     version = options.version or "unknown",
     sample_library = options.sample_library or {},
     restore_audio = options.restore_audio,
@@ -104,7 +104,7 @@ function Harness.new(options)
   end
 
   local function run_checks(mode, report, metrics)
-    report("INFO", "version " .. self.version)
+    report("INFO", "version " .. instance.version)
     report("INFO", "registered engine commands " .. command_count())
 
     for _, name in ipairs(REQUIRED_COMMANDS) do
@@ -115,8 +115,8 @@ function Harness.new(options)
       end
     end
 
-    local risers = #(self.sample_library.factory_risers or {})
-    local roles = count_role_samples(self.sample_library)
+    local risers = #(instance.sample_library.factory_risers or {})
+    local roles = count_role_samples(instance.sample_library)
     report(risers == 32 and "PASS" or "FAIL", "factory risers " .. risers .. "/32")
     report(roles == 28 and "PASS" or "FAIL", "role one-shots " .. roles .. "/28")
 
@@ -213,7 +213,7 @@ function Harness.new(options)
     report("INFO", "CPU max peak " .. string.format("%.2f", metrics.cpu_peak))
   end
 
-  self.run = function(mode)
+  function instance:run(mode)
     mode = mode or "quick"
     if mode == "resample" then mode = "full" end
     if mode ~= "quick" and mode ~= "full" and mode ~= "interactive" then
@@ -296,7 +296,7 @@ function Harness.new(options)
     return true
   end
 
-  self.stop = function()
+  function instance:stop()
     if self.active_clock and clock and type(clock.cancel) == "function" then
       pcall(clock.cancel, self.active_clock)
     end
@@ -308,7 +308,7 @@ function Harness.new(options)
     self.active_clock = nil
   end
 
-  return self
+  return instance
 end
 
 return Harness
