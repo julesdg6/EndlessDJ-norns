@@ -488,7 +488,7 @@ Engine_Endless : CroneEngine {
 		SynthDef(\endlessResampleRecord, {
 			arg inBus=0, buf=0, duration=1, gate=1;
 			var input, stop;
-			input = InFeedback.ar(inBus, 2);
+			input = In.ar(inBus, 2);
 			RecordBuf.ar(
 				input, buf, offset: 0, recLevel: 1, preLevel: 0,
 				run: gate, loop: 0, trigger: 1, doneAction: 2
@@ -986,12 +986,18 @@ Engine_Endless : CroneEngine {
 			var sourceBus = [
 				deckBuses[0].index, deckBuses[1].index, masterBus.index
 			].at(source);
+			var sourceNode = [
+				deckMixers[0], deckMixers[1], masterMixer
+			].at(source);
 			if(resampleRecorders[slot].notNil, {
 				resampleRecorders[slot].free;
 			});
 			deckMixers.do({ arg mixer; mixer.run(true); });
 			masterMixer.run(true);
-			resampleRecorders[slot] = Synth.tail(context.xg, \endlessResampleRecord, [
+			// Read the current block after the selected deck/master mixer has
+			// consumed its source bus. This keeps capture ordering explicit and
+			// avoids relying on feedback-bus behaviour for an ordinary tap.
+			resampleRecorders[slot] = Synth.after(sourceNode, \endlessResampleRecord, [
 				\inBus, sourceBus, \buf, resampleBuffers[slot].bufnum,
 				\duration, msg[3].asFloat.clip(0.1, 32)
 			]);

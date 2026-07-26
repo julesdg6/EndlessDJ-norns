@@ -762,7 +762,8 @@ do
   end
   for _, token in ipairs({
     "resampleBuffers = Array.fill(2", "server.sampleRate * 32",
-    "InFeedback.ar", "RecordBuf.ar", "BufRd.ar(2", "maxGrains: 16",
+    "In.ar(inBus, 2)", "Synth.after(sourceNode", "RecordBuf.ar",
+    "BufRd.ar(2", "maxGrains: 16",
     "resampleBuffers.do({ arg buffer; buffer.free; })",
   }) do
     if not engine_source:find(token, 1, true) then
