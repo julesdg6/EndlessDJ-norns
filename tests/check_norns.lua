@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.113", 1, true) then
-  fail("Script version must match PR #113")
+if not source:find("Endless DJ v1.114", 1, true) then
+  fail("Script version must match PR #114")
 end
-pass("Script version matches PR #113")
+pass("Script version matches PR #114")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -786,7 +786,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.113"', 'sample_library=sample_library',
+    'version="v1.114"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -803,6 +803,11 @@ do
     if not harness_source:find(token, 1, true) then
       fail("Physical Norns harness is missing " .. token)
     end
+  end
+  if not harness_source:find("function instance:run(mode)", 1, true)
+      or not harness_source:find("function instance:stop()", 1, true)
+      or not source:find("physical_harness:run(mode or \"quick\")", 1, true) then
+    fail("Norns harness methods must preserve colon-call semantics")
   end
   pass("One-command quick/full/interactive physical Norns harness exists")
 end
