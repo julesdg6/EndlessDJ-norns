@@ -493,28 +493,23 @@ Engine_Endless : CroneEngine {
 
 		SynthDef(\endlessResampleRecord, {
 			arg inBus=0, buf=0, duration=1;
-			var input, phase, stop;
+			var input, stop;
 			input = In.ar(inBus, 2);
-			phase = Phasor.ar(
-				0, BufRateScale.kr(buf), 0, BufFrames.kr(buf), 0
-			);
-			BufWr.ar(input, buf, phase, loop: 0);
+			RecordBuf.ar(input, buf, recLevel: 1, preLevel: 0, loop: 0);
 			stop = Line.kr(0, 1, duration.clip(0.1, 32), doneAction: 2);
 		}).add;
 
 		SynthDef(\endlessResamplePlayer, {
 			arg out=0, buf=0, amp=0.8, rate=1, start=0, finish=1,
 				loop=0, gate=1;
-			var frames, startFrame, finishFrame, phase, signal, duration, autoGate;
+			var frames, startFrame, signal, duration, autoGate;
 			var envelopeGate, env;
 			frames = BufFrames.kr(buf);
 			startFrame = start.clip(0, 0.99) * frames;
-			finishFrame = finish.clip(0.01, 1) * frames;
-			phase = Phasor.ar(
-				0, BufRateScale.kr(buf) * rate,
-				startFrame, finishFrame.max(startFrame + 2), startFrame
+			signal = PlayBuf.ar(
+				2, buf, BufRateScale.kr(buf) * rate,
+				startPos: startFrame, loop: loop
 			);
-			signal = BufRd.ar(2, buf, phase, loop: loop, interpolation: 4);
 			duration = (
 				(finish - start).abs * BufDur.kr(buf) / rate.abs.max(0.01)
 			).max(0.01);
