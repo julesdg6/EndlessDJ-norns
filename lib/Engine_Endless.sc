@@ -486,13 +486,13 @@ Engine_Endless : CroneEngine {
 		}).add;
 
 		SynthDef(\endlessResampleRecord, {
-			arg inBus=0, buf=0, duration=1, gate=1;
-			var input, stop;
+			arg inBus=0, buf=0, duration=1;
+			var input, phase, stop;
 			input = In.ar(inBus, 2);
-			RecordBuf.ar(
-				input, buf, offset: 0, recLevel: 1, preLevel: 0,
-				run: gate, loop: 0, trigger: 1, doneAction: 2
+			phase = Phasor.ar(
+				0, BufRateScale.kr(buf), 0, BufFrames.kr(buf), 0
 			);
+			BufWr.ar(input, buf, phase, loop: 0);
 			stop = Line.kr(0, 1, duration.clip(0.1, 32), doneAction: 2);
 		}).add;
 
