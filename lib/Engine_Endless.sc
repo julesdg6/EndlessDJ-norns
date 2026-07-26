@@ -1,5 +1,6 @@
 Engine_Endless : CroneEngine {
 	var server, deckBuses, instrumentBuses, delayBuses, reverbBuses, masterBus;
+	var captureBuses, captureTaps;
 	var autoControlBuses, autoMeters;
 	var deckMixers, masterMixer, instrumentMixers, effectReturns, voices, sampleBuffers;
 	var samplerChokes, samplerHeld, samplerLoops, samplerGrains, openHats;
@@ -44,6 +45,7 @@ Engine_Endless : CroneEngine {
 		});
 		delayBuses = Array.fill(2, { Bus.audio(server, 2) });
 		reverbBuses = Array.fill(2, { Bus.audio(server, 2) });
+		captureBuses = Array.fill(3, { Bus.audio(server, 2) });
 		autoControlBuses = Array.fill(2, { Bus.control(server, 2) });
 		masterBus = Bus.audio(server, 2);
 		openHats = Array.fill(2, { nil });
@@ -150,6 +152,10 @@ Engine_Endless : CroneEngine {
 			DetectSilence.ar(
 				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
 			);
+		}).add;
+
+		SynthDef(\endlessCaptureTap, { arg inBus=0, outBus=0;
+			Out.ar(outBus, In.ar(inBus, 2));
 		}).add;
 
 		SynthDef(\endlessMaster, {
@@ -584,11 +590,21 @@ Engine_Endless : CroneEngine {
 				])
 			]
 		});
+		captureTaps = deckBuses.collect({ arg bus, deck;
+			Synth.tail(context.xg, \endlessCaptureTap, [
+				\inBus, bus.index, \outBus, captureBuses[deck].index
+			]);
+		});
 		deckMixers = deckBuses.collect({ arg bus;
 			Synth.tail(context.xg, \endlessDeckMixer, [
 				\inBus, bus.index, \out, masterBus.index, \level, 1
 			]);
 		});
+		captureTaps = captureTaps.add(
+			Synth.tail(context.xg, \endlessCaptureTap, [
+				\inBus, masterBus.index, \outBus, captureBuses[2].index
+			])
+		);
 		masterMixer = Synth.tail(context.xg, \endlessMaster, [
 			\inBus, masterBus.index, \out, context.out_b
 		]);
@@ -983,12 +999,8 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\resample_start, "iif", { arg msg;
 			var source = msg[1].asInteger.clip(1, 3) - 1;
 			var slot = msg[2].asInteger.clip(1, 2) - 1;
-			var sourceBus = [
-				deckBuses[0].index, deckBuses[1].index, masterBus.index
-			].at(source);
-			var sourceNode = [
-				deckMixers[0], deckMixers[1], masterMixer
-			].at(source);
+			var sourceBus = captureBuses[source].index;
+			var sourceNode = captureTaps[source];
 			if(resampleRecorders[slot].notNil, {
 				resampleRecorders[slot].free;
 			});
@@ -1097,6 +1109,7 @@ Engine_Endless : CroneEngine {
 		autoMeters.do({ arg synth; synth.free; });
 		instrumentMixers.do({ arg deck; deck.do({ arg synth; synth.free; }); });
 		effectReturns.do({ arg deck; deck.do({ arg synth; synth.free; }); });
+		captureTaps.do({ arg synth; synth.free; });
 		deckMixers.do({ arg synth; synth.free; });
 		masterMixer.free;
 		sampleBuffers.do({ arg buffer; if(buffer.notNil, { buffer.free; }); });
@@ -1105,6 +1118,7 @@ Engine_Endless : CroneEngine {
 		autoControlBuses.do({ arg bus; bus.free; });
 		delayBuses.do({ arg bus; bus.free; });
 		reverbBuses.do({ arg bus; bus.free; });
+		captureBuses.do({ arg bus; bus.free; });
 		deckBuses.do({ arg bus; bus.free; });
 		masterBus.free;
 	}

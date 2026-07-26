@@ -763,6 +763,7 @@ do
   for _, token in ipairs({
     "resampleBuffers = Array.fill(2", "server.sampleRate * 32",
     "In.ar(inBus, 2)", "Synth.after(sourceNode", "BufWr.ar",
+    "captureBuses = Array.fill(3", "endlessCaptureTap",
     "BufRd.ar(2", "maxGrains: 16",
     "resampleBuffers.do({ arg buffer; buffer.free; })",
   }) do
