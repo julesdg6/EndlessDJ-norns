@@ -240,18 +240,18 @@ function Harness.new(options)
     end
 
     local function meter(name, field)
-      local ok, instance = pcall(function()
+      local ok, poll_instance = pcall(function()
         return poll.set(name, function(value)
           metrics[field] = math.max(metrics[field], value or 0)
         end)
       end)
-      if not ok or not instance then
+      if not ok or not poll_instance then
         report("FAIL", "poll " .. name)
         return
       end
-      instance.time = 0.2
-      instance:start()
-      table.insert(active_polls, instance)
+      poll_instance.time = 0.2
+      poll_instance:start()
+      table.insert(active_polls, poll_instance)
     end
 
     force_internal_routes()
