@@ -989,7 +989,6 @@ Engine_Endless : CroneEngine {
 			if(resampleRecorders[slot].notNil, {
 				resampleRecorders[slot].free;
 			});
-			resampleBuffers[slot].zero;
 			deckMixers.do({ arg mixer; mixer.run(true); });
 			masterMixer.run(true);
 			resampleRecorders[slot] = Synth.tail(context.xg, \endlessResampleRecord, [

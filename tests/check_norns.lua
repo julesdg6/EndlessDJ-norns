@@ -257,6 +257,9 @@ do
       fail("Silent mixer suspension is missing wake path " .. wake)
     end
   end
+  if engine_source:find("resampleBuffers[slot].zero", 1, true) then
+    fail("Resampling must not race asynchronous buffer clearing against recording")
+  end
 end
 for _, param in ipairs({
   "auto_mixer_mode", "auto_mixer_headroom", "auto_mixer_kick_duck",
