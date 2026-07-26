@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.78", 1, true) then
-  fail("Script version must match PR #78")
+if not source:find("Endless DJ v1.113", 1, true) then
+  fail("Script version must match PR #113")
 end
-pass("Script version matches PR #78")
+pass("Script version matches PR #113")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -783,14 +783,28 @@ do
       master_mixer:find("DetectSilence", 1, true) then
     fail("Persistent deck/master mixers must not suspend during resample gaps")
   end
+  local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
-    "run_resample_test_harness", "HARNESS BUFFER PEAK",
-    "HARNESS PLAYBACK PEAK", "HARNESS_XRUN_COUNT",
+    "run_norns_test_harness", "run_resample_test_harness",
+    'version="v1.113"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
-      fail("Norns test harness is missing " .. token)
+      fail("Norns harness integration is missing " .. token)
     end
   end
+  for _, token in ipairs({
+    '"quick"', '"full"', '"interactive"',
+    "REQUIRED_COMMANDS", "factory risers", "role one-shots",
+    "ENDLESS_HARNESS_XRUN_COUNT", "cleanup complete",
+    "snapshot_params", "restore_params", "force_internal_routes",
+    'safe_engine("all_off")', "xpcall(", "restore_audio",
+    "clock.cancel",
+  }) do
+    if not harness_source:find(token, 1, true) then
+      fail("Physical Norns harness is missing " .. token)
+    end
+  end
+  pass("One-command quick/full/interactive physical Norns harness exists")
 end
 for _, param in ipairs({
   "resample_source", "resample_slot", "resample_bars",

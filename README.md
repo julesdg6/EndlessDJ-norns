@@ -272,16 +272,49 @@ Recording the master while a captured loop is already playing will
 intentionally capture that loop again. Lower the resample level or stop existing
 resample playback first when you do not want layered generations.
 
-For physical validation in Maiden, run:
+PHYSICAL NORNS TEST HARNESS
+
+Endless DJ includes a single repeatable Maiden test entry point. It temporarily
+routes all parts internally, never sends test MIDI to external hardware, and
+restores the saved output routes after cleanup.
+
+For a fast engine, asset, instrument, and cleanup smoke test:
+
+```lua
+run_norns_test_harness("quick")
+```
+
+Before merging a substantial Lua or SuperCollider change, run:
+
+```lua
+run_norns_test_harness("full")
+```
+
+For the same complete test with explicit listening reminders:
+
+```lua
+run_norns_test_harness("interactive")
+```
+
+The harness reports the script version and registered engine commands, confirms
+the 32 factory risers and 28 role one-shots, exercises n-808, n-303, n-chord,
+n-mono, n-sampler, both decks, mixer, FX, mastering, sampler modes and live
+resampling, records maximum CPU average/peak, and scans only the fresh test
+window for XRuns, overruns, or underruns. Every run stops its polls, notes,
+loops, grains, resampling and temporary voices even when a stage fails.
+
+The final summary uses `ENDLESS HARNESS PASS` or identifies the exact failing
+stage. `ENDLESS_HARNESS_XRUN_COUNT 0` is required for a clean full run.
+
+The previous command remains as a compatibility alias for a full run:
 
 ```lua
 run_resample_test_harness()
 ```
 
-The harness plays a short live drum reference, analyzes the stored buffer,
-attempts audible replay, and reports recorder, buffer, and playback peaks plus
-CPU maxima and the XRun count. Its final line identifies the precise failing
-stage or reports a complete resampling signal-path pass.
+Human listening is still required to confirm that each voice is audible,
+balanced and free from clicks or distortion; automated checks cannot judge
+musical quality.
 
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
