@@ -155,9 +155,6 @@ Engine_Endless : CroneEngine {
 			var signal;
 			signal = In.ar(inBus, 2) * Lag.kr(level, 0.03);
 			Out.ar(out, signal);
-			DetectSilence.ar(
-				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
-			);
 		}).add;
 
 		SynthDef(\endlessCaptureTap, { arg inBus=0, outBus=0;
@@ -179,9 +176,6 @@ Engine_Endless : CroneEngine {
 					LeakDC.ar(controlled) * Lag.kr(masterLevel, 0.03),
 					Lag.kr(limiterCeiling, 0.03), 0.01
 				)
-			);
-			DetectSilence.ar(
-				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1
 			);
 		}).add;
 

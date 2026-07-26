@@ -773,6 +773,16 @@ do
       fail("Live resampling is missing safety token " .. token)
     end
   end
+  local deck_mixer = engine_source:match(
+    "SynthDef%(\\\\endlessDeckMixer,(.-)SynthDef%(\\\\endlessMaster,"
+  ) or ""
+  local master_mixer = engine_source:match(
+    "SynthDef%(\\\\endlessMaster,(.-)SynthDef%(\\\\endless808Kick,"
+  ) or ""
+  if deck_mixer:find("DetectSilence", 1, true) or
+      master_mixer:find("DetectSilence", 1, true) then
+    fail("Persistent deck/master mixers must not suspend during resample gaps")
+  end
   for _, token in ipairs({
     "run_resample_test_harness", "HARNESS BUFFER PEAK",
     "HARNESS PLAYBACK PEAK", "HARNESS_XRUN_COUNT",
