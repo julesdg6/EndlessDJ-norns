@@ -620,7 +620,7 @@ for _, behavior in ipairs({
   "settings.slice_reverse * 100",
   "settings.repeat_amount * 100",
   "settings.probability * 100",
-}) do
+}) dov1.113v1.113PR #113PR #113
   if not source:find(behavior, 1, true) then
     fail("Missing advanced sampler behavior: " .. behavior)
   end
