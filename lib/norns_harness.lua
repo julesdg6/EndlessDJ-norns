@@ -103,7 +103,7 @@ function Harness.new(options)
     safe_engine("all_off")
   end
 
-  local function run_checks(mode, report, metrics, active_polls)
+  local function run_checks(mode, report, metrics)
     report("INFO", "version " .. self.version)
     report("INFO", "registered engine commands " .. command_count())
 
@@ -213,7 +213,7 @@ function Harness.new(options)
     report("INFO", "CPU max peak " .. string.format("%.2f", metrics.cpu_peak))
   end
 
-  function self:run(mode)
+  self.run = function(mode)
     mode = mode or "quick"
     if mode == "resample" then mode = "full" end
     if mode ~= "quick" and mode ~= "full" and mode ~= "interactive" then
@@ -265,7 +265,7 @@ function Harness.new(options)
 
     self.active_clock = clock.run(function()
       local ok, err = xpcall(
-        function() run_checks(mode, report, metrics, active_polls) end,
+        function() run_checks(mode, report, metrics) end,
         debug.traceback
       )
       if not ok then report("FAIL", "runtime " .. tostring(err)) end
@@ -296,7 +296,7 @@ function Harness.new(options)
     return true
   end
 
-  function self:stop()
+  self.stop = function()
     if self.active_clock and clock and type(clock.cancel) == "function" then
       pcall(clock.cancel, self.active_clock)
     end
