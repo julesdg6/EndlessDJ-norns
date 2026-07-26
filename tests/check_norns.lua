@@ -743,7 +743,8 @@ pass("CPU-bounded, genre-shaped Deck A/B granular playback and freeze exist")
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
   for _, synthdef in ipairs({
-    "endlessResampleRecord", "endlessResamplePlayer", "endlessResampleGrain",
+    "endlessResampleRecord", "endlessResamplePlayer", "endlessResampleLoop",
+    "endlessResampleGrain",
   }) do
     if not engine_source:find("SynthDef(\\" .. synthdef, 1, true) then
       fail("Live resampling is missing " .. synthdef)
@@ -765,7 +766,7 @@ do
     "In.ar(inBus, 2)", "Synth.after(sourceNode", "RecordBuf.ar",
     "captureBuses = Array.fill(3", "endlessCaptureTap",
     'addPoll("resample_record_peak_1"', "PeakFollower.kr",
-    "PlayBuf.ar(", "maxGrains: 16",
+    "PlayBuf.ar(", "\\out, deckBuses[deck].index", "maxGrains: 16",
     "resampleBuffers.do({ arg buffer; buffer.free; })",
   }) do
     if not engine_source:find(token, 1, true) then

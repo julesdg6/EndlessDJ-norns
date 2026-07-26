@@ -507,21 +507,30 @@ Engine_Endless : CroneEngine {
 
 		SynthDef(\endlessResamplePlayer, {
 			arg out=0, buf=0, amp=0.8, rate=1, start=0, finish=1,
-				loop=0, gate=1;
-			var frames, startFrame, signal, duration, autoGate;
-			var envelopeGate, env;
+				gate=1;
+			var frames, startFrame, signal, duration, env;
 			frames = BufFrames.kr(buf);
 			startFrame = start.clip(0, 0.99) * frames;
 			signal = PlayBuf.ar(
 				2, buf, BufRateScale.kr(buf) * rate,
-				startPos: startFrame, loop: loop
+				startPos: startFrame, loop: 0
 			);
 			duration = (
 				(finish - start).abs * BufDur.kr(buf) / rate.abs.max(0.01)
 			).max(0.01);
-			autoGate = Line.kr(1, 0, duration);
-			envelopeGate = Select.kr(loop, [autoGate, gate]);
-			env = EnvGen.kr(Env.asr(0.005, 1, 0.04), envelopeGate, doneAction: 2);
+			env = EnvGen.kr(Env.linen(0.005, duration, 0.04), doneAction: 2);
+			Out.ar(out, signal * amp * env);
+		}).add;
+
+		SynthDef(\endlessResampleLoop, {
+			arg out=0, buf=0, amp=0.8, rate=1, start=0, gate=1;
+			var startFrame, signal, env;
+			startFrame = start.clip(0, 0.99) * BufFrames.kr(buf);
+			signal = PlayBuf.ar(
+				2, buf, BufRateScale.kr(buf) * rate,
+				startPos: startFrame, loop: 1
+			);
+			env = EnvGen.kr(Env.asr(0.005, 1, 0.04), gate, doneAction: 2);
 			Out.ar(out, signal * amp * env);
 		}).add;
 
@@ -1039,16 +1048,18 @@ Engine_Endless : CroneEngine {
 			if(resamplePlayers[deck][slot].notNil, {
 				resamplePlayers[deck][slot].set(\gate, 0);
 			});
-			this.wakePart(deck, 4);
+			deckMixers[deck].run(true);
+			masterMixer.run(true);
 			resamplePlayers[deck][slot] = Synth.head(
-				context.xg, \endlessResamplePlayer, [
-					\out, instrumentBuses[deck][4].index,
+				context.xg,
+				if(mode == 2, { \endlessResampleLoop }, { \endlessResamplePlayer }),
+				[
+					\out, deckBuses[deck].index,
 					\buf, resampleBuffers[slot].bufnum,
 					\amp, msg[4].asFloat.clip(0, 1.25),
 					\rate, msg[5].asFloat.clip(0.25, 2),
 					\start, msg[6].asFloat.clip(0, 0.99),
-					\finish, msg[7].asFloat.clip(0.01, 1),
-					\loop, (mode == 2).asInteger
+					\finish, msg[7].asFloat.clip(0.01, 1)
 				]
 			);
 			voices.add(resamplePlayers[deck][slot]);
@@ -1060,10 +1071,11 @@ Engine_Endless : CroneEngine {
 			if(resamplePlayers[deck][slot].notNil, {
 				resamplePlayers[deck][slot].set(\gate, 0);
 			});
-			this.wakePart(deck, 4);
+			deckMixers[deck].run(true);
+			masterMixer.run(true);
 			resamplePlayers[deck][slot] = Synth.head(
 				context.xg, \endlessResampleGrain, [
-					\out, instrumentBuses[deck][4].index,
+					\out, deckBuses[deck].index,
 					\buf, resampleBuffers[slot].bufnum,
 					\amp, msg[3].asFloat.clip(0, 1.25),
 					\position, msg[4].asFloat.clip(0, 1),
