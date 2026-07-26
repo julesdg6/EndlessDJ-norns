@@ -488,7 +488,7 @@ Engine_Endless : CroneEngine {
 		SynthDef(\endlessResampleRecord, {
 			arg inBus=0, buf=0, duration=1, gate=1;
 			var input, stop;
-			input = In.ar(inBus, 2);
+			input = InFeedback.ar(inBus, 2);
 			RecordBuf.ar(
 				input, buf, offset: 0, recLevel: 1, preLevel: 0,
 				run: gate, loop: 0, trigger: 1, doneAction: 2
