@@ -274,6 +274,39 @@ function InternalEngine.sampler_grain_off(deck_id)
   call("nsampler_grain_off", deck_id)
 end
 
+function InternalEngine.resample_start(source, slot, duration)
+  call("resample_start", source, slot, math.min(32, duration or 1))
+end
+
+function InternalEngine.resample_record_stop(slot)
+  call("resample_record_stop", slot)
+end
+
+function InternalEngine.resample_play(deck_id, slot, mode, settings)
+  settings = settings or {}
+  call(
+    "resample_play", deck_id, slot, mode or 1,
+    settings.level or 0.8, settings.rate or 1,
+    settings.start or 0, settings.finish or 1
+  )
+end
+
+function InternalEngine.resample_grain_on(deck_id, slot, settings)
+  settings = settings or {}
+  call(
+    "resample_grain_on", deck_id, slot,
+    settings.level or 0.65, settings.position or 0.5,
+    settings.size or 0.12, settings.density or 12,
+    settings.rate or 1, settings.spread or 0.6,
+    settings.cutoff or 1, settings.finish or 1,
+    settings.freeze and 1 or 0
+  )
+end
+
+function InternalEngine.resample_stop(deck_id, slot)
+  call("resample_stop", deck_id, slot)
+end
+
 function InternalEngine.load_sample(pad, path)
   call("nsampler_load", pad, path)
 end
