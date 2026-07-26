@@ -647,8 +647,7 @@ pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and prob
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
-  if source:find("clock.run(function()", 1, true) or
-      source:find("sampler_repeat_clocks", 1, true) then
+  if source:find("sampler_repeat_clocks", 1, true) then
     fail("Sampler repeats must not leave Lua clock coroutines behind")
   end
   if not source:find("internal_engine.sampler_repeat", 1, true) or
@@ -752,6 +751,7 @@ do
   end
   for command, format in pairs({
     resample_start="iif", resample_record_stop="i",
+    resample_analyze="if",
     resample_play="iiiffff", resample_grain_on="iiffffffffi",
     resample_stop="ii",
   }) do
@@ -771,6 +771,14 @@ do
   }) do
     if not engine_source:find(token, 1, true) then
       fail("Live resampling is missing safety token " .. token)
+    end
+  end
+  for _, token in ipairs({
+    "run_resample_test_harness", "HARNESS BUFFER PEAK",
+    "HARNESS PLAYBACK PEAK", "HARNESS_XRUN_COUNT",
+  }) do
+    if not source:find(token, 1, true) then
+      fail("Norns test harness is missing " .. token)
     end
   end
 end

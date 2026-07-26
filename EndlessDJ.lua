@@ -403,6 +403,92 @@ function resample_stop()
   end
 end
 
+local norns_test_harness_running = false
+
+function run_resample_test_harness()
+  if norns_test_harness_running then
+    print("HARNESS: already running")
+    return
+  end
+  if not engine.resample_analyze then
+    print("HARNESS FAIL: updated resampling diagnostics are not loaded")
+    return
+  end
+
+  norns_test_harness_running = true
+  local metrics = {
+    record=0, buffer=0, playback=0, cpu_avg=0, cpu_peak=0,
+  }
+  local harness_start = os.date("%Y-%m-%d %H:%M:%S")
+  local active_polls = {}
+
+  local function meter(name, field, interval)
+    local p = poll.set(name, function(v)
+      metrics[field] = math.max(metrics[field], v)
+    end)
+    p.time = interval or 0.05
+    p:start()
+    table.insert(active_polls, p)
+    return p
+  end
+
+  meter("resample_record_peak_1", "record")
+  meter("resample_buffer_peak_1", "buffer")
+  meter("resample_playback_peak_1", "playback")
+  meter("cpu_avg", "cpu_avg", 0.25)
+  meter("cpu_peak", "cpu_peak", 0.25)
+
+  clock.run(function()
+    engine.mixer_set(1, 1, 1, 0, 1, 0, 0, 0)
+    engine.deck_level(1, 1)
+    engine.resample_start(1, 1, 2)
+    print("HARNESS: live reference")
+    engine.n808_hit(1, 0, 1)
+    clock.sleep(0.35)
+    engine.n808_hit(1, 1, 0.9)
+    clock.sleep(0.35)
+    engine.n808_hit(1, 0, 1)
+    clock.sleep(0.35)
+    engine.n808_hit(1, 4, 0.9)
+    clock.sleep(0.45)
+    engine.resample_record_stop(1)
+
+    print("HARNESS: analyzing stored buffer")
+    engine.resample_analyze(1, 0.0625)
+    clock.sleep(2.2)
+
+    print("HARNESS: audible replay")
+    engine.resample_play(1, 1, 1, 1, 1, 0, 0.0625)
+    clock.sleep(2.3)
+    engine.resample_stop(1, 1)
+
+    for _, p in ipairs(active_polls) do p:stop() end
+
+    print("HARNESS RECORD PEAK", metrics.record)
+    print("HARNESS BUFFER PEAK", metrics.buffer)
+    print("HARNESS PLAYBACK PEAK", metrics.playback)
+    print("HARNESS CPU MAX AVG", metrics.cpu_avg)
+    print("HARNESS CPU MAX PEAK", metrics.cpu_peak)
+
+    local threshold = 0.001
+    if metrics.record <= threshold then
+      print("HARNESS FAIL: capture tap")
+    elseif metrics.buffer <= threshold then
+      print("HARNESS FAIL: buffer write or persistence")
+    elseif metrics.playback <= threshold then
+      print("HARNESS FAIL: playback synth")
+    else
+      print("HARNESS PASS: resampling signal path")
+    end
+
+    os.execute(
+      "journalctl --since '" .. harness_start ..
+      "' | grep -Eic 'xrun|overrun|underrun' | xargs echo HARNESS_XRUN_COUNT"
+    )
+    norns_test_harness_running = false
+  end)
+end
+
 -- Mixing spans the last 32 bars of the phrase, split into four 8-bar phases:
 --   Phase 1 (bars 97-104):  fade kick between decks
 --   Phase 2 (bars 105-112): fade bass between decks

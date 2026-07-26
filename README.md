@@ -255,9 +255,8 @@ Captured audio can be sent to Deck A, Deck B, or both as a one-shot, persistent
 loop, selected 8/16 slice, or CPU-bounded granular texture. Playback level and
 rate are shared controls; slice number and the granular position, size,
 density, spread, and freeze controls shape the selected replay mode. Resampled
-audio enters the destination deck's sample mixer channel, so its channel
-filter, saturation, effects sends, auto-mixing, crossfade, and mastering remain
-active.
+audio enters the destination deck bus directly, so deck crossfading and
+mastering remain active without depending on the one-shot sampler channel.
 
 To capture a transition or phrase:
 
@@ -269,10 +268,20 @@ To capture a transition or phrase:
 5. Trigger `play captured audio`; use `stop resampling` to stop record arming,
    active recording, loops, or granular playback.
 
-Because replay passes through the internal sample channel, recording the master
-while a captured loop is already playing will intentionally capture that loop
-again. Lower the resample level or stop existing resample playback first when
-you do not want layered generations.
+Recording the master while a captured loop is already playing will
+intentionally capture that loop again. Lower the resample level or stop existing
+resample playback first when you do not want layered generations.
+
+For physical validation in Maiden, run:
+
+```lua
+run_resample_test_harness()
+```
+
+The harness plays a short live drum reference, analyzes the stored buffer,
+attempts audible replay, and reports recorder, buffer, and playback peaks plus
+CPU maxima and the XRun count. Its final line identifies the precise failing
+stage or reports a complete resampling signal-path pass.
 
 The internal architecture also leaves room for genre-selected 808, 909,
 LinnDrum, or mixed drum kits, FM-based chord voices, and alternate mono-synth
