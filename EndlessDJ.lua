@@ -752,9 +752,8 @@ local kb_target  = 1    -- 1 = NTS-1  2 = J-6  3 = Norns instrument
 
 -- ──────────────────────────────────────────────
 -- Semantic grid brightness levels (0–15)
--- midigrid maps these to device-specific RGB via its selected palette.
--- Use the `endless_dj` palette (SYSTEM → MODS → MIDIGRID → palette) for
--- distinct instrument colours; any standard palette gives usable brightness.
+-- midigrid maps these to device-specific RGB via lib/palettes/endless_dj.lua,
+-- which is injected automatically on grid connect (see grid_connect()).
 -- ──────────────────────────────────────────────
 local LEVEL = {
   OFF      = 0,
@@ -1782,6 +1781,22 @@ local function grid_connect()
   g = grid.connect()
   if g then
     g.key = grid_key
+    -- Inject the EndlessDJ colour palette into any attached midigrid Gen 3
+    -- device (e.g. Launchpad Mini MK3) so drum lanes and keyboard zones are
+    -- shown in distinct colours instead of the default amber gradient.
+    -- The check is silent when midigrid is not installed or no device is found.
+    local mg = rawget(_G, "midigrid")
+    if mg and mg.vgrid and mg.vgrid.devices then
+      local ok, lut = pcall(include, "EndlessDJ/lib/palettes/endless_dj")
+      if ok and type(lut) == "table" then
+        for _, device in pairs(mg.vgrid.devices) do
+          if device.rgb_lut then
+            device.rgb_lut = lut
+            device.force_full_refresh = true
+          end
+        end
+      end
+    end
     grid_load_pattern(current_deck().genre)
     grid_redraw(step)
   end

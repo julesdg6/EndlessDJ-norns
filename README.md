@@ -364,9 +364,9 @@ midigrid setup (two Launchpad Mini MK3)
 4. Rotation: leave "rotate second device" DISABLED.  Both controllers should be
    in the same physical orientation.  Do not enable rotation inside midigrid for
    this setup.
-5. Palette: for distinct instrument colours select:
-     SYSTEM → MODS → MIDIGRID → palette → endless_dj
-   Any other midigrid palette still works; brightness differences remain legible.
+5. Colours: distinct instrument colours (kick=red, snare=yellow, open hat=green,
+   closed hat=blue, etc.) are applied automatically when the script connects to
+   the grid.  No manual palette selection is required.
 
 16×8 control map
   The left half (x = 1–8) and right half (x = 9–16) are independent sections.
