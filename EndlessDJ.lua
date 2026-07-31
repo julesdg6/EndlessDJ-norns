@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.114
+-- Endless DJ v1.116
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -409,7 +409,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.114",
+      version="v1.116",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -1783,18 +1783,41 @@ local function grid_connect()
     g.key = grid_key
     -- Inject the EndlessDJ colour palette into any attached midigrid Gen 3
     -- device (e.g. Launchpad Mini MK3) so drum lanes and keyboard zones are
-    -- shown in distinct colours instead of the default amber gradient.
-    -- The check is silent when midigrid is not installed or no device is found.
-    local mg = rawget(_G, "midigrid")
+    -- shown in distinct colours instead of the default single-colour gradient.
+    --
+    -- Minimum required midigrid: commit 2024-03 or later (rgb_lut field present
+    -- in device objects).  Required settings: active on, grid size 128, rotate
+    -- second device off.
+    --
+    -- Prefer the vgrid exposed directly on the grid object returned by
+    -- grid.connect(), then fall back to the global midigrid module.
+    local mg = (g.vgrid and g) or rawget(_G, "midigrid")
     if mg and mg.vgrid and mg.vgrid.devices then
       local ok, lut = pcall(include, "EndlessDJ/lib/palettes/endless_dj")
-      if ok and type(lut) == "table" then
+      if not ok or type(lut) ~= "table" then
+        print("EndlessDJ: WARNING - could not load colour palette; Launchpads will show single colour")
+      else
+        local accepted = 0
         for _, device in pairs(mg.vgrid.devices) do
           if device.rgb_lut then
             device.rgb_lut = lut
             device.force_full_refresh = true
+            accepted = accepted + 1
+          else
+            print("EndlessDJ: WARNING - device has no rgb_lut; upgrade midigrid to enable RGB colours")
           end
         end
+        if accepted > 0 then
+          print("EndlessDJ: palette injected into " .. tostring(accepted) .. " device(s)")
+        else
+          print("EndlessDJ: WARNING - no devices accepted the colour palette")
+        end
+      end
+    else
+      if not mg then
+        print("EndlessDJ: midigrid not found; Launchpad colours unavailable (install the midigrid mod)")
+      elseif not (mg.vgrid and mg.vgrid.devices) then
+        print("EndlessDJ: midigrid found but no virtual grid devices attached")
       end
     end
     grid_load_pattern(current_deck().genre)

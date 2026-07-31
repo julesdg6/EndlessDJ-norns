@@ -356,6 +356,10 @@ which exposes them as a single 16×8 virtual grid.  A real monome 128 also works
 midigrid setup (two Launchpad Mini MK3)
 1. Install the midigrid mod:
      SYSTEM → MODS → install midigrid  (https://github.com/jaggednz/midigrid)
+   Minimum supported midigrid version: commit 2024-03 or later.
+   The required feature is the `rgb_lut` field in launchpad_gen3 device objects
+   and the SysEx RGB driver for the Launchpad Mini MK3
+   (lib/devices/launchpad_mini_mk3.lua must contain "SysEx RGB driver").
 2. In midigrid settings:
      SYSTEM → MODS → MIDIGRID → layout → 128
 3. Physical orientation: place both controllers flat with the logo at the bottom.
@@ -367,6 +371,30 @@ midigrid setup (two Launchpad Mini MK3)
 5. Colours: distinct instrument colours (kick=red, snare=yellow, open hat=green,
    closed hat=blue, etc.) are applied automatically when the script connects to
    the grid.  No manual palette selection is required.
+   On startup the Maiden console reports how many devices accepted the palette
+   (e.g. "EndlessDJ: palette injected into 2 device(s)") or warns if something
+   is misconfigured.
+
+Troubleshooting colours (Maiden diagnostics)
+If the Launchpads show only a single colour or brightness gradient instead of
+distinct per-instrument colours, run the diagnostic script in the Maiden REPL:
+
+  -- paste the entire contents of tools/grid_diagnostics.lua into Maiden REPL
+  -- It displays levels 0–15 across two rows and reports:
+  --   • whether midigrid was found and how (g.vgrid or global)
+  --   • how many devices have rgb_lut (RGB capability)
+  --   • whether the SysEx RGB driver is installed
+  --   • whether the EndlessDJ palette loaded and was injected
+
+Quick inline check (also runnable in Maiden REPL):
+
+  print(midigrid and "midigrid found" or "midigrid missing")
+  for i,d in pairs(midigrid.vgrid.devices) do
+    print(i, d.rgb_lut and "RGB supported" or "NO RGB LUT")
+  end
+
+If any device reports "NO RGB LUT", update midigrid:
+  cd /home/we/dust/code/midigrid && git pull
 
 16×8 control map
   The left half (x = 1–8) and right half (x = 9–16) are independent sections.

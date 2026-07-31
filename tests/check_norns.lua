@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.114", 1, true) then
-  fail("Script version must match PR #114")
+if not source:find("Endless DJ v1.116", 1, true) then
+  fail("Script version must match PR #116")
 end
-pass("Script version matches PR #114")
+pass("Script version matches PR #116")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -786,7 +786,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.114"', 'sample_library=sample_library',
+    'version="v1.116"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -930,6 +930,43 @@ if not source:find("grid_connect", 1, true) then
   fail("Missing grid_connect function")
 end
 pass("Unified grid interface (grid.connect, grid_redraw, nts1_steps, j6_steps)")
+
+-- ── midigrid palette injection checks ────────────────────────────────────
+do
+  -- Prefer g.vgrid before rawget(_G, "midigrid")
+  if not source:find("g.vgrid", 1, true) then
+    fail("grid_connect must check g.vgrid to prefer the grid.connect() vgrid object")
+  end
+  -- Must fall back to rawget global
+  if not source:find('rawget(_G, "midigrid")', 1, true) then
+    fail("grid_connect must fall back to rawget(_G, 'midigrid') when g.vgrid is absent")
+  end
+  -- Must log a warning when midigrid is not found
+  if not source:find("midigrid not found", 1, true) then
+    fail("grid_connect must print a warning when midigrid is not found")
+  end
+  -- Must warn when palette load fails
+  if not source:find("could not load colour palette", 1, true) then
+    fail("grid_connect must warn when the EndlessDJ colour palette cannot be loaded")
+  end
+  -- Must warn when a device has no rgb_lut
+  if not source:find("device has no rgb_lut", 1, true) then
+    fail("grid_connect must warn when a midigrid device has no rgb_lut")
+  end
+  -- Must report device count on success
+  if not source:find("palette injected into", 1, true) then
+    fail("grid_connect must report how many devices accepted the colour palette")
+  end
+  -- Must warn when no devices accepted the palette
+  if not source:find("no devices accepted the colour palette", 1, true) then
+    fail("grid_connect must warn when no devices accepted the colour palette")
+  end
+  -- force_full_refresh must still be set after injecting the LUT
+  if not source:find("force_full_refresh = true", 1, true) then
+    fail("grid_connect must set force_full_refresh = true after injecting the LUT")
+  end
+end
+pass("midigrid palette injection: g.vgrid preference, warnings, device count, force refresh")
 
 -- ── Korg NTS-1 checks ─────────────────────────────────────────────────────
 if not source:find("nts1_midi_out", 1, true) then
