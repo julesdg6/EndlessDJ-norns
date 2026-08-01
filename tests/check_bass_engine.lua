@@ -69,4 +69,28 @@ local count = 0
 for _ in pairs(distinct) do count = count + 1 end
 if count < 40 then fail("different seeds do not create sufficiently distinct bass records") end
 
+local neutral = {
+  preset=2,model=0,waveform=0,sub=0.5,cutoff=0.5,resonance=0.5,
+  attack=0.5,release=0.5,glide=0.5,lfo_rate=0.5,lfo_depth=0.5,
+  delay_send=0.5,
+}
+local reese = bass_engine.apply_voice_profile({voice_family="reese"}, neutral)
+local organ = bass_engine.apply_voice_profile({voice_family="organ"}, neutral)
+local wobble = bass_engine.apply_voice_profile({voice_family="wobble"}, neutral)
+if organ.cutoff < 0.75 or organ.sub > 0.12 or organ.lfo_depth > 0.10 then
+  fail("organ profile must remain bright, harmonic and stable")
+end
+if wobble.resonance < 0.45 or wobble.lfo_depth < 0.70 or wobble.lfo_rate < 0.35 then
+  fail("wobble profile must have deep animated filtering")
+end
+if reese.cutoff > 0.55 or reese.lfo_depth < 0.15 or reese.glide < 0.12 then
+  fail("Reese profile must remain dark, wide and mobile")
+end
+if reese.model == organ.model or organ.model == wobble.model or reese.model == wobble.model then
+  fail("Reese, organ and wobble must use different synthesis models")
+end
+if neutral.cutoff ~= 0.5 or neutral.lfo_depth ~= 0.5 then
+  fail("voice profiling must not mutate the source patch")
+end
+
 io.stdout:write("PASS: deterministic genre-aware bass architecture\n")
