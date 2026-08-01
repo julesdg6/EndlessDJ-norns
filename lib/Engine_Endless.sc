@@ -153,9 +153,13 @@ Engine_Endless : CroneEngine {
 			DetectSilence.ar(wet[0].abs + wet[1].abs + Impulse.ar(0), 0.0001, 1.0, doneAction: 1);
 		}).add;
 
-		SynthDef(\endlessDeckMixer, { arg inBus=0, out=0, level=1;
+		SynthDef(\endlessDeckMixer, {
+			arg inBus=0, out=0, level=1, low=1, mid=1, high=1;
 			var signal;
 			signal = In.ar(inBus, 2) * Lag.kr(level, 0.03);
+			signal = BLowShelf.ar(signal, 140, 1, Lag.kr(low,0.03).ampdb);
+			signal = BPeakEQ.ar(signal, 1100, 0.7, Lag.kr(mid,0.03).ampdb);
+			signal = BHiShelf.ar(signal, 6200, 1, Lag.kr(high,0.03).ampdb);
 			Out.ar(out, signal);
 		}).add;
 
@@ -601,6 +605,15 @@ Engine_Endless : CroneEngine {
 				masterMixer.run(true);
 			});
 			deckMixers[deck].set(\level, msg[2].asFloat.clip(0, 1));
+		});
+
+		this.addCommand(\deck_eq, "ifff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			deckMixers[deck].set(
+				\low, msg[2].asFloat.clip(0.125, 2),
+				\mid, msg[3].asFloat.clip(0.125, 2),
+				\high, msg[4].asFloat.clip(0.125, 2)
+			);
 		});
 
 		this.addCommand(\mixer_set, "iiffffff", { arg msg;
