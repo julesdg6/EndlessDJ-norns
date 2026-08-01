@@ -54,6 +54,70 @@ local ACID_GROOVES = {
   },
 }
 
+-- Per-archetype groove plans for Funky House.  The step positions capture
+-- disco open-hat offbeats, ghost snares between beats 2/4, conga-style tom
+-- accents, and kick pickups that distinguish each archetype, while the feel
+-- (timing swing/offset) still comes from the song identity so consecutive
+-- seeds produce perceptibly different grooves within the same archetype.
+local FUNKY_GROOVES = {
+  filtered_disco = {
+    -- Disco shuffle: 8th-note hats on all offbeats, open hats every quarter,
+    -- syncopated kick pickups at 3 and 11, conga accents at 10/14.
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,3,5,9,11,13},
+      snare = {3,5,7,11,13,15},
+      clap  = {5,13},
+      hats  = {2,4,6,8,10,12,14,16},
+      ohats = {4,8,12,16},
+      tom   = {10,14},
+    },
+    fill = {{12,"ohats"},{14,"tom"},{15,"snare"},{16,"clap"}},
+  },
+  live_clavinet = {
+    -- Syncopated funk: sparse offbeat hats with selective opens, clavinet
+    -- call-response tom accents at 6/14, syncopated kick.
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,4,7,11,13},
+      snare = {3,5,9,13,15},
+      clap  = {5,13},
+      hats  = {2,4,6,8,10,12,14,16},
+      ohats = {4,12},
+      tom   = {6,14},
+    },
+    fill = {{11,"tom"},{13,"snare"},{15,"tom"},{16,"clap"}},
+  },
+  brass_vocal = {
+    -- Punchy 4/4 with space for brass stabs: sparse hats, open hats on
+    -- off-beats 7/15, kick pickup at 11, phrase punctuation toms at 8/16.
+    phrase_bars = 4,
+    pattern = {
+      kick  = {1,5,9,11,13},
+      snare = {3,5,7,13,15},
+      clap  = {5,13},
+      hats  = {3,5,7,9,11,13,15},
+      ohats = {7,15},
+      tom   = {8,16},
+    },
+    fill = {{12,"snare"},{14,"tom"},{16,"clap"}},
+  },
+  french_touch = {
+    -- Pumping 4-on-the-floor with ghost snares, offbeat quarter open hats
+    -- and a single mid-phrase tom accent for the French-touch filter feel.
+    phrase_bars = 4,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {5,7,11,13,15},
+      clap  = {5,13},
+      hats  = {3,7,11,15},
+      ohats = {4,12},
+      tom   = {8},
+    },
+    fill = {{14,"tom"},{15,"snare"},{16,"clap"}},
+  },
+}
+
 local FILL_RECIPES = {
   straight={{14,"tom"},{15,"snare"},{16,"clap"}},
   swung={{12,"hats"},{15,"tom"},{16,"clap"}},
@@ -137,22 +201,27 @@ function M.new(identity)
   local rng=rng_new(assert(identity.stream_seeds and identity.stream_seeds.groove,"groove seed required"))
   local compatible=FEELS[identity.genre] or {"straight"}
   local acid_spec=identity.genre=="ACID" and ACID_GROOVES[identity.archetype] or nil
+  local funky_spec=identity.genre=="FUNKY" and FUNKY_GROOVES[identity.archetype] or nil
   local feel=(acid_spec and acid_spec.feel) or identity.groove_family or rng:pick(compatible)
-  local pattern=(acid_spec and acid_spec.pattern) or PATTERNS[feel]
+  local pattern=(acid_spec and acid_spec.pattern) or (funky_spec and funky_spec.pattern)
+    or PATTERNS[feel]
   assert(pattern,"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
   if acid_spec then phrase_bars=acid_spec.phrase_bars end
+  if funky_spec then phrase_bars=funky_spec.phrase_bars end
   local bars={}
   for bar_number=1,phrase_bars do
     bars[bar_number]=make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
   end
+  local fill_recipe=(acid_spec and acid_spec.fill) or (funky_spec and funky_spec.fill)
+  local fill_style=acid_spec and (identity.archetype.."_fill") or
+    (funky_spec and (identity.archetype.."_funky")) or nil
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,
     family=feel, swing=swing, phrase_bars=phrase_bars, bars=bars,
     cycles=(feel=="polymetric") and {hats=3,tom=5} or nil,
-    fill=make_fill(feel,phrase_bars,rng,acid_spec and acid_spec.fill,
-      acid_spec and (identity.archetype.."_fill") or nil),
+    fill=make_fill(feel,phrase_bars,rng,fill_recipe,fill_style),
   }
 end
 function M.event(plan,absolute_bar,voice,step)

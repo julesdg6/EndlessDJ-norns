@@ -20,6 +20,35 @@ local GRAMMARS={
   },
 }
 
+-- Per-archetype arrangement grammars for Funky House.  Each section plan is
+-- tailored to its archetype's character while still resolving to exactly 96
+-- performance bars so the shared MIX section always begins at bar 97.
+local FUNKY_GRAMMARS = {
+  filtered_disco = {
+    -- Extended sample-led intro (16 bars), short groove reveal, then standard
+    -- hook A/B structure with disco-loop breakdown and percussion outro.
+    {"INTRO",16},{"GROOVE",8},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+  live_clavinet = {
+    -- Short intro then a long groove-reveal section (24 bars) so the clavinet
+    -- bass and groove establish their identity before the full arrangement.
+    {"INTRO",8},{"GROOVE",24},{"MAIN",8},{"BREAK",8},
+    {"BUILD",8},{"DROP",24},{"DEVELOP",16},
+  },
+  brass_vocal = {
+    -- Quick intro and groove, long breakdown (16 bars) that exposes vocal
+    -- and brass material, then full-band drop.
+    {"INTRO",8},{"GROOVE",8},{"MAIN",16},{"BREAK",16},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+  french_touch = {
+    -- Double-drop filter-pump structure: build, drop, break, build, drop.
+    {"INTRO",8},{"GROOVE",16},{"MAIN",8},{"BUILD",8},
+    {"DROP",16},{"BREAK",8},{"BUILD",8},{"DROP",16},{"DEVELOP",8},
+  },
+}
+
 local ACID_GRAMMARS={
   classic_303={
     {"INTRO",16},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
@@ -84,6 +113,46 @@ local function acid_envelope(archetype,name)
   return result
 end
 
+-- Funky House stem energy envelopes.  Samples (disco loops, guitar chops,
+-- vocal hooks) are deliberately higher than in the generic template throughout,
+-- the INTRO is sample-led (very low bass / no mono), the BREAK exposes vocal
+-- and instrumental material, the BUILD emphasises filter FX, and the OUTRO
+-- thins to kick + percussion only.
+local function funky_envelope(archetype, name)
+  local envelope = {
+    INTRO   = {kick=0.65,percussion=0.42,bass=0,    chords=0.10,mono=0,    samples=0.52,fx=0.18},
+    GROOVE  = {kick=1,   percussion=0.72,bass=0.82, chords=0.28,mono=0.15, samples=0.45,fx=0.10},
+    MAIN    = {kick=1,   percussion=0.90,bass=0.92, chords=0.72,mono=0.58, samples=0.68,fx=0.18},
+    BREAK   = {kick=0.08,percussion=0.35,bass=0.15, chords=0.75,mono=0.72, samples=0.88,fx=0.52},
+    BUILD   = {kick=0.72,percussion=0.92,bass=0.48, chords=0.55,mono=0.75, samples=0.65,fx=0.94},
+    DROP    = {kick=1,   percussion=1,   bass=1,    chords=0.78,mono=0.88, samples=0.78,fx=0.38},
+    DEVELOP = {kick=1,   percussion=0.82,bass=0.88, chords=0.52,mono=0.42, samples=0.55,fx=0.18},
+    OUTRO   = {kick=0.92,percussion=0.78,bass=0.18, chords=0.06,mono=0,    samples=0.22,fx=0.10},
+    MIX     = {kick=1,   percussion=0.72,bass=0.58, chords=0.28,mono=0.20, samples=0.38,fx=0.30},
+  }
+  local result = {}
+  for role, value in pairs(envelope[name] or envelope.GROOVE) do result[role] = value end
+  -- Archetype-specific emphasis on top of the shared base.
+  if archetype == "filtered_disco" then
+    -- Sample-led throughout; extra filter loop presence in INTRO and BREAK.
+    if name == "INTRO"  then result.samples = math.min(1, result.samples + 0.10) end
+    if name == "BREAK"  then result.samples = math.min(1, result.samples + 0.08) end
+  elseif archetype == "live_clavinet" then
+    -- Clavinet mono lead is prominent in MAIN and DEVELOP sections.
+    if name == "MAIN"   then result.mono = math.min(1, result.mono + 0.15) end
+    if name == "DEVELOP" then result.mono = math.min(1, result.mono + 0.10) end
+  elseif archetype == "brass_vocal" then
+    -- Brass stabs and vocal chops are featured in MAIN and BREAK.
+    if name == "MAIN"   then result.samples = math.min(1, result.samples + 0.08) end
+    if name == "BREAK"  then result.samples = math.min(1, result.samples + 0.10) end
+  elseif archetype == "french_touch" then
+    -- Filter FX are exaggerated in BUILD sections; chords pumped in DROP.
+    if name == "BUILD"  then result.fx = math.min(1, result.fx + 0.06) end
+    if name == "DROP"   then result.chords = math.min(1, result.chords + 0.10) end
+  end
+  return result
+end
+
 local function rng_new(seed)
   local rng={state=math.max(1,seed%2147483647)}
   function rng:next() self.state=(self.state*48271)%2147483647 return self.state end
@@ -104,6 +173,7 @@ function M.new(identity)
     "arrangement seed required")
   local family=identity.arrangement_family or "club_linear"
   local grammar=(identity.genre=="ACID" and ACID_GRAMMARS[identity.archetype]) or
+    (identity.genre=="FUNKY" and FUNKY_GRAMMARS[identity.archetype]) or
     assert(GRAMMARS[family],"unknown arrangement family")
   local rng=rng_new(identity.stream_seeds.arrangement)
   local sections={}
@@ -113,11 +183,14 @@ function M.new(identity)
   for index,item in ipairs(grammar) do
     local name,length=item[1],item[2]
     occurrences[name]=(occurrences[name] or 0)+1
+    local is_funky=identity.genre=="FUNKY"
     local section={
       name=name, first=first, last=first+length-1, length=length,
       phrase_bars=(identity.genre=="ACID" and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
+        (is_funky and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         ((length>=16 and rng:float()>0.48) and 8 or 4),
       energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,name)) or
+        (is_funky and funky_envelope(identity.archetype,name)) or
         copy_envelope(name), index=index, occurrence=occurrences[name],
     }
     sections[#sections+1]=section
@@ -129,6 +202,7 @@ function M.new(identity)
   sections[#sections+1]={
     name="MIX",first=97,last=128,length=32,phrase_bars=8,
     energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,"MIX")) or
+      (identity.genre=="FUNKY" and funky_envelope(identity.archetype,"MIX")) or
       copy_envelope("MIX"),index=#sections+1,occurrence=1,
   }
   return {

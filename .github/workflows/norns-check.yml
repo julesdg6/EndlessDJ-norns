@@ -23,4 +23,5 @@ jobs:
           lua5.3 tests/check_genre_profiles.lua
           lua5.3 tests/check_engine_registry.lua
           lua5.3 tests/check_transition_engine.lua
+          lua5.3 tests/check_funky_house.lua
           lua5.3 tests/check_norns.lua
