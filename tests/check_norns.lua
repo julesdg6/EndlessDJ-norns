@@ -636,9 +636,9 @@ pass("Generated persistent n-mono synth and controls exist")
 
 do
   local drum_start = engine_source:find("5.do({ arg kitIndex;", 1, true)
-  local acid_start = engine_source:find("SynthDef(\\endless303", drum_start, true)
-  local drum_source = drum_start and acid_start and
-    engine_source:sub(drum_start, acid_start - 1) or ""
+local acid_after_drums = engine_source:find("SynthDef(\\endless303", drum_start, true)
+local drum_source = drum_start and acid_after_drums and
+  engine_source:sub(drum_start, acid_after_drums - 1) or ""
   local switch_start = drum_source:find("signal = switch(voiceIndex", 1, true)
   local prefix = switch_start and drum_source:sub(1, switch_start - 1) or drum_source
   if prefix:find("Mix(Pulse.ar(", 1, true) then
