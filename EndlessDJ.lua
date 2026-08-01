@@ -2377,7 +2377,7 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
   )
   local section_boost = ({GROOVE=0.35, MAIN=0.55, BUILD=0.80, DROP=1.00, MIX=0.20})[sec] or 0
   local mutation_ops = acid_cfg.mutation_ops
-  local op_count = math.floor(
+  -- Endless DJ v1.117v1.117
     clamp(
       settings.evolution_amount * section_boost * mutation_ops.scale +
         ((sec == "DROP") and mutation_ops.drop_bonus or 0),
