@@ -270,6 +270,11 @@ do
   if not engine_source:find("nbassVoices", 1, true) then
     fail("genre bass must allocate an independent persistent voice per deck")
   end
+  for _, token in ipairs({"nbassGenerations", "SystemClock.sched", "synth.run(false)"}) do
+    if not engine_source:find(token, 1, true) then
+      fail("genre bass idle suspension is missing " .. token)
+    end
+  end
 end
 pass("Custom engine uses the supplied Crone audio context")
 
