@@ -121,6 +121,15 @@ for seed = 1, 64 do
   end
   if not expressive then fail("Acid phrase lacks accents and slides") end
 end
+local acid_signatures={}
+for archetype,seed in pairs({classic_303=6,jack_acid=8,deep_acid=1,rave_acid=4}) do
+  local identity = identity_engine.new{seed=seed,deck="A",genre="ACID"}
+  local plan = bass_engine.new(identity, groove_engine.new(identity))
+  assert(identity.acid_identity and identity.acid_identity.style,"Acid archetype must store 303 identity data")
+  acid_signatures[archetype]=encode(plan)
+end
+assert(acid_signatures.classic_303~=acid_signatures.deep_acid,"Acid archetypes collapsed to one 303 phrase")
+assert(acid_signatures.jack_acid~=acid_signatures.rave_acid,"Acid archetypes need distinct 303 grammar")
 
 for seed = 1, 512 do
   local identity = identity_engine.new{seed=seed,deck="A",genre="HOUSE"}

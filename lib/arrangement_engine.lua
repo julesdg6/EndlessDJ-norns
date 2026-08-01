@@ -20,6 +20,25 @@ local GRAMMARS={
   },
 }
 
+local ACID_GRAMMARS={
+  classic_303={
+    {"INTRO",16},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",8},{"OUTRO",8},
+  },
+  jack_acid={
+    {"INTRO",8},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",8},{"OUTRO",16},
+  },
+  deep_acid={
+    {"INTRO",16},{"GROOVE",24},{"MAIN",16},{"BREAK",16},
+    {"BUILD",8},{"DROP",8},{"DEVELOP",8},
+  },
+  rave_acid={
+    {"INTRO",8},{"GROOVE",16},{"MAIN",8},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"BREAK",8},{"DROP",16},{"DEVELOP",8},
+  },
+}
+
 local ENVELOPES={
   INTRO={kick=0.72,percussion=0.45,bass=0,chords=0.18,mono=0,samples=0.18,fx=0.15},
   GROOVE={kick=1,percussion=0.72,bass=0.78,chords=0.35,mono=0.18,samples=0.28,fx=0.12},
@@ -35,6 +54,33 @@ local ENVELOPES={
 local function copy_envelope(name)
   local result={}
   for role,value in pairs(ENVELOPES[name] or ENVELOPES.GROOVE) do result[role]=value end
+  return result
+end
+
+local function acid_envelope(archetype,name)
+  local envelope={
+    INTRO={kick=0.86,percussion=0.26,bass=0.22,chords=0.06,mono=0.32,samples=0.08,fx=0.10},
+    GROOVE={kick=1,percussion=0.66,bass=0.78,chords=0.12,mono=0.48,samples=0.18,fx=0.10},
+    MAIN={kick=1,percussion=0.84,bass=0.90,chords=0.18,mono=0.64,samples=0.24,fx=0.16},
+    BREAK={kick=0.08,percussion=0.20,bass=0.24,chords=0.10,mono=0.56,samples=0.22,fx=0.50},
+    BUILD={kick=0.62,percussion=0.72,bass=0.68,chords=0.14,mono=0.82,samples=0.38,fx=0.92},
+    DROP={kick=1,percussion=1,bass=1,chords=0.20,mono=0.94,samples=0.34,fx=0.28},
+    DEVELOP={kick=0.96,percussion=0.76,bass=0.82,chords=0.12,mono=0.58,samples=0.18,fx=0.16},
+    OUTRO={kick=1,percussion=0.52,bass=0.42,chords=0.06,mono=0.16,samples=0.08,fx=0.12},
+    MIX={kick=1,percussion=0.58,bass=0.38,chords=0.10,mono=0.18,samples=0.10,fx=0.20},
+  }
+  local result={}
+  for role,value in pairs(envelope[name] or envelope.GROOVE) do result[role]=value end
+  if archetype=="deep_acid" then
+    result.percussion=math.max(0.12,result.percussion-0.10)
+    result.samples=math.max(0.06,result.samples-0.08)
+    result.fx=math.min(1,result.fx+0.08)
+  elseif archetype=="rave_acid" then
+    result.chords=math.min(0.42,result.chords+0.12)
+    result.samples=math.min(0.46,result.samples+0.10)
+  elseif archetype=="jack_acid" then
+    result.percussion=math.min(1,result.percussion+0.06)
+  end
   return result
 end
 
@@ -57,7 +103,8 @@ function M.new(identity)
   assert(identity and identity.stream_seeds and identity.stream_seeds.arrangement,
     "arrangement seed required")
   local family=identity.arrangement_family or "club_linear"
-  local grammar=assert(GRAMMARS[family],"unknown arrangement family")
+  local grammar=(identity.genre=="ACID" and ACID_GRAMMARS[identity.archetype]) or
+    assert(GRAMMARS[family],"unknown arrangement family")
   local rng=rng_new(identity.stream_seeds.arrangement)
   local sections={}
   local events={}
@@ -68,8 +115,10 @@ function M.new(identity)
     occurrences[name]=(occurrences[name] or 0)+1
     local section={
       name=name, first=first, last=first+length-1, length=length,
-      phrase_bars=(length>=16 and rng:float()>0.48) and 8 or 4,
-      energy=copy_envelope(name), index=index, occurrence=occurrences[name],
+      phrase_bars=(identity.genre=="ACID" and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
+        ((length>=16 and rng:float()>0.48) and 8 or 4),
+      energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,name)) or
+        copy_envelope(name), index=index, occurrence=occurrences[name],
     }
     sections[#sections+1]=section
     local event=section_event(name,occurrences[name])
@@ -79,7 +128,8 @@ function M.new(identity)
   assert(first==97,"arrangement grammar must fill 96 performance bars")
   sections[#sections+1]={
     name="MIX",first=97,last=128,length=32,phrase_bars=8,
-    energy=copy_envelope("MIX"),index=#sections+1,occurrence=1,
+    energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,"MIX")) or
+      copy_envelope("MIX"),index=#sections+1,occurrence=1,
   }
   return {
     schema_version=1,genre=identity.genre,archetype=identity.archetype,

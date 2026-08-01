@@ -61,4 +61,20 @@ assert(arrangement.gate(double,4,3,"chords",0.5)==arrangement.gate(double,4,3,"c
 local a=arrangement.new(identity.new{seed=42,deck="A",genre="HOUSE"})
 local b=arrangement.new(identity.new{seed=43,deck="B",genre="HOUSE"})
 assert(signature(a)~=signature(b),"different records collapsed to one arrangement")
+
+local acid_fixtures={
+  classic_303={seed=6,first="INTRO",last="OUTRO"},
+  jack_acid={seed=8,first="INTRO",last="OUTRO"},
+  deep_acid={seed=1,first="INTRO",last="DEVELOP"},
+  rave_acid={seed=4,first="INTRO",last="DEVELOP"},
+}
+for archetype,fixture in pairs(acid_fixtures) do
+  local plan=arrangement.new(identity.new{seed=fixture.seed,deck="A",genre="ACID"})
+  assert(plan.archetype==archetype,"wrong acid arrangement fixture selected")
+  assert(plan.sections[1].name==fixture.first,"acid intro missing")
+  assert(plan.sections[#plan.sections-1].name==fixture.last,"acid ending section mismatch")
+  assert(arrangement.role_level(plan,1,"bass")>0,"acid intro should expose a sparse bass motif")
+  assert(arrangement.role_level(plan,1,"chords")<0.2,"acid intro chords must stay sparse")
+  assert(arrangement.role_level(plan,97,"bass")<0.5,"acid mix section should simplify the bass")
+end
 print("All arrangement engine checks passed")

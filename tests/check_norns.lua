@@ -1424,6 +1424,39 @@ do
   pass("Acid phrase variation keeps the base identity and mutates only a few steps")
 
   do
+    _G.genre_profiles = dofile("lib/genre_profiles.lua")
+    local song_identity = dofile("lib/song_identity.lua")
+    local deck_a = {
+      name = "A-303",
+      genre = "ACID",
+      root = 45,
+      identity = song_identity.new{seed=6,deck="A",genre="ACID"},
+    }
+    local replay = api.acid_build_deck_state(deck_a)
+    local first = api.acid_build_deck_state(deck_a)
+    if replay.seed ~= first.seed or replay.length ~= first.length or
+        serialize_pattern(replay.base_pattern) ~= serialize_pattern(first.base_pattern) then
+      fail("Acid deck state must be derived deterministically from the stored song identity")
+    end
+    local deck_b = {
+      name = "B-303",
+      genre = "ACID",
+      root = 45,
+      identity = song_identity.new{seed=6,deck="B",genre="ACID"},
+    }
+    local other = api.acid_build_deck_state(deck_b)
+    if replay.seed == other.seed and
+        serialize_pattern(replay.base_pattern) == serialize_pattern(other.base_pattern) then
+      fail("Acid deck state must remain independent between Deck A and Deck B")
+    end
+    local settings = api.acid_settings_for_deck(deck_a)
+    if settings.length ~= deck_a.identity.acid_identity.pattern_length then
+      fail("Acid playback settings must honour the stored archetype-specific identity")
+    end
+  end
+  pass("Acid deck playback state is deterministic, deck-independent and identity-driven")
+
+  do
     local seen = {}
     local duplicates = 0
     for seed = 1, 1000 do
