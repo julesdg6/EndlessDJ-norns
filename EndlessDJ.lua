@@ -1257,17 +1257,6 @@ local function service_pending_notes()
   end
 end
 
-local function density_for_section(sec)
-  if sec == "INTRO" then return 0.40 end
-  if sec == "GROOVE" then return 0.60 end
-  if sec == "MAIN" then return 0.78 end
-  if sec == "BREAK" then return 0.45 end
-  if sec == "BUILD" then return 0.75 end
-  if sec == "DROP" then return 0.95 end
-  if sec == "MIX" then return 0.70 end
-  return 0.70
-end
-
 -- ──────────────────────────────────────────────
 -- Acapella helpers
 -- ──────────────────────────────────────────────
