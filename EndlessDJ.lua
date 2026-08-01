@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.135
+-- Endless DJ v1.136
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -414,7 +414,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.135",
+      version="v1.136",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -967,6 +967,15 @@ print_song_identity = function(deck)
   local serialized = song_identity.serialize(target.identity)
   print("Endless DJ identity: " .. serialized)
   return serialized
+end
+
+local n808_kit_models = { ["808"]=0, ["909"]=1, linn=2, industrial=3, hybrid=4 }
+
+local function n808_apply_deck(deck)
+  if not deck or not deck.identity then return end
+  internal_engine.set_n808_model(
+    internal_engine.deck_id(deck, deck_a), n808_kit_models[deck.identity.kit] or 0
+  )
 end
 
 n303_apply_deck = function(deck, sync_params)
@@ -3470,6 +3479,8 @@ local function finish_handover()
     deck_b = make_deck("B")
   end
 
+  n808_apply_deck(deck_a)
+  n808_apply_deck(deck_b)
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
   n303_apply_deck(current_deck(), true)
@@ -4679,6 +4690,8 @@ function init()
   -- are actually applied to the running script.
   params:default()
   grid_connect()
+  n808_apply_deck(deck_a)
+  n808_apply_deck(deck_b)
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
   n303_apply_deck(current_deck(), true)
