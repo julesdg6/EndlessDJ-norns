@@ -81,7 +81,21 @@ local archetypes = {
 local kit_families = {"808", "909", "linn", "hybrid"}
 local groove_families = {"straight", "swung", "broken", "syncopated"}
 local harmony_families = {"minor_modal", "seventh_ninth", "pedal_tone", "borrowed_motion"}
-local arrangement_families = {"club_linear", "hook_ab", "double_drop", "slow_burn"}
+local arrangement_families = {
+  HOUSE={"club_linear","hook_ab","slow_burn"},
+  FUNKY={"hook_ab","club_linear","double_drop"}, DIRTY={"double_drop","club_linear"},
+  TECHNO={"slow_burn","double_drop","club_linear"}, GARAGE4={"hook_ab","club_linear"},
+  TWO_STEP={"hook_ab","double_drop"}, BREAKS={"double_drop","hook_ab"},
+  DUBSTEP={"double_drop","slow_burn"}, DEEP={"slow_burn","club_linear"},
+  ACID={"club_linear","double_drop"}, TRANCE={"double_drop","slow_burn"},
+  PROG={"slow_burn","hook_ab"}, JUNGLE={"double_drop","hook_ab"},
+  DNB={"double_drop","club_linear"}, LIQUID={"hook_ab","slow_burn"},
+  HARDTECHNO={"double_drop","club_linear"}, ELECTRO={"hook_ab","double_drop"},
+  JUKE={"hook_ab","double_drop"}, AFRO={"slow_burn","club_linear"},
+  MINIMAL={"slow_burn","club_linear"}, MELODIC={"slow_burn","double_drop"},
+  SPEED={"double_drop","hook_ab"}, BASSLINE={"double_drop","hook_ab"},
+  HARDSTYLE={"double_drop","club_linear"},
+}
 
 function M.archetypes_for_genre(genre)
   return archetypes[genre]
@@ -115,7 +129,7 @@ function M.new(options)
     groove_family=selection:pick(groove_families),
     kit=selection:pick(kit_families),
     harmony_family=selection:pick(harmony_families),
-    arrangement_family=selection:pick(arrangement_families),
+    arrangement_family=selection:pick(arrangement_families[options.genre]),
     stream_seeds={},
     stems={
       kick={role="rhythm", low_end_owner=true},
