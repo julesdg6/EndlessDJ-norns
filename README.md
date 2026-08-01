@@ -1032,13 +1032,29 @@ or preview an identity without changing playback:
 
 GROOVE PLANS
 
-Every generated deck also owns a deterministic four-bar groove plan. The plan
+Every generated deck also owns a deterministic 2, 4, 8 or 16-bar groove plan. The plan
 selects a genre-compatible feel, stable velocity arcs, ghost-note roles,
 microtiming offsets and a phrase-boundary turnaround. With no grid connected it
 drives generated drums directly; a connected grid keeps its editable pattern
 while inheriting the plan's velocity and phrase metadata. Timing offsets are
 stored for the shared scheduler rather than approximated with random per-hit
 delays.
+
+PHRASE ARRANGEMENT AND ENERGY CURVES
+
+Each record now stores a deterministic 128-bar arrangement selected from
+genre-compatible club-linear, hook A/B, double-drop and slow-burn grammars.
+The first 96 bars contain purposeful intro, groove, main, breakdown, build,
+drop, development and optional outro roles; the final 32 bars remain the DJ
+transition window. Every section exposes phrase position plus independent kick,
+percussion, bass, chord, mono, sample and FX envelopes. These stored envelopes
+replace the universal section template and make energy changes repeatable rather
+than depending on unrelated per-note randomness.
+
+Risers and impacts are emitted by section-boundary events in the arrangement
+plan. A double-drop record can therefore have distinct first and second build/drop
+cues. The Norns display shows the active section and phrase position, while the
+same metadata is available to the transition system for future stem-aware mixes.
 
 SHARED MICROTIMING SCHEDULER
 
