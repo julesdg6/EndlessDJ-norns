@@ -1594,4 +1594,17 @@ for _, required in ipairs({
 end
 pass("Shared bounded scheduler applies groove timing to every musical role")
 
+-- ── Optional grid stem/scene interaction during transitions ─────────────────
+for _,required in ipairs({
+  "transition_state.strategy_order",
+  "Grid stem transition overlay",
+  "transition_engine.clear_override(",
+  "mixing and transition_state.plan and y <= 4",
+}) do
+  if not source:find(required,1,true) then
+    fail("Grid stem/scene interaction missing: "..required)
+  end
+end
+pass("Optional grid stem/scene interaction during transitions exists")
+
 print("All Endless DJ checks passed")
