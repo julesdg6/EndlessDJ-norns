@@ -48,6 +48,29 @@ local function scan(path)
   return files
 end
 
+local function uint_le(bytes,offset,count)
+  local value=0
+  for index=count-1,0,-1 do value=value*256+(bytes:byte(offset+index) or 0) end
+  return value
+end
+
+local function wav_duration(path)
+  local file=io.open(path,"rb")
+  if not file then file=io.open(path:gsub("^EndlessDJ/",""),"rb") end
+  if not file then return nil end
+  local header=file:read(44)
+  file:close()
+  if not header or #header<44 or header:sub(1,4)~="RIFF" or
+      header:sub(9,12)~="WAVE" then return nil end
+  local channels=uint_le(header,23,2)
+  local sample_rate=uint_le(header,25,4)
+  local bits=uint_le(header,35,2)
+  local data_size=uint_le(header,41,4)
+  local bytes_per_second=sample_rate*channels*(bits/8)
+  if bytes_per_second<=0 then return nil end
+  return data_size/bytes_per_second
+end
+
 local function copy(values)
   local result={}
   for _,value in ipairs(values or {}) do result[#result+1]=value end
@@ -84,6 +107,7 @@ function SampleLibrary.scan()
     add_entry({
       id="riser_"..string.format("%02d",index),role="riser",slot=index+16,path=path,
       tags=copy(family.tags),energy=family.energy,tonal=family.tonal,key=family.key,
+      duration=wav_duration(path),
       processing={"filter","pitch","reverse"},
     })
   end
@@ -97,6 +121,7 @@ function SampleLibrary.scan()
         local entry=add_entry({
           id=role.."_"..string.format("%02d",index),role=role,slot=next_slot,path=path,
           tags=copy(variant.tags),energy=variant.energy,tonal=false,
+          duration=wav_duration(path),
           vocal_occupancy=(role=="vocal_stab") and "hook" or "none",
           processing={"filter","pitch","reverse","choke"},
         })
@@ -174,10 +199,26 @@ local function playback(entry,identity,variant)
   return {
     slot=entry.slot,id=entry.id,role=entry.role,tags=copy(entry.tags),
     energy=entry.energy,tonal=entry.tonal,key=entry.key,rate=rate,
+    duration=entry.duration,
     level=(variant=="alternate") and 0.86 or 0.92,
     pan=(variant=="alternate") and 0.12 or -0.08,
     origin=entry.origin,license=entry.license,vocal_occupancy=entry.vocal_occupancy,
   }
+end
+
+function SampleLibrary.sync_settings(selection,bpm,target_beats)
+  if not selection then return nil end
+  local result={}
+  for name,value in pairs(selection) do result[name]=value end
+  local beats=math.max(0.25,tonumber(target_beats) or 1)
+  local tempo=math.max(20,tonumber(bpm) or 120)
+  local target_seconds=beats*60/tempo
+  if result.duration and result.duration>0 then
+    local direction=(result.rate or 1)<0 and -1 or 1
+    result.rate=direction*math.max(0.25,math.min(4,result.duration/target_seconds))
+  end
+  result.target_beats=beats
+  return result
 end
 
 function SampleLibrary.plan_for_identity(identity)
