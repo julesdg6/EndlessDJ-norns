@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.142", 1, true) then
-  fail("Script version must match PR #142")
+if not source:find("Endless DJ v1.143", 1, true) then
+  fail("Script version must match PR #143")
 end
-pass("Script version matches PR #142")
+pass("Script version matches PR #143")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -936,7 +936,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.142"', 'sample_library=sample_library',
+    'version="v1.143"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1429,6 +1429,13 @@ end
 if not source:find("generate_song_identity = function", 1, true) or
     not source:find("print_song_identity = function", 1, true) then
   fail("Song identities must expose non-mutating Maiden diagnostics")
+end
+local identity_file=io.open("lib/song_identity.lua","r")
+if not identity_file then fail("Missing song identity module") end
+local identity_source=identity_file:read("*a")
+identity_file:close()
+if not identity_source:find('include("EndlessDJ/lib/genre_profiles")',1,true) then
+  fail("Song identity must load genre profiles from the Norns script path")
 end
 pass("Deterministic independent song identity foundation exists")
 
