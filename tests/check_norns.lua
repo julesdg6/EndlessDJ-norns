@@ -505,7 +505,7 @@ end
 local engine_source = read_file("lib/Engine_Endless.sc") or ""
 for _, token in ipairs({
   "model.clip(0, 5)", "subVoice", "reese", "organ", "fm", "wobble",
-  'addCommand(\\nmono_model, "ii"',
+  "awakeGuard", "Trig1.kr(t_trig", 'addCommand(\\nmono_model, "ii"',
 }) do
   if not engine_source:find(token, 1, true) then
     fail("Missing interchangeable n-mono model implementation " .. token)
