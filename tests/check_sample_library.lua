@@ -21,8 +21,10 @@ for _,entry in ipairs(library.catalog) do
   assert(entry.energy>=0 and entry.energy<=1,"invalid sample energy")
   assert(type(entry.tags)=="table" and #entry.tags>0,"sample lacks affinity tags")
   assert(entry.origin and entry.license,"sample lacks licensing provenance")
+  assert(entry.duration and entry.duration>0,"sample lacks WAV duration metadata")
   provenance[entry.origin..":"..entry.license]=true
 end
+
 assert(next(provenance),"sample provenance metadata is empty")
 
 local function make(seed,genre,root)
@@ -30,6 +32,12 @@ local function make(seed,genre,root)
   song.root_pitch_class=root or 0
   return library.plan_for_identity(song)
 end
+local timed=library.sync_settings(make(21,"HOUSE",0).roles.riser.primary,120,4)
+assert(math.abs((timed.duration/math.abs(timed.rate))-2)<0.0001,
+  "riser does not span exactly one 120 BPM bar")
+local short=library.sync_settings(make(21,"HOUSE",0).roles.short_fill.primary,120,1)
+assert(math.abs((short.duration/math.abs(short.rate))-0.5)<0.0001,
+  "short fill does not span exactly one beat")
 local function signature(plan)
   local parts={plan.genre,plan.archetype}
   for _,role in ipairs(library.ROLES) do
