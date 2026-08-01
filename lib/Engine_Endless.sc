@@ -12,7 +12,7 @@ Engine_Endless : CroneEngine {
 	var nchordHeld, nchordPreset, nchordModel, nchordBrightness, nchordFilterEnv, nchordChorus;
 	var nchordSynthDefs;
 	var delaySends, reverbSends;
-	var n808SynthDefs;
+	var n808SynthDefs, n808Model;
 	var n808Tone=0.5, n808Decay=0.5, n808Drive=0.25, n808Variation=0.15;
 	var n808Levels;
 
@@ -56,10 +56,12 @@ Engine_Endless : CroneEngine {
 		masterBus = Bus.audio(server, 2);
 		openHats = Array.fill(2, { nil });
 		n808Levels = Array.fill(6, { 1.0 });
-		n808SynthDefs = [
-			\endless808Kick, \endless808Snare, \endless808Clap,
-			\endless808Tom, \endless808ClosedHat, \endless808OpenHat
-		];
+		n808Model = Array.fill(2, { 0 });
+		n808SynthDefs = Array.fill(5, { arg kit;
+			Array.fill(6, { arg voice;
+				("endlessDrumK" ++ kit ++ "V" ++ voice).asSymbol
+			})
+		});
 		delaySends = Array.fill(2, { Array.fill(5, { 0.0 }) });
 		reverbSends = Array.fill(2, { Array.fill(5, { 0.0 }) });
 		n303SlidePending = Array.fill(2, { false });
@@ -179,100 +181,43 @@ Engine_Endless : CroneEngine {
 			);
 		}).add;
 
-		SynthDef(\endless808Kick, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, randomPitch, env, pitchEnv, click, signal;
-			decay = 0.48 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			pitchEnv = EnvGen.kr(Env.perc(0.001, 0.07, 62, -8));
-			click = HPF.ar(WhiteNoise.ar, 5000)
-				* EnvGen.kr(Env.perc(0.001, 0.012)) * 0.13;
-			signal = (SinOsc.ar(
-				(48 * toneScale * (1 + randomPitch)) + pitchEnv
-			) * 1.2) + click;
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
-
-		SynthDef(\endless808Snare, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, randomPitch, env, signal;
-			decay = 0.24 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			signal = (SinOsc.ar(185 * toneScale * (1 + randomPitch)) * 0.36)
-				+ (BPF.ar(WhiteNoise.ar, 1850 * toneScale, 0.55) * 0.92);
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
-
-		SynthDef(\endless808Clap, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, env, signal;
-			decay = 0.20 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			signal = BPF.ar(WhiteNoise.ar, 1350 * toneScale, 0.7)
-				* (1 + (Pulse.kr(32, 0.35) * 0.35));
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
-
-		SynthDef(\endless808Tom, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, randomPitch, env, pitchEnv, signal;
-			decay = 0.32 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			pitchEnv = EnvGen.kr(Env.perc(0.001, 0.07, 62, -8));
-			signal = SinOsc.ar(
-				(112 * toneScale * (1 + randomPitch)) + (pitchEnv * 0.35)
-			);
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
-
-		SynthDef(\endless808ClosedHat, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, randomPitch, env, metallic, signal;
-			decay = 0.075 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			metallic = Mix(Pulse.ar(
-				[4210, 5470, 6250, 7820, 9100, 10300] * toneScale * (1 + randomPitch),
-				0.5
-			)) / 6;
-			signal = HPF.ar(metallic + (WhiteNoise.ar * 0.18), 6100 * toneScale);
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
-
-		SynthDef(\endless808OpenHat, {
-			arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
-				decayControl=0.5, driveControl=0.25, variation=0.15;
-			var decay, toneScale, randomPitch, env, metallic, signal;
-			decay = 0.55 * decayControl.linexp(0, 1, 0.45, 1.8);
-			toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
-			randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
-			env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
-			metallic = Mix(Pulse.ar(
-				[4210, 5470, 6250, 7820, 9100, 10300] * toneScale * (1 + randomPitch),
-				0.5
-			)) / 6;
-			signal = HPF.ar(metallic + (WhiteNoise.ar * 0.22), 4600 * toneScale);
-			signal = (signal * (1 + (driveControl * 7))).tanh;
-			Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
-		}).add;
+		5.do({ arg kitIndex;
+		6.do({ arg voiceIndex;
+			SynthDef(n808SynthDefs[kitIndex][voiceIndex], {
+				arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
+					decayControl=0.5, driveControl=0.25, variation=0.15;
+				var toneScale, randomPitch, decay, env, pitchEnv, metallic, signal;
+				var kickFreq = #[48, 54, 62, 44, 52][kitIndex];
+				var snareFreq = #[185, 205, 238, 155, 198][kitIndex];
+				var noiseFreq = #[1850, 2450, 3150, 1250, 2200][kitIndex];
+				var kitDecay = #[1.0, 0.72, 0.48, 1.25, 0.86][kitIndex];
+				var kitDrive = #[1.0, 1.3, 0.72, 2.2, 1.45][kitIndex];
+				toneScale = toneControl.linexp(0, 1, 0.65, 1.55);
+				randomPitch = Rand(-1.0, 1.0) * variation * 0.045;
+				decay = #[0.48, 0.24, 0.20, 0.32, 0.075, 0.55][voiceIndex]
+					* kitDecay * decayControl.linexp(0, 1, 0.45, 1.8);
+				env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
+				pitchEnv = EnvGen.kr(Env.perc(0.001, 0.06, #[62, 20, 0, 38, 0, 0][voiceIndex], -8));
+				metallic = Mix(Pulse.ar(
+					[4210, 5470, 6250, 7820, 9100, 10300]
+					* toneScale * (1 + randomPitch) * (1 + (kitIndex * 0.035)), 0.5
+				)) / 6;
+				signal = switch(voiceIndex,
+					0, { SinOsc.ar((kickFreq * toneScale * (1 + randomPitch)) + pitchEnv)
+						+ (HPF.ar(WhiteNoise.ar, 5000) * EnvGen.kr(Env.perc(0.001, 0.01)) * 0.12) },
+					1, { (SinOsc.ar(snareFreq * toneScale) * 0.34)
+						+ (BPF.ar(WhiteNoise.ar, noiseFreq * toneScale, 0.48) * 0.9) },
+					2, { BPF.ar(WhiteNoise.ar, noiseFreq * 0.78 * toneScale, 0.7)
+						* (1 + (Pulse.kr(#[32,38,26,45,35][kitIndex], 0.35) * 0.35)) },
+					3, { SinOsc.ar((kickFreq * 2.25 * toneScale) + pitchEnv) },
+					4, { HPF.ar(metallic + (WhiteNoise.ar * #[0.18,0.3,0.5,0.24,0.28][kitIndex]), 6100 * toneScale) },
+					5, { HPF.ar(metallic + (WhiteNoise.ar * #[0.22,0.36,0.55,0.3,0.34][kitIndex]), 4600 * toneScale) }
+				);
+				signal = (signal * (1 + (driveControl * 7 * kitDrive))).tanh;
+				Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
+			}).add;
+		});
+		});
 
 		SynthDef(\endless303, {
 			arg out=0, freq=110, amp=0, sustain=0.18, accent=0, slide=0,
@@ -720,7 +665,7 @@ Engine_Endless : CroneEngine {
 					openHats[deck] = nil;
 				});
 			});
-			synth = Synth.head(context.xg, n808SynthDefs[voice], [
+			synth = Synth.head(context.xg, n808SynthDefs[n808Model[deck]][voice], [
 				\out, instrumentBuses[deck][0].index,
 				\amp, msg[3].asFloat.clip(0, 1), \voiceLevel, n808Levels[voice],
 				\toneControl, n808Tone, \decayControl, n808Decay,
@@ -740,6 +685,11 @@ Engine_Endless : CroneEngine {
 			n808Decay = msg[2].asFloat.clip(0, 1);
 			n808Drive = msg[3].asFloat.clip(0, 1);
 			n808Variation = msg[4].asFloat.clip(0, 1);
+		});
+
+		this.addCommand(\n808_model, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			n808Model[deck] = msg[2].asInteger.clip(0, 4);
 		});
 
 		this.addCommand(\n808_level, "if", { arg msg;
