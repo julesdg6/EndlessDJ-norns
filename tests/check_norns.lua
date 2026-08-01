@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.145", 1, true) then
-  fail("Script version must match PR #145")
+if not source:find("Endless DJ v1.147", 1, true) then
+  fail("Script version must match PR #147")
 end
-pass("Script version matches PR #145")
+pass("Script version matches PR #147")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -634,6 +634,23 @@ if not mono_set_pos or not mono_run_pos or mono_set_pos > mono_run_pos or
 end
 pass("Generated persistent n-mono synth and controls exist")
 
+do
+  local drum_start = engine_source:find("5.do({ arg kitIndex;", 1, true)
+  local acid_start = engine_source:find("SynthDef(\\endless303", drum_start, true)
+  local drum_source = drum_start and acid_start and
+    engine_source:sub(drum_start, acid_start - 1) or ""
+  local switch_start = drum_source:find("signal = switch(voiceIndex", 1, true)
+  local prefix = switch_start and drum_source:sub(1, switch_start - 1) or drum_source
+  if prefix:find("Mix(Pulse.ar(", 1, true) then
+    fail("Non-hat drum voices must not construct the metallic oscillator bank")
+  end
+  local _, metallic_count = drum_source:gsub("var metallic = Mix%(Pulse%.ar%(", "")
+  if metallic_count ~= 2 then
+    fail("Only closed/open hat branches may construct metallic oscillator banks")
+  end
+end
+pass("Drum SynthDefs avoid inaudible metallic oscillator work")
+
 if not source:find('include("EndlessDJ/lib/sample_library")', 1, true) then
   fail("Missing Norns-safe sample library include")
 end
@@ -942,7 +959,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.145"', 'sample_library=sample_library',
+    'version="v1.147"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
