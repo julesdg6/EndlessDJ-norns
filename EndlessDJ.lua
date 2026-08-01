@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.136
+-- Endless DJ v1.137
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -25,6 +25,7 @@ song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
 bass_engine = include("EndlessDJ/lib/bass_engine")
 arrangement_engine = include("EndlessDJ/lib/arrangement_engine")
+transition_engine = include("EndlessDJ/lib/transition_engine")
 timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
@@ -414,7 +415,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.136",
+      version="v1.137",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -451,6 +452,10 @@ local current_bar = 1
 local next_bar = nil
 local next_step = 1
 local mixing = false
+local transition_state = {
+  mode="stem", plan=nil, selected_stem=1, override_owner="incoming",
+  eq={{low=1,mid=1,high=1},{low=1,mid=1,high=1}},
+}
 
 local xfade = 0
 local manual_xfade = false
@@ -3005,7 +3010,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   end
 
   local kick_amount  = mix_fades and mix_fades.kick  or 1
-  local drums_amount = mix_fades and mix_fades.drums or 1
+  local drums_amount = mix_fades and (mix_fades.percussion or mix_fades.drums) or 1
 
   local kick_prob=arrangement_engine.role_level(deck.arrangement,b,"kick")*kick_amount
 
@@ -3113,7 +3118,7 @@ end
 
 local function play_chords(sec, s, deck, b, mix_fades)
   if sec == "INTRO" then return end
-  local melody_amount = mix_fades and mix_fades.melody or 1
+  local melody_amount = mix_fades and (mix_fades.chords or mix_fades.melody) or 1
   local chord_level=arrangement_engine.role_level(deck.arrangement,b,"chords")
   if not arrangement_engine.gate(deck.arrangement,b,s,"chords",melody_amount*chord_level) then return end
 
@@ -3200,7 +3205,7 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
   -- route, but let n-chord become the routed voice in internal/both modes.
   if output_router.get("chords") ~= output_router.EXTERNAL then return end
   if sec == "INTRO" or sec == "BREAK" then return end
-  local melody_amount = mix_fades and mix_fades.melody or 1
+  local melody_amount = mix_fades and (mix_fades.lead or mix_fades.melody) or 1
   if math.random() >= melody_amount then return end
   if s ~= 1 then return end
 
@@ -3278,7 +3283,7 @@ local function play_nts1(sec, s, deck, b, mix_fades)
     deck.nts1_phrase = phrase_idx
   end
 
-  local melody_amount = mix_fades and mix_fades.melody or 1
+  local melody_amount = mix_fades and (mix_fades.lead or mix_fades.melody) or 1
   local sec_density = identity.density
   if sec == "INTRO" then sec_density = sec_density * 0.20 end
   if sec == "GROOVE" then sec_density = sec_density * 0.55 end
@@ -3382,7 +3387,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- These are gated by the "other drums" mix phase during transitions.
   if sec == "INTRO" or sec == "GROOVE" or sec == "BREAK" or sec == "MIX" then return end
 
-  local drums_amount = mix_fades and mix_fades.drums or 1
+  local drums_amount = mix_fades and (mix_fades.samples or mix_fades.percussion or mix_fades.drums) or 1
   if not arrangement_engine.gate(deck.arrangement,b,s,"samples",drums_amount) then return end
 
   -- Derive a per-deck accent offset (0-3) from the variation_seed so accents
@@ -3434,8 +3439,11 @@ local function play_deck(deck, b, s, mix_fades)
     play_nts1(sec, s, deck, b, mix_fades)
   end)
   schedule("samples", function()
-    play_mpx8(sec, s, deck, b, mix_fades)
-    sampler_advanced_tick(deck, internal_engine.deck_id(deck, deck_a), b, s)
+    local amount=mix_fades and (mix_fades.samples or 0) or 1
+    if amount>0 and arrangement_engine.gate(deck.arrangement,b,s,"samples",amount) then
+      play_mpx8(sec, s, deck, b, mix_fades)
+      sampler_advanced_tick(deck, internal_engine.deck_id(deck, deck_a), b, s)
+    end
   end)
 end
 
@@ -3444,6 +3452,10 @@ local function start_mix_if_needed()
     mixing = true
     next_bar = 1
     next_step = 1
+    transition_state.plan=transition_engine.new(
+      current_deck().identity,next_deck().identity,
+      {mode=transition_state.mode,energy=current_bar}
+    )
     j6_program_change(next_deck().pc)
   end
 end
@@ -3465,7 +3477,11 @@ local function update_xfade()
   internal_engine.set_transition_compensation(
     mixer_state.auto_mode == 1 and 0 or mixer_state.auto_transition
   )
-  internal_engine.set_deck_levels(math.sqrt(1 - position), math.sqrt(position))
+  if mixing and transition_state.plan and transition_state.mode~="classic" then
+    internal_engine.set_deck_levels(1,1)
+  else
+    internal_engine.set_deck_levels(math.sqrt(1 - position), math.sqrt(position))
+  end
 end
 
 local function finish_handover()
@@ -3499,6 +3515,7 @@ local function finish_handover()
   next_bar = nil
   next_step = 1
   mixing = false
+  transition_state.plan=nil
   acid_sync_seed_param(current_deck())
   -- Do NOT call quiet_notes() here.  Sending 4096 note-off messages (128
   -- notes × 16 channels × 2 MIDI devices) in a tight Lua loop blocks the
@@ -3564,36 +3581,16 @@ local function clock_tick()
   -- section begins) cannot stop the metro clock.
   local play_ok, play_err = pcall(function()
     if mixing then
-      -- Position within the 32-bar mix (0.0 = start, 1.0 = end).
-      -- The mix is divided into four 8-bar phases, each responsible for
-      -- cross-fading one group of components:
-      --   Phase 1 (0.00-0.25): kick drum
-      --   Phase 2 (0.25-0.50): bass
-      --   Phase 3 (0.50-0.75): other drums (snare, hats, clap, tom)
-      --   Phase 4 (0.75-1.00): chords / melody
-      local pos = ((current_bar - MIX_START_BAR) * 16 + (step - 1)) / (MIX_BARS * 16)
-      pos = clamp(pos, 0, 1)
-
-      -- Fade amount for each phase: 1→0 for outgoing, 0→1 for incoming.
-      -- Phase index is 0-based so the formula maps: phase 1→0, 2→1, 3→2, 4→3.
-      local function phase_out(p) return clamp(1 - (pos - p * 0.25) * 4, 0, 1) end
-      local function phase_in(p)  return clamp(    (pos - p * 0.25) * 4, 0, 1) end
-
-      local out_fades = {
-        kick   = phase_out(0),
-        bass   = phase_out(1),
-        drums  = phase_out(2),
-        melody = phase_out(3),
-      }
-      local in_fades = {
-        kick   = phase_in(0),
-        bass   = phase_in(1),
-        drums  = phase_in(2),
-        melody = phase_in(3),
-      }
-
-      play_deck(current_deck(), current_bar, step, out_fades)
-      play_deck(next_deck(), next_bar, next_step, in_fades)
+      local mix_bar=clamp(current_bar-MIX_START_BAR+1,1,MIX_BARS)
+      local stem_levels=transition_engine.levels(transition_state.plan,mix_bar)
+      local out_fades=stem_levels.outgoing
+      local in_fades=stem_levels.incoming
+      out_fades.drums=out_fades.percussion
+      out_fades.melody=math.max(out_fades.chords,out_fades.lead)
+      in_fades.drums=in_fades.percussion
+      in_fades.melody=math.max(in_fades.chords,in_fades.lead)
+      play_deck(current_deck(),current_bar,step,out_fades)
+      play_deck(next_deck(),next_bar,next_step,in_fades)
     else
       play_deck(current_deck(), current_bar, step, nil)
     end
@@ -3837,6 +3834,24 @@ function init()
   end
 
   params:add_separator("mixer_sep", "INTERNAL MIXER")
+  params:add_option(
+    "transition_mode", "DJ transition mode",
+    {"Classic DJ", "Stem DJ", "Producer DJ"}, 2
+  )
+  params:set_action("transition_mode", function(v)
+    transition_state.mode=({"classic","stem","producer"})[v]
+  end)
+  for deck_id=1,2 do
+    for _,band in ipairs({"low","mid","high"}) do
+      local id="deck_"..deck_id.."_eq_"..band
+      params:add_number(id,"Deck "..deck_id.." "..band.." EQ",13,200,100)
+      params:set_action(id,function(v)
+        transition_state.eq[deck_id][band]=v/100
+        local eq=transition_state.eq[deck_id]
+        internal_engine.set_deck_eq(deck_id,eq.low,eq.mid,eq.high)
+      end)
+    end
+  end
   params:add_option(
     "auto_mixer_mode", "auto mixer",
     {"off", "gentle", "balanced", "assertive"}, mixer_state.auto_mode
@@ -4731,8 +4746,16 @@ function key(n,z)
       start_acapella()
     end
   elseif n == 3 then
-    if playing then
-      current_bar = 121
+    if playing and mixing then
+      if transition_state.plan then transition_engine.cancel(transition_state.plan) end
+      mixing=false
+      next_bar=nil
+      transition_state.plan=nil
+      manual_xfade=false
+      xfade=deck_a.active and 0 or 100
+      internal_engine.set_deck_levels(deck_a.active and 1 or 0,deck_b.active and 1 or 0)
+    elseif playing then
+      current_bar = MIX_START_BAR
       step = 1
       mixing = false
       next_bar = nil
@@ -4745,7 +4768,24 @@ function key(n,z)
 end
 
 function enc(n,d)
-  if n == 2 then
+  if n == 1 and mixing and transition_state.plan then
+    transition_state.selected_stem=clamp(
+      transition_state.selected_stem+(d>0 and 1 or -1),1,#transition_engine.STEMS
+    )
+  elseif n == 2 and mixing and transition_state.plan then
+    local owners={"outgoing","incoming","off"}
+    local current=1
+    for index,name in ipairs(owners) do
+      if name==transition_state.override_owner then current=index end
+    end
+    current=((current-1+(d>0 and 1 or -1))%#owners)+1
+    transition_state.override_owner=owners[current]
+    transition_engine.override(
+      transition_state.plan,
+      transition_engine.STEMS[transition_state.selected_stem],
+      transition_state.override_owner
+    )
+  elseif n == 2 then
     bpm = clamp(bpm + d, 60, 180)
     params:set("bpm", bpm)
   elseif n == 3 then
@@ -4901,6 +4941,41 @@ local function draw_xfader()
   screen.fill()
 end
 
+local function draw_transition_status()
+  local plan=transition_state.plan
+  if not plan then return end
+  local mix_bar=clamp(current_bar-MIX_START_BAR+1,1,MIX_BARS)
+  local stage=transition_engine.stage(plan,mix_bar)
+  local selected=transition_engine.STEMS[transition_state.selected_stem]
+  local selected_owner=transition_engine.ownership(plan,mix_bar,selected)
+  local kick=transition_engine.ownership(plan,mix_bar,"kick")
+  local bass=transition_engine.ownership(plan,mix_bar,"bass")
+  local preview=table.concat(transition_engine.preview(plan,mix_bar)," ")
+  local a_phrase=arrangement_engine.phrase(
+    deck_a.arrangement,deck_a.active and current_bar or (next_bar or 1)
+  )
+  local b_phrase=arrangement_engine.phrase(
+    deck_b.arrangement,deck_b.active and current_bar or (next_bar or 1)
+  )
+  local function short(owner)
+    return ({outgoing="A",incoming="B",both="AB",off="-"})[owner] or "-"
+  end
+  screen.level(15)
+  screen.move(1,43)
+  screen.text("A "..deck_a.genre:sub(1,5).." P"..(a_phrase and a_phrase.index or 0)..
+    " B "..deck_b.genre:sub(1,5).." P"..(b_phrase and b_phrase.index or 0))
+  screen.level(10)
+  screen.move(1,50)
+  screen.text(string.upper(plan.mode).." "..plan.strategy:sub(1,15))
+  screen.level(7)
+  screen.move(1,57)
+  screen.text("P"..stage.index.." K:"..short(kick).." B:"..short(bass)..
+    " "..selected:sub(1,4)..":"..short(selected_owner))
+  screen.level(12)
+  screen.move(1,63)
+  screen.text((plan.warning and ("!"..plan.warning.." ") or "").."NEXT "..preview:sub(1,18))
+end
+
 function redraw()
   screen.clear()
   screen.aa(0)
@@ -4919,22 +4994,19 @@ function redraw()
   draw_deck(34, 28, 14, deck_a.angle, deck_a.active or (mixing and deck_a == next_deck()), "A", deck_a, false)
   draw_deck(94, 28, 14, deck_b.angle, deck_b.active or (mixing and deck_b == next_deck()), "B", deck_b, false)
 
-  draw_xfader()
+  if mixing then draw_transition_status() else draw_xfader() end
 
-  screen.level(12)
-  screen.move(4,63)
-
-  if playing then
-    if mixing then
-      screen.text("MIX " .. current_deck().genre .. ">" .. next_deck().genre)
-    else
+  if not mixing then
+    screen.level(12)
+    screen.move(4,63)
+    if playing then
       local deck=current_deck()
       local phrase=arrangement_engine.phrase(deck.arrangement,current_bar)
       local phrase_text=phrase and (" P"..phrase.index..":"..phrase.bar) or ""
       screen.text(section_for_bar(current_bar,deck)..phrase_text.." "..deck.genre)
+    else
+      screen.text("K2 PLAY  K3 J6 TEST")
     end
-  else
-    screen.text("K2 PLAY  K3 J6 TEST")
   end
 
   screen.update()
