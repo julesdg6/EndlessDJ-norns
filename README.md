@@ -1,5 +1,19 @@
 You are helping develop a Monome Norns script called Endless DJ.
 
+FINAL PHYSICAL ACCEPTANCE
+
+After installing v1.145, stop normal playback and run this once in Maiden:
+
+```lua
+run_norns_test_harness("acceptance")
+```
+
+The acceptance run covers every registered engine command, all 96 deterministic
+genre/archetype fixtures, factory samples, persistent first hits, resampling,
+CPU/XRuns, and sequential bass/chord model loudness checks. Listen for each
+model label and confirm that model changes alter colour without a large jump in
+perceived level. The harness restores saved routing and mixer state afterward.
+
 PROJECT GOAL
 
 Endless DJ is a generative electronic music DJ system for Norns.
