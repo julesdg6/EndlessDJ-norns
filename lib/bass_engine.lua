@@ -1,0 +1,140 @@
+-- Deterministic genre-aware bass plans. Bass phrases are generated once per
+-- record, then replayed without per-note randomness so their identity survives
+-- arrangement changes and DJ transitions.
+local M = {}
+
+local VOICES = {
+  HOUSE={"organ","analog","sub"}, FUNKY={"organ","analog","fm"},
+  DIRTY={"reese","fm","wobble"}, TECHNO={"analog","sub","reese"},
+  GARAGE4={"organ","sub","reese"}, TWO_STEP={"sub","reese","organ","fm"},
+  BREAKS={"reese","analog","fm"}, DUBSTEP={"sub","reese","wobble"},
+  DEEP={"sub","organ","analog"}, ACID={"303"},
+  TRANCE={"analog","reese","303"}, PROG={"analog","sub","reese"},
+  JUNGLE={"sub","reese"}, DNB={"reese","sub","fm"},
+  LIQUID={"sub","reese","organ"}, HARDTECHNO={"reese","analog","303"},
+  ELECTRO={"fm","analog","reese"}, JUKE={"sub","fm"},
+  AFRO={"sub","organ","analog"}, MINIMAL={"sub","analog"},
+  MELODIC={"analog","sub","reese"}, SPEED={"reese","organ","sub"},
+  BASSLINE={"organ","reese","wobble","fm"}, HARDSTYLE={"analog","reese"},
+}
+
+local MODEL = {analog=0,sub=1,reese=2,organ=3,fm=4,wobble=5}
+local LOW = {DUBSTEP=-12,JUNGLE=-12,DNB=-12,LIQUID=-12,JUKE=-12,HARDSTYLE=-12}
+local DENSE = {TWO_STEP=true,BREAKS=true,JUNGLE=true,DNB=true,JUKE=true,SPEED=true,BASSLINE=true}
+local LONG = {DUBSTEP=true,DEEP=true,LIQUID=true,MINIMAL=true,MELODIC=true,PROG=true}
+
+local function rng_new(seed)
+  local rng = {state=math.max(1, seed % 2147483647)}
+  function rng:next() self.state=(self.state*48271)%2147483647 return self.state end
+  function rng:float() return (self:next()-1)/2147483646 end
+  function rng:int(first,last) return first+math.floor(self:float()*(last-first+1)) end
+  function rng:chance(probability) return self:float()<probability end
+  function rng:pick(values) return values[self:int(1,#values)] end
+  return rng
+end
+
+local function contains(values, wanted)
+  for _, value in ipairs(values or {}) do if value == wanted then return true end end
+  return false
+end
+
+local function kick_at(groove, bar, step)
+  if not groove or not groove.bars then return false end
+  local groove_bar = ((bar - 1) % (groove.phrase_bars or 4)) + 1
+  local data = groove.bars[groove_bar]
+  return data and data.kick and data.kick[step] ~= nil
+end
+
+local function add_event(events, step, degree, length, velocity, accent, slide)
+  events[step] = {
+    degree=degree, length=length, velocity=velocity,
+    accent=accent or false, slide=slide or false,
+  }
+end
+
+local function candidate_steps(genre, family)
+  if family == "303" then return {1,3,4,7,9,11,12,15,16} end
+  if genre == "DUBSTEP" then return {1,7,11,15} end
+  if genre == "TWO_STEP" then return {1,3,6,8,11,14,16} end
+  if DENSE[genre] then return {1,3,4,7,9,11,12,15,16} end
+  return {1,4,7,9,11,13,15}
+end
+
+local function make_bar(genre, family, bar, rng, groove)
+  local events = {}
+  local steps = candidate_steps(genre, family)
+  local target = DENSE[genre] and rng:int(4,6) or rng:int(3,5)
+  if family == "303" then target = rng:int(5,7) end
+  local degree_pool = {0,0,0,3,5,7,10,12}
+  local selected = {}
+
+  for _, step in ipairs(steps) do
+    local avoid_kick = kick_at(groove, bar, step) and step ~= 1
+    local keep = not avoid_kick or rng:chance(0.18)
+    if keep and #selected < target and rng:chance(0.72) then selected[#selected + 1] = step end
+  end
+  if #selected == 0 then selected[1] = 1 end
+  if bar == 4 and not contains(selected, 16) then selected[#selected + 1] = 16 end
+  table.sort(selected)
+
+  for index, step in ipairs(selected) do
+    local degree = rng:pick(degree_pool)
+    if index == 1 then degree = 0 end
+    if bar == 4 and step == 16 then degree = rng:pick({-2,3,7,12}) end
+    local length = LONG[genre] and rng:int(2,4) or rng:int(1,2)
+    local accent = family == "303" and (step == 1 or rng:chance(0.32))
+    local slide = family == "303" and index > 1 and rng:chance(0.28)
+    add_event(events, step, degree, length, rng:int(82,108), accent, slide)
+  end
+  return events
+end
+
+function M.new(identity, groove)
+  assert(identity and identity.genre, "song identity required")
+  local rng = rng_new(assert(identity.stream_seeds and identity.stream_seeds.bass,
+    "bass seed required"))
+  local palette = VOICES[identity.genre] or VOICES.HOUSE
+  local voice_family = rng:pick(palette)
+  local bars = {}
+  for bar = 1, 4 do bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove) end
+  return {
+    schema_version=1, genre=identity.genre, archetype=identity.archetype,
+    voice_family=voice_family, model=MODEL[voice_family], phrase_bars=4,
+    octave=LOW[identity.genre] or 0, bars=bars,
+  }
+end
+
+function M.event(plan, absolute_bar, step)
+  if not plan or not plan.bars then return nil end
+  local bar = ((absolute_bar - 1) % plan.phrase_bars) + 1
+  return plan.bars[bar] and plan.bars[bar][step] or nil
+end
+
+function M.validate(plan)
+  if type(plan) ~= "table" or plan.schema_version ~= 1 then
+    return false, "unsupported bass schema"
+  end
+  local palette = VOICES[plan.genre]
+  if not palette or not contains(palette, plan.voice_family) then
+    return false, "voice family is not eligible for genre"
+  end
+  if plan.genre == "TWO_STEP" and plan.voice_family == "303" then
+    return false, "2-Step must not default to 303"
+  end
+  if type(plan.bars) ~= "table" or #plan.bars ~= plan.phrase_bars then
+    return false, "invalid phrase length"
+  end
+  return true
+end
+
+function M.model_for_voice(voice_family)
+  return MODEL[voice_family]
+end
+
+function M.voices_for_genre(genre)
+  local result = {}
+  for index, voice in ipairs(VOICES[genre] or {}) do result[index] = voice end
+  return result
+end
+
+return M
