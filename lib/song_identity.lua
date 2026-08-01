@@ -21,6 +21,11 @@ local function hash_text(text, seed)
   return math.max(1, value)
 end
 
+local function contains(values,wanted)
+  for _,value in ipairs(values or {}) do if value==wanted then return true end end
+  return false
+end
+
 local Rng = {}
 Rng.__index = Rng
 
@@ -109,15 +114,21 @@ function M.new(options)
   local selection = Rng:new(hash_text("identity:" .. deck_key, seed))
   local archetype = selection:pick(choices)
   local profile = assert(profiles.profile(options.genre, archetype), "missing genre profile")
+  local bass_family=selection:pick(profile.bass)
+  local secondary_choices={}
+  for _,voice in ipairs(profile.secondary_bass or {}) do
+    if voice~=bass_family then secondary_choices[#secondary_choices+1]=voice end
+  end
   local identity = {
-    schema_version=2,
+    schema_version=3,
     seed=seed,
     deck=deck_key,
     genre=options.genre,
     archetype=archetype,
     groove_family=selection:pick(profile.grooves),
     kit=selection:pick(profile.kits),
-    bass_family=selection:pick(profile.bass),
+    bass_family=bass_family,
+    secondary_bass_family=#secondary_choices>0 and selection:pick(secondary_choices) or nil,
     chord_model=selection:pick(profile.chords),
     chord_role=profile.chord_role,
     mono_model=selection:pick(profile.mono),
@@ -130,6 +141,7 @@ function M.new(options)
       kick={role="rhythm", low_end_owner=true},
       percussion={role="rhythm"},
       bass={role="low_end", low_end_owner=true},
+      secondary_bass={role="mid_bass", low_end_owner=false},
       chords={role="harmony"},
       mono={role="lead"},
       samples={role="sample"},
@@ -146,7 +158,7 @@ function M.new(options)
 end
 
 function M.validate(identity)
-  if type(identity) ~= "table" or identity.schema_version ~= 2 then
+  if type(identity) ~= "table" or identity.schema_version ~= 3 then
     return false, "unsupported identity schema"
   end
   local choices = archetypes[identity.genre]
@@ -165,6 +177,13 @@ function M.validate(identity)
   end
   if identity.chord_role~="off" and identity.chord_role~="support" and identity.chord_role~="featured" then
     return false,"invalid chord role"
+  end
+  local profile=profiles.profile(identity.genre,identity.archetype)
+  if identity.secondary_bass_family then
+    if identity.chord_role~="off" or identity.secondary_bass_family=="sub" or
+        not contains(profile.secondary_bass or {},identity.secondary_bass_family) then
+      return false,"invalid secondary bass role"
+    end
   end
   if type(identity.seed) ~= "number" or type(identity.stream_seeds) ~= "table" then
     return false, "missing seed lineage"
