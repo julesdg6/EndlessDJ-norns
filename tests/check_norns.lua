@@ -524,7 +524,6 @@ if not source:find('params:add_file("nsampler_pad_"', 1, true) then
   fail("N-SAMPLER must expose persistent user sample assignments")
 end
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find('addCommand(\\nsampler_hit, "iiffffffi"', 1, true) then
     fail("N-SAMPLER playback controls/choke command is missing")
   end
@@ -599,7 +598,6 @@ end
 pass("N-SAMPLER roles, persistent pads, full controls, gating, and variation exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find("SynthDef(\\endlessSamplerLoop", 1, true) then
     fail("Advanced sampler must provide a persistent loop SynthDef")
   end
@@ -663,7 +661,6 @@ end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if source:find("sampler_repeat_clocks", 1, true) then
     fail("Sampler repeats must not leave Lua clock coroutines behind")
   end
@@ -698,7 +695,6 @@ end
 pass("Sampler repeats use engine-side delay without Lua clock cleanup races")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find("SynthDef(\\endlessSamplerGrain", 1, true) or
       not engine_source:find("GrainBuf.ar", 1, true) then
     fail("Granular sampler must use a dedicated GrainBuf SynthDef")
@@ -757,7 +753,6 @@ end
 pass("CPU-bounded, genre-shaped Deck A/B granular playback and freeze exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   for _, synthdef in ipairs({
     "endlessResampleRecord", "endlessResamplePlayer", "endlessResampleLoop",
     "endlessResampleGrain",
