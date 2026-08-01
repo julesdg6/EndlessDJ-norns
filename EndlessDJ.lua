@@ -458,6 +458,10 @@ local mixing = false
 local transition_state = {
   mode="stem", plan=nil, selected_stem=1, override_owner="incoming",
   eq={{low=1,mid=1,high=1},{low=1,mid=1,high=1}},
+  -- Ordered list for the grid strategy-scene row (columns x=9–14).
+  strategy_order={
+    "classic_blend","bass_swap","percussion_overlay","vocal_tease","clean_cut","fx_exit",
+  },
 }
 
 local xfade = 0
@@ -1732,7 +1736,48 @@ local function grid_redraw(s)
     end
   end
 
-  -- Right half: NTS-1 trigger pattern (x=9-16, y=1-2)
+  -- Right half: NTS-1 trigger pattern (x=9-16, y=1-2) or transition overlay
+  if mixing and transition_state.plan then
+    -- Grid stem transition overlay: rows y=1-4 show stem ownership and strategy.
+    local plan = transition_state.plan
+    local tmb = clamp(current_bar - MIX_START_BAR + 1, 1, MIX_BARS)
+    local slv = transition_engine.levels(plan, tmb)
+    local tpv = transition_engine.preview(plan, tmb)
+    -- Row 1 (y=1): outgoing deck (A) stems, x=9-15; x=16 = cancel pad.
+    for si, sn in ipairs(transition_engine.STEMS) do
+      local lv = slv.outgoing[sn] or 0
+      local sel = (transition_state.selected_stem == si)
+      g:led(8+si,1, sel and LEVEL.PRESSED or (lv>0.5 and LEVEL.HOT or (lv>0 and LEVEL.SCALE or LEVEL.INACTIVE)))
+    end
+    g:led(16,1,LEVEL.KICK)
+    -- Row 2 (y=2): incoming deck (B) stems, x=9-15; x=16 = preview indicator.
+    for si, sn in ipairs(transition_engine.STEMS) do
+      local lv = slv.incoming[sn] or 0
+      local sel = (transition_state.selected_stem == si)
+      g:led(8+si,2, sel and LEVEL.PRESSED or (lv>0.5 and LEVEL.HOT or (lv>0 and LEVEL.SCALE or LEVEL.INACTIVE)))
+    end
+    g:led(16,2, #tpv>0 and LEVEL.NTS1 or LEVEL.INACTIVE)
+    -- Row 3 (y=3): kick/bass ownership; x=16 = harmonic warning.
+    local function olit(ow,isa)
+      if ow=="both" then return LEVEL.HOT end
+      if (ow=="outgoing" and isa) or (ow=="incoming" and not isa) then return LEVEL.HOT end
+      return LEVEL.INACTIVE
+    end
+    local ko = transition_engine.ownership(plan,tmb,"kick")
+    local bo = transition_engine.ownership(plan,tmb,"bass")
+    g:led(9,3,olit(ko,true)) g:led(10,3,olit(ko,false))
+    g:led(11,3,LEVEL.OFF)
+    g:led(12,3,olit(bo,true)) g:led(13,3,olit(bo,false))
+    g:led(14,3,LEVEL.OFF) g:led(15,3,LEVEL.OFF)
+    g:led(16,3,plan.warning and LEVEL.SNARE or LEVEL.INACTIVE)
+    -- Row 4 (y=4): strategy scene selector; x=16 = stage indicator.
+    for sci,st in ipairs(transition_state.strategy_order) do
+      g:led(8+sci,4, st==plan.strategy and LEVEL.HOT or LEVEL.INACTIVE)
+    end
+    g:led(15,4,LEVEL.OFF)
+    local tst = transition_engine.stage(plan,tmb)
+    g:led(16,4,tst and LEVEL.SCALE or LEVEL.INACTIVE)
+  else
   for step_i = 1, 16 do
     local x, y = synth_to_xy(1, step_i)
     local level
@@ -1771,6 +1816,7 @@ local function grid_redraw(s)
     end
     g:led(x, y, level)
   end
+  end -- end mixing transition overlay else block
 
   -- Right half: chromatic keyboard (x=9-16, y=5-8)
   -- Layout (y=8 bottom): rows cover 8 chromatic notes each; every row adds
@@ -1855,6 +1901,46 @@ local function grid_key(x, y, z)
       drum_steps[lane][s_idx] = not drum_steps[lane][s_idx]
       grid_redraw(step)
     end
+  elseif mixing and transition_state.plan and y <= 4 then
+    -- Right half, upper rows during transition: stem and scene control
+    if z == 0 then return end
+    local mix_bar = clamp(current_bar - MIX_START_BAR + 1, 1, MIX_BARS)
+    if y == 1 then
+      -- Outgoing deck (A) stem override / cancel
+      if x >= 9 and x <= 15 then
+        local stem_i = x - 8
+        local stem = transition_engine.STEMS[stem_i]
+        if stem then
+          transition_state.selected_stem = stem_i
+          local cur = transition_engine.ownership(transition_state.plan, mix_bar, stem)
+          if cur == "outgoing" or cur == "both" then
+            transition_engine.override(transition_state.plan, stem, "off")
+          else
+            transition_engine.clear_override(transition_state.plan, stem)
+          end
+        end
+      elseif x == 16 then
+        -- Cancel the current transition
+        transition_engine.cancel(transition_state.plan)
+        transition_state.plan = nil
+      end
+    elseif y == 2 then
+      -- Incoming deck (B) stem override
+      if x >= 9 and x <= 15 then
+        local stem_i = x - 8
+        local stem = transition_engine.STEMS[stem_i]
+        if stem then
+          transition_state.selected_stem = stem_i
+          local cur = transition_engine.ownership(transition_state.plan, mix_bar, stem)
+          if cur == "incoming" or cur == "both" then
+            transition_engine.override(transition_state.plan, stem, "off")
+          else
+            transition_engine.clear_override(transition_state.plan, stem)
+          end
+        end
+      end
+    end
+    grid_redraw(step)
   elseif y <= 4 then
     -- Right half, upper rows: synth trigger lanes
     if z == 0 then return end
