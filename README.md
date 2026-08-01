@@ -361,6 +361,31 @@ The previous command remains as a compatibility alias for a full run:
 run_resample_test_harness()
 ```
 
+## Deterministic generation regression suite
+
+The musical generators have a separate off-device regression suite. It checks
+all 24 genres, all four archetypes per genre, deterministic replay, independent
+Deck A/B identities, named random-stream isolation, groove and bass safety,
+phrase-aligned arrangements, stylistic 303 eligibility, and record diversity.
+
+Run the bounded CI suite with:
+
+```sh
+lua tests/check_generation.lua quick
+```
+
+Before merging major generator changes, run the statistical suite. It generates
+1,000 independent records per genre (24,000 total):
+
+```sh
+lua tests/check_generation.lua full
+```
+
+Failures name the genre, archetype, and seed so the exact record can be replayed.
+The shared `lib/generation_fixtures.lua` manifest supplies one golden listening
+fixture for every genre/archetype pair (96 records) to both this suite and the
+physical Norns harness.
+
 Human listening is still required to confirm that each voice is audible,
 balanced and free from clicks or distortion; automated checks cannot judge
 musical quality.
