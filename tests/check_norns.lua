@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.132", 1, true) then
+if not source:find("Endless DJ v1.133", 1, true) then
   fail("Script version must match PR #132")
 end
-pass("Script version matches PR #132")
+pass("Script version matches PR #133")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -893,7 +893,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.132"', 'sample_library=sample_library',
+    'version="v1.133"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1428,6 +1428,33 @@ for _, required in ipairs({
   if not source:find(required, 1, true) then fail("Genre bass integration missing: " .. required) end
 end
 pass("Deterministic genre-aware bass plans drive an independent bass synth voice")
+
+local arrangement_file=io.open("lib/arrangement_engine.lua","r")
+if not arrangement_file then fail("Missing phrase arrangement engine") end
+local arrangement_source=arrangement_file:read("*a")
+arrangement_file:close()
+for _,required in ipairs({
+  "function M.new(identity)","function M.section(plan,bar)",
+  "function M.role_level(plan,bar,role)","function M.phrase(plan,bar)",
+  "function M.event_at(plan,bar)","function M.validate(plan)",
+  "club_linear=","hook_ab=","double_drop=","slow_burn=",
+}) do
+  if not arrangement_source:find(required,1,true) then fail("Arrangement engine missing: "..required) end
+end
+for _,required in ipairs({
+  'arrangement_engine = include("EndlessDJ/lib/arrangement_engine")',
+  "arrangement = arrangement_engine.new(identity)",
+  "arrangement_engine.section_name(deck and deck.arrangement, b)",
+  "arrangement_engine.role_level(deck.arrangement, b, \"percussion\")",
+  "arrangement_engine.event_at(deck.arrangement,b)",
+}) do
+  if not source:find(required,1,true) then fail("Phrase arrangement integration missing: "..required) end
+end
+if source:find('sec == "BUILD" and b == 81',1,true) or
+    source:find('sec == "DROP" and b == 97',1,true) then
+  fail("Transition samples still use the universal fixed-bar arrangement")
+end
+pass("Deterministic phrase plans drive stem energy, samples and display metadata")
 
 local timing_file = io.open("lib/timing_scheduler.lua", "r")
 if not timing_file then fail("Missing shared timing scheduler") end
