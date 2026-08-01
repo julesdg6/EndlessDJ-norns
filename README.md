@@ -95,6 +95,11 @@ stronger modulation index, and wobble bass uses deep resonant filter movement.
 Small seeded patch variation remains, but cannot erase those audible family
 differences.
 
+Bass plans also declare low-end ownership explicitly. Reverse bass owns the
+offbeats, industrial rumble owns the kick tail, and pitched-kick Hardstyle
+suppresses the separate bass voice so the two layers cannot fight. Drop and
+second-drop modulation are stored in the song plan and replay deterministically.
+
 INTERNAL MIXER
 
 Every internal instrument now feeds its own stereo channel before reaching its
