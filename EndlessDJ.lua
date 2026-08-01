@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.119
+-- Endless DJ v1.123
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -3645,6 +3645,66 @@ local function midi_device_names()
   return names
 end
 
+-- Parameter definitions live beside the code they control, but that is not
+-- the most useful order on the Norns PARAMS screen.  Reorder complete
+-- separator sections once, before the pset is restored or the menu is shown.
+-- IDs and parameter objects are unchanged, so existing psets and mappings
+-- remain compatible.
+local function order_parameter_menu()
+  local section_order = {
+    "endless_dj",
+    "hardware_connections_sep",
+    "output_routes_sep",
+    "transport",
+    "mixer_sep",
+    "n808_sep",
+    "n303_sep",
+    "acid_sep",
+    "nchord_sep",
+    "nmono_sep",
+    "norns_inst_sep",
+    "nsampler_sep",
+    "resample_sep",
+    "acapella_sep",
+    "mx1",
+    "nts1_sep",
+    "mpx8_sep",
+    "grid_sep",
+  }
+  local rank = {}
+  for i, id in ipairs(section_order) do rank[id] = i end
+
+  local param_sections = {}
+  local current
+  for original_index, param in ipairs(params.params) do
+    if param.t == params.tSEPARATOR or not current then
+      current = {
+        id = param.id,
+        original_index = original_index,
+        values = {},
+      }
+      table.insert(param_sections, current)
+    end
+    table.insert(current.values, param)
+  end
+
+  table.sort(param_sections, function(a, b)
+    local a_rank = rank[a.id] or (#section_order + a.original_index)
+    local b_rank = rank[b.id] or (#section_order + b.original_index)
+    return a_rank < b_rank
+  end)
+
+  local ordered = {}
+  params.lookup = {}
+  for _, section in ipairs(param_sections) do
+    for _, param in ipairs(section.values) do
+      table.insert(ordered, param)
+      if param.id then params.lookup[param.id] = #ordered end
+    end
+  end
+  params.params = ordered
+end
+
 function init()
   math.randomseed(os.time())
   generation = 0
@@ -3669,6 +3729,73 @@ function init()
   local dev_names = midi_device_names()
 
   params:add_separator("endless_dj", "ENDLESS DJ")
+
+  params:add_separator("hardware_connections_sep", "HARDWARE CONNECTIONS")
+
+  params:add_option("t8_midi_device", "T-8 device", dev_names, mdev)
+  params:set_action("t8_midi_device", function(v)
+    mdev = v
+    midi_out = midi.connect(mdev)
+  end)
+  params:add_number("drum_ch", "T-8 drum channel", 1, 16, drum_ch)
+  params:set_action("drum_ch", function(v) drum_ch = v end)
+  params:add_number("bass_ch", "T-8 bass channel", 1, 16, bass_ch)
+  params:set_action("bass_ch", function(v) bass_ch = v end)
+
+  params:add_option("j6_midi_device", "J-6 device", dev_names, chord_mdev)
+  params:set_action("j6_midi_device", function(v)
+    chord_mdev = v
+    chord_midi_out = midi.connect(chord_mdev)
+  end)
+  params:add_number("chord_ch", "J-6 chord channel", 1, 16, chord_ch)
+  params:set_action("chord_ch", function(v) chord_ch = v end)
+
+  params:add_option("mx1_midi_device", "MX-1 device", dev_names, mx1_mdev)
+  params:set_action("mx1_midi_device", function(v)
+    mx1_mdev = v
+    connect_mx1_midi()
+  end)
+  params:add_number("mx1_ch", "MX-1 system channel", 1, 16, mx1_ch)
+  params:set_action("mx1_ch", function(v) mx1_ch = v end)
+
+  params:add_option("nts1_midi_device", "NTS-1 device", dev_names, nts1_mdev)
+  params:set_action("nts1_midi_device", function(v)
+    if nts1_midi_out then
+      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+    end
+    nts1_mdev = v
+    nts1_midi_out = midi.connect(nts1_mdev)
+    nts1_reset_cc_state()
+    nts1_synced = false
+    nts1_clock_ticks = 0
+  end)
+  params:add_number("nts1_ch", "NTS-1 channel", 1, 16, nts1_ch)
+  params:set_action("nts1_ch", function(v)
+    if nts1_midi_out then
+      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
+    end
+    nts1_ch = v
+    nts1_reset_cc_state()
+    nts1_synced = false
+    nts1_clock_ticks = 0
+  end)
+
+  params:add_option("mpx8_midi_device", "MPX8 device", dev_names, mpx8_mdev)
+  params:set_action("mpx8_midi_device", function(v)
+    if mpx8_midi_out then
+      clear_scheduled_notes_for_device(mpx8_midi_out)
+      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
+    end
+    mpx8_mdev = v
+    mpx8_midi_out = midi.connect(mpx8_mdev)
+  end)
+  params:add_number("mpx8_ch", "MPX8 channel", 1, 16, mpx8_ch)
+  params:set_action("mpx8_ch", function(v)
+    if mpx8_midi_out then
+      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
+    end
+    mpx8_ch = v
+  end)
 
   params:add_separator("output_routes_sep", "OUTPUT ROUTING")
   local route_params = {
@@ -4214,31 +4341,10 @@ function init()
     end)
   end
 
-  params:add_option("t8_midi_device", "t8 device", dev_names, mdev)
-  params:set_action("t8_midi_device", function(v)
-    mdev = v
-    midi_out = midi.connect(mdev)
-  end)
-
-  params:add_option("j6_midi_device", "j6 device", dev_names, chord_mdev)
-  params:set_action("j6_midi_device", function(v)
-    chord_mdev = v
-    chord_midi_out = midi.connect(chord_mdev)
-  end)
-
-  params:add_separator("mx1", "ROLAND AIRA MX-1")
-
-  params:add_option("mx1_midi_device", "mx1 device", dev_names, mx1_mdev)
-  params:set_action("mx1_midi_device", function(v)
-    mx1_mdev = v
-    connect_mx1_midi()
-  end)
+  params:add_separator("mx1", "MX-1 PERFORMANCE")
 
   params:add_option("mx1_fx_enabled", "mx1 beat fx", {"off","on"}, 2)
   params:set_action("mx1_fx_enabled", function(v) mx1_fx_enabled = (v == 2) end)
-
-  params:add_number("mx1_ch", "mx1 system channel", 1, 16, mx1_ch)
-  params:set_action("mx1_ch", function(v) mx1_ch = v end)
 
   params:add_number("mx1_fx_cc", "mx1 fx depth cc", 1, 127, mx1_fx_cc)
   params:set_action("mx1_fx_cc", function(v) mx1_fx_cc = v end)
@@ -4250,15 +4356,6 @@ function init()
     bpm = v
     update_clock()
   end)
-
-  params:add_number("drum_ch", "drum channel", 1, 16, drum_ch)
-  params:set_action("drum_ch", function(v) drum_ch = v end)
-
-  params:add_number("bass_ch", "bass channel", 1, 16, bass_ch)
-  params:set_action("bass_ch", function(v) bass_ch = v end)
-
-  params:add_number("chord_ch", "chord channel", 1, 16, chord_ch)
-  params:set_action("chord_ch", function(v) chord_ch = v end)
 
   params:add_option("j6_pc_enabled", "j6 program change", {"off","on"}, 2)
   params:set_action("j6_pc_enabled", function(v) j6_pc_enabled = (v == 2) end)
@@ -4453,7 +4550,7 @@ function init()
   end)
 
   -- ── Korg NTS-1 ────────────────────────────────
-  params:add_separator("nts1_sep", "KORG NTS-1")
+  params:add_separator("nts1_sep", "NTS-1 PERFORMANCE")
 
   params:add_option("nts1_enabled", "nts1 enabled", {"off","on"}, 1)
   params:set_action("nts1_enabled", function(v)
@@ -4469,33 +4566,6 @@ function init()
       end
     end
     -- Disable sync so AR loop is not used until a full re-sync occurs.
-    nts1_synced = false
-    nts1_clock_ticks = 0
-  end)
-
-  params:add_option("nts1_midi_device", "nts1 device", dev_names, nts1_mdev)
-  params:set_action("nts1_midi_device", function(v)
-    -- Clear hanging notes on old device before switching
-    if nts1_midi_out then
-      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
-    end
-    nts1_mdev = v
-    nts1_midi_out = midi.connect(nts1_mdev)
-    nts1_reset_cc_state()
-    -- New device has not received any clock; require a fresh sync.
-    nts1_synced = false
-    nts1_clock_ticks = 0
-  end)
-
-  params:add_number("nts1_ch", "nts1 channel", 1, 16, nts1_ch)
-  params:set_action("nts1_ch", function(v)
-    -- Clear hanging notes on old channel before switching
-    if nts1_midi_out then
-      for n=0,127 do nts1_midi_out:note_off(n, 0, nts1_ch) end
-    end
-    nts1_ch = v
-    nts1_reset_cc_state()
-    -- Channel change may reach a different receiver; require a fresh sync.
     nts1_synced = false
     nts1_clock_ticks = 0
   end)
@@ -4531,7 +4601,7 @@ function init()
   end)
 
   -- ── Akai MPX8 ─────────────────────────────────
-  params:add_separator("mpx8_sep", "AKAI MPX8")
+  params:add_separator("mpx8_sep", "MPX8 PADS")
 
   params:add_option("mpx8_enabled", "mpx8 enabled", {"off","on"}, 1)
   params:set_action("mpx8_enabled", function(v)
@@ -4540,24 +4610,6 @@ function init()
       clear_scheduled_notes_for_device(mpx8_midi_out)
       for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
     end
-  end)
-
-  params:add_option("mpx8_midi_device", "mpx8 device", dev_names, mpx8_mdev)
-  params:set_action("mpx8_midi_device", function(v)
-    if mpx8_midi_out then
-      clear_scheduled_notes_for_device(mpx8_midi_out)
-      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
-    end
-    mpx8_mdev = v
-    mpx8_midi_out = midi.connect(mpx8_mdev)
-  end)
-
-  params:add_number("mpx8_ch", "mpx8 channel", 1, 16, mpx8_ch)
-  params:set_action("mpx8_ch", function(v)
-    if mpx8_midi_out then
-      for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
-    end
-    mpx8_ch = v
   end)
 
   -- Configurable note numbers for the 8 pads
@@ -4600,7 +4652,14 @@ function init()
     end
   end)
 
-  update_clock()
+  order_parameter_menu()
+
+  -- Restore the numbered pset recorded by norns in pset-last.txt now that
+  -- every Endless DJ parameter and action exists.  ParamSet:default() reads
+  -- norns.state.pset_last (falling back cleanly when no pset exists) and then
+  -- bangs all parameters so routing, mixer, devices, samples, and synth state
+  -- are actually applied to the running script.
+  params:default()
   grid_connect()
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
