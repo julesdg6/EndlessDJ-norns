@@ -9,7 +9,7 @@ Engine_Endless : CroneEngine {
 	var resampleAnalyzers;
 	var n303Voices, n303SlidePending;
 	var nmonoVoices, nbassVoices, nbassGenerations;
-	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
+	var nchordHeld, nchordPreset, nchordModel, nchordBrightness, nchordFilterEnv, nchordChorus;
 	var nchordSynthDefs;
 	var delaySends, reverbSends;
 	var n808SynthDefs;
@@ -65,11 +65,14 @@ Engine_Endless : CroneEngine {
 		n303SlidePending = Array.fill(2, { false });
 		nchordHeld = Array.fill(2, { IdentityDictionary.new });
 		nchordPreset = Array.fill(2, { 1 });
+		nchordModel = Array.fill(2, { 0 });
 		nchordBrightness = Array.fill(2, { 0.5 });
 		nchordFilterEnv = Array.fill(2, { 0.5 });
 		nchordChorus = Array.fill(2, { 0.35 });
-		nchordSynthDefs = Array.fill(8, { arg preset;
-			("endlessChord" ++ (preset + 1)).asSymbol
+		nchordSynthDefs = Array.fill(5, { arg model;
+			Array.fill(8, { arg preset;
+				("endlessChordM" ++ model ++ "P" ++ (preset + 1)).asSymbol
+			})
 		});
 
 		SynthDef(\endlessAutoMeter, {
@@ -308,8 +311,9 @@ Engine_Endless : CroneEngine {
 			Out.ar(out, signal);
 		}).add;
 
+		5.do({ arg modelIndex;
 		8.do({ arg presetIndex;
-			SynthDef(nchordSynthDefs[presetIndex], {
+			SynthDef(nchordSynthDefs[modelIndex][presetIndex], {
 				arg out=0, freq=220, amp=0.5, sustain=0.5, timed=1,
 					gate=1, brightness=0.5, filterEnvAmount=0.5, chorus=0.35;
 				var autoGate, envelopeGate, attack, release, env, filterEnv;
@@ -325,35 +329,22 @@ Engine_Endless : CroneEngine {
 				filterEnv = EnvGen.kr(
 					Env.asr(0.003, 1, release * 0.7, -5), envelopeGate
 				);
-				osc = switch(presetIndex,
-					0, {
-						Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3
-					},
+				osc = switch(modelIndex,
+					0, { Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3 },
 					1, {
-						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3 * 0.75)
-							+ (SinOsc.ar(freq * 0.5) * 0.25)
+						SinOsc.ar(freq, SinOsc.ar(freq * 2.01, 0, 3.5 + (filterEnv * 2.5)))
+							+ (SinOsc.ar(freq * 2) * 0.16)
 					},
 					2, {
-						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3)
-							+ (Pulse.ar(freq * 1.5, 0.42) * 0.25)
+						Mix(SinOsc.ar(freq * [1, 2, 3, 4], 0, [0.62, 0.24, 0.10, 0.04]))
+							+ (Decay2.ar(Impulse.ar(0), 0.002, 0.11) * SinOsc.ar(freq * 6) * 0.3)
 					},
 					3, {
-						VarSaw.ar(freq * [0.997, 1.003], 0, 0.55).sum * 0.45
+						Mix(Saw.ar(freq * [0.982, 0.991, 1, 1.009, 1.018])) / 5
 					},
 					4, {
-						Mix(SinOsc.ar(freq * [1, 2, 3], 0, [0.65, 0.25, 0.1]))
-					},
-					5, {
-						(Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3 * 0.72)
-							+ (Mix(Pulse.ar(
-								freq * [1, 2], [0.48, 0.35], [0.7, 0.3]
-							)) * 0.28)
-					},
-					6, {
-						Mix(Saw.ar(freq * [1 - detune, 1, 1 + detune])) / 3
-					},
-					7, {
-						(LFTri.ar(freq) * 0.65) + (Pulse.ar(freq * 2, 0.2) * 0.25)
+						(Mix(Saw.ar(freq * [0.986, 1, 1.014])) / 3 * 0.62)
+							+ (Pulse.ar(freq * 0.5, SinOsc.kr(0.31).range(0.25, 0.7)) * 0.38)
 					}
 				);
 				cutoff = (
@@ -373,6 +364,7 @@ Engine_Endless : CroneEngine {
 				output = XFade2.ar(dry, wet, chorus.linlin(0, 1, -1, 1));
 				Out.ar(out, Limiter.ar(output * env * amp, 0.85, 0.01));
 			}).add;
+		});
 		});
 
 		SynthDef(\endlessMono, {
@@ -788,7 +780,7 @@ Engine_Endless : CroneEngine {
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			this.wakePart(deck, 2);
 			voices.add(Synth.head(
-				context.xg, nchordSynthDefs[nchordPreset[deck] - 1], [
+				context.xg, nchordSynthDefs[nchordModel[deck]][nchordPreset[deck] - 1], [
 				\out, instrumentBuses[deck][2].index, \freq, msg[2].asFloat.midicps,
 				\amp, msg[3].asFloat, \sustain, msg[4].asFloat * 0.12,
 				\brightness, nchordBrightness[deck],
@@ -805,7 +797,7 @@ Engine_Endless : CroneEngine {
 				nchordHeld[deck][note].set(\gate, 0);
 			});
 			synth = Synth.head(
-				context.xg, nchordSynthDefs[nchordPreset[deck] - 1], [
+				context.xg, nchordSynthDefs[nchordModel[deck]][nchordPreset[deck] - 1], [
 				\out, instrumentBuses[deck][2].index, \freq, note.midicps,
 				\amp, msg[3].asFloat.clip(0, 1), \timed, 0,
 				\brightness, nchordBrightness[deck],
@@ -838,6 +830,11 @@ Engine_Endless : CroneEngine {
 			nchordBrightness[deck] = msg[3].asFloat.clip(0, 1);
 			nchordFilterEnv[deck] = msg[4].asFloat.clip(0, 1);
 			nchordChorus[deck] = msg[5].asFloat.clip(0, 1);
+		});
+
+		this.addCommand(\nchord_model, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			nchordModel[deck] = msg[2].asInteger.clip(0, 4);
 		});
 
 		this.addCommand(\nmono_note, "iiff", { arg msg;

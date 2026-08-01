@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.134", 1, true) then
-  fail("Script version must match PR #132")
+if not source:find("Endless DJ v1.135", 1, true) then
+  fail("Script version must match PR #135")
 end
-pass("Script version matches PR #134")
+pass("Script version matches PR #135")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -242,7 +242,8 @@ do
     fail("n-303 must bound resonant and driven output")
   end
   for command, format in pairs({
-    nchord_on="iifi", nchord_off="ii", nchord_all_off="i", nchord_set="iifff"
+    nchord_on="iifi", nchord_off="ii", nchord_all_off="i", nchord_set="iifff",
+    nchord_model="ii"
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -346,6 +347,7 @@ for _, param in ipairs({
     fail("Auto mixer is missing parameter " .. param)
   end
 end
+local chord_internal_source = read_file("lib/internal_engine.lua") or ""
 for _, token in ipairs({
   "automix_patch_for_genre", "automix=automix_patch_for_genre",
   "mixer_apply_deck(deck_a, 1)", "mixer_apply_deck(deck_b, 2)",
@@ -442,9 +444,9 @@ pass("n-808 calculates only the requested drum voice")
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
   for _, token in ipairs({
-    "nchordSynthDefs = Array.fill(8",
-    "SynthDef(nchordSynthDefs[presetIndex]",
-    "nchordSynthDefs[nchordPreset[deck] - 1]",
+    "nchordSynthDefs = Array.fill(5",
+    "SynthDef(nchordSynthDefs[modelIndex][presetIndex]",
+    "nchordSynthDefs[nchordModel[deck]][nchordPreset[deck] - 1]",
   }) do
     if not engine_source:find(token, 1, true) then
       fail("n-chord CPU optimization is missing " .. token)
@@ -455,6 +457,17 @@ do
   end
 end
 pass("n-chord calculates only the selected sound model")
+
+for _, token in ipairs({
+  "local model_groups =", "HOUSE={0,2}", "TWO_STEP={2,1,3}",
+  "HARDSTYLE={3,4}", "model = identity_random_pick",
+  'params:add_option("nchord_model"', 'call("nchord_model"',
+}) do
+  if not source:find(token, 1, true) and not chord_internal_source:find(token, 1, true) then
+    fail("Missing deterministic n-chord engine selection: " .. token)
+  end
+end
+pass("n-chord engines are deterministic and genre compatible")
 
 for _, control in ipairs({"tone", "decay", "drive", "variation"}) do
   if not source:find('"n808_" .. name', 1, true) or
@@ -535,7 +548,7 @@ end
 if not source:find("nchord_voice_notes", 1, true) then
   fail("n-chord must apply generated inversion and octave spread")
 end
-for _, param in ipairs({"nchord_preset", "nchord_inversion", "nchord_spread", "nchord_strum"}) do
+for _, param in ipairs({"nchord_model", "nchord_preset", "nchord_inversion", "nchord_spread", "nchord_strum"}) do
   if not source:find('"' .. param .. '"', 1, true) then
     fail("Missing n-chord parameter " .. param)
   end
@@ -916,7 +929,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.134"', 'sample_library=sample_library',
+    'version="v1.135"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)

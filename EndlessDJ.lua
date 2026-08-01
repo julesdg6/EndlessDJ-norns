@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.134
+-- Endless DJ v1.135
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -414,7 +414,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.134",
+      version="v1.135",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -549,6 +549,15 @@ n303_patch_for_genre = function(genre, rng)
 end
 
 nchord_patch_for_genre = function(genre, rng)
+  local model_groups = {
+    HOUSE={0,2}, FUNKY={2,1}, DIRTY={0,1,4}, TECHNO={0,1,4},
+    GARAGE4={2,1}, TWO_STEP={2,1,3}, BREAKS={0,1,4},
+    DUBSTEP={1,3,4}, DEEP={2,3}, ACID={0,2}, TRANCE={3,4},
+    PROG={0,3}, JUNGLE={1,2,4}, DNB={1,3}, LIQUID={2,3},
+    HARDTECHNO={0,1,4}, ELECTRO={1,4}, JUKE={1,2},
+    AFRO={2,0}, MINIMAL={0,2}, MELODIC={3,0},
+    SPEED={1,4}, BASSLINE={2,1,4}, HARDSTYLE={3,4},
+  }
   local preset_groups = {
     HOUSE={1,2,7}, FUNKY={1,5,7}, DIRTY={1,3,7}, TECHNO={1,3,7},
     GARAGE4={1,2,8}, TWO_STEP={2,5,8}, BREAKS={3,7,8},
@@ -565,6 +574,7 @@ nchord_patch_for_genre = function(genre, rng)
   local spacious = genre == "DEEP" or genre == "LIQUID" or genre == "MELODIC" or
     genre == "TRANCE" or genre == "PROG"
   return {
+    model = identity_random_pick(rng, model_groups[genre] or {0,2}),
     preset = identity_random_pick(rng, choices),
     inversion = identity_random_int(rng, 0, 2),
     spread = spacious and identity_random_int(rng, 1, 2) or identity_random_int(rng, 0, 1),
@@ -978,6 +988,7 @@ nchord_apply_deck = function(deck, sync_params)
   internal_engine.set_nchord(internal_engine.deck_id(deck, deck_a), deck.nchord)
   if not sync_params then return end
   params:set("nchord_preset", deck.nchord.preset, true)
+  params:set("nchord_model", (deck.nchord.model or 0) + 1, true)
   params:set("nchord_inversion", deck.nchord.inversion, true)
   params:set("nchord_spread", deck.nchord.spread, true)
   params:set("nchord_strum", deck.nchord.strum, true)
@@ -4252,6 +4263,15 @@ function init()
   end
 
   params:add_separator("nchord_sep", "N-CHORD")
+  params:add_option("nchord_model", "n-chord engine", {
+    "analog", "FM", "organ / piano", "supersaw / pad", "rave / hoover"
+  }, 1)
+  params:set_action("nchord_model", function(v)
+    local deck = current_deck()
+    internal_engine.set_nchord_control(
+      internal_engine.deck_id(deck, deck_a), deck.nchord, "model", v - 1
+    )
+  end)
   params:add_option("nchord_preset", "n-chord sound", {
     "house stab", "deep chord", "rave chord", "soft pad",
     "organ", "strings", "detuned saw", "digital pluck"
