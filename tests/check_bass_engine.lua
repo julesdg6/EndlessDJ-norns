@@ -38,6 +38,44 @@ for _, genre in ipairs(genres) do
   end
 end
 
+local secondary_count=0
+for _,genre in ipairs({
+  "TECHNO","GARAGE4","TWO_STEP","BREAKS","DUBSTEP","JUNGLE",
+  "DNB","HARDTECHNO","SPEED","BASSLINE","HARDSTYLE",
+}) do
+  for seed=1,256 do
+    local song=identity_engine.new{seed=seed,deck="A",genre=genre}
+    local groove=groove_engine.new(song)
+    local primary=bass_engine.new(song,groove)
+    local secondary=bass_engine.new_secondary(song,groove,primary)
+    if secondary then
+      secondary_count=secondary_count+1
+      local replay=bass_engine.new_secondary(song,groove,primary)
+      if encode(secondary)~=encode(replay) then fail("secondary bass is not deterministic") end
+      local valid,reason=bass_engine.validate(secondary)
+      if not valid then fail("invalid secondary bass: "..tostring(reason)) end
+      if secondary.low_end_owner~="primary_bass" or secondary.low_end_mode~="secondary" then
+        fail("secondary bass must not claim low-end ownership")
+      end
+      if secondary.octave<(primary.octave+12) then fail("secondary bass register is too low") end
+      for bar=1,4 do
+        for step in pairs(secondary.bars[bar]) do
+          if primary.bars[bar][step] then fail("primary and secondary bass duplicate a step") end
+        end
+      end
+    end
+  end
+end
+if secondary_count==0 then fail("no bass-led archetype selected a secondary bass") end
+
+local secondary_patch=bass_engine.apply_voice_profile(
+  {voice_family="reese",low_end_mode="secondary"},
+  {sub=0.8,cutoff=0.2,delay_send=0.5}
+)
+if secondary_patch.sub~=0 or secondary_patch.cutoff<0.48 or secondary_patch.delay_send>0.08 then
+  fail("secondary bass patch is not safely separated from the sub role")
+end
+
 local reverse_identity = identity_engine.new{seed=37,deck="A",genre="HARDSTYLE"}
 reverse_identity.archetype = "reverse_bass"
 local reverse_plan = bass_engine.new(reverse_identity, groove_engine.new(reverse_identity))
