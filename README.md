@@ -201,7 +201,18 @@ automatically, and each generated song selects one stable riser from the full
 set. A further 28 original factory one-shots provide four stable variants for
 each percussion accent, alternate percussion, short fill, long fill, impact,
 vocal/FX stab, and drop-accent role. Every generated song chooses its own
-repeatable role set from its variation seed.
+repeatable role set from its variation seed. Each factory sound now has role,
+genre/archetype affinity, energy, tonal-key capability, compatible processing,
+vocal occupancy, origin and licensing metadata. Selection ranks compatible
+sounds for the record instead of merely taking the seed modulo the file count.
+
+Every role stores distinct primary and alternate choices. Hook A/B phrases and
+second drops can therefore change vocal stabs, risers, impacts and drop accents
+without changing the record's identity. Tonal risers are transposed within a
+safe six-semitone range toward the generated root; atonal sounds remain at their
+original rate. The phrase arrangement chooses when these roles occur, and
+missing metadata or assets simply skip that trigger without altering other
+random streams or external MPX8 behavior.
 
 Sixteen persistent file parameters remain reserved for personal samples and do
 not overwrite the factory performance banks. Select `n-sampler edit pad` to
