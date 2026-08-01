@@ -9,6 +9,7 @@ globals = {
   "enc",
   "engine",
   "grid",
+  "groove_engine",
   "generate_song_identity",
   "identity_random_float",
   "identity_random_int",
