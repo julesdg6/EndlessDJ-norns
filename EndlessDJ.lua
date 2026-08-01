@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.128
+-- Endless DJ v1.130
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -413,7 +413,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.128",
+      version="v1.130",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -901,7 +901,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   local groove = groove_engine.new(identity)
   local bass = bass_engine.new(identity, groove)
   local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
-  nbass.model = bass.model or nbass.model
+  nbass = bass_engine.apply_voice_profile(bass, nbass)
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -1012,7 +1012,7 @@ end
 nbass_apply_deck = function(deck)
   if not deck or not deck.bass or deck.bass.voice_family == "303" then return end
   deck.nbass = deck.nbass or nmono_patch_for_genre(deck.genre)
-  deck.nbass.model = deck.bass.model or deck.nbass.model
+  deck.nbass = bass_engine.apply_voice_profile(deck.bass, deck.nbass)
   internal_engine.set_nbass(internal_engine.deck_id(deck, deck_a), deck.nbass)
 end
 
