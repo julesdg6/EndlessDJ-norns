@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.119", 1, true) then
-  fail("Script version must match PR #119")
+if not source:find("Endless DJ v1.123", 1, true) then
+  fail("Script version must match PR #123")
 end
-pass("Script version matches PR #119")
+pass("Script version matches PR #123")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -90,6 +90,22 @@ do
   end
 end
 pass("Startup decks are randomized with distinct genres")
+
+do
+  local defaults_at = source:find("params:default()", 1, true)
+  local final_param_at = source:find('params:add_trigger("mpx8_test"', 1, true)
+  local grid_connect_at = source:find("grid_connect()", final_param_at, true)
+  if not defaults_at then
+    fail("Startup must restore and apply the last-used pset with params:default()")
+  end
+  if not final_param_at or defaults_at < final_param_at then
+    fail("Last-used pset must be restored after every parameter is registered")
+  end
+  if not grid_connect_at or defaults_at > grid_connect_at then
+    fail("Last-used pset must be restored before startup services are connected")
+  end
+end
+pass("Last-used pset is restored after parameter registration")
 
 if not source:find("chord_midi_out", 1, true) then
   fail("J-6 must use a separate MIDI output")

@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.119
+-- Endless DJ v1.123
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -4600,7 +4600,12 @@ function init()
     end
   end)
 
-  update_clock()
+  -- Restore the numbered pset recorded by norns in pset-last.txt now that
+  -- every Endless DJ parameter and action exists.  ParamSet:default() reads
+  -- norns.state.pset_last (falling back cleanly when no pset exists) and then
+  -- bangs all parameters so routing, mixer, devices, samples, and synth state
+  -- are actually applied to the running script.
+  params:default()
   grid_connect()
   n303_apply_deck(deck_a, false)
   n303_apply_deck(deck_b, false)
