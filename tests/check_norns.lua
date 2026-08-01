@@ -518,8 +518,8 @@ if not source:find("internal_engine.set_n303_control", 1, true) then
   fail("n-303 parameters must be forwarded through the internal engine wrapper")
 end
 if not source:find("n303_patch_for_genre", 1, true) or
-    not source:find("n303 = n303_patch_for_genre", 1, true) then
-  fail("Every generated deck must receive a genre-shaped n-303 patch")
+    not source:find('n303 = (bass.voice_family == "303") and n303_patch_for_genre', 1, true) then
+  fail("n-303 patches must be generated only for decks that select a 303 bass voice")
 end
 if not source:find("n303_apply_deck(deck_a, false)", 1, true) or
     not source:find("n303_apply_deck(deck_b, false)", 1, true) then
@@ -1508,6 +1508,12 @@ for _, required in ipairs({
   if not source:find(required, 1, true) then fail("Genre bass integration missing: " .. required) end
 end
 pass("Deterministic genre-aware bass plans drive an independent bass synth voice")
+
+if not source:find('n303 = (bass.voice_family == "303") and n303_patch_for_genre', 1, true) or
+    not source:find('if not deck.bass or deck.bass.voice_family ~= "303" then return end', 1, true) then
+  fail("303 voice state must be generated only for decks that actually select 303 bass")
+end
+pass("303 generation is explicitly gated by deck bass identity")
 
 local sample_file=assert(io.open("lib/sample_library.lua","r"))
 local sample_source=sample_file:read("*a")
