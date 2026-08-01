@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.118
+-- Endless DJ v1.119
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -409,7 +409,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.118",
+      version="v1.119",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -581,11 +581,29 @@ nmono_role_defaults = function(preset)
   }
   local base = bases[preset] or bases[1]
   return {
-    preset=preset,
+    preset=preset, model=0,
     waveform=base[1], sub=base[2], cutoff=base[3], resonance=base[4],
     attack=base[5], release=base[6], glide=base[7], lfo_rate=base[8],
     lfo_depth=base[9], delay_send=base[10],
   }
+end
+
+nmono_model_names = {"analog", "sub", "reese", "organ", "fm", "wobble"}
+
+nmono_model_palettes = {
+  HOUSE={0,1,3,4}, FUNKY={0,3,4}, DIRTY={2,4,5},
+  TECHNO={0,1,4}, GARAGE4={1,2,3,4}, TWO_STEP={1,2,3,4},
+  BREAKS={0,1,2,4}, DUBSTEP={1,2,4,5}, DEEP={0,1,3},
+  ACID={0,1}, TRANCE={0,1,4}, PROG={0,1,2},
+  JUNGLE={1,2,4}, DNB={1,2,4,5}, LIQUID={1,2,3},
+  HARDTECHNO={1,2,4,5}, ELECTRO={0,2,4,5}, JUKE={1,3,4},
+  AFRO={0,1,3}, MINIMAL={0,1}, MELODIC={0,1,2},
+  SPEED={1,2,4,5}, BASSLINE={1,2,3,4,5}, HARDSTYLE={1,2,4,5},
+}
+
+nmono_model_for_genre = function(genre)
+  local choices = nmono_model_palettes[genre] or {0,1,4}
+  return choices[math.random(1, #choices)]
 end
 
 nmono_patch_for_genre = function(genre)
@@ -606,6 +624,7 @@ nmono_patch_for_genre = function(genre)
   local base = nmono_role_defaults(preset)
   return {
     preset=preset,
+    model=nmono_model_for_genre(genre),
     waveform=base.waveform,
     sub=varied(base.sub, 0.10),
     cutoff=varied(base.cutoff, 0.13),
@@ -934,6 +953,7 @@ nmono_apply_deck = function(deck, sync_params)
   internal_engine.set_nmono(internal_engine.deck_id(deck, deck_a), deck.nmono)
   if not sync_params then return end
   params:set("nmono_preset", deck.nmono.preset, true)
+  params:set("nmono_model", (deck.nmono.model or 0) + 1, true)
   params:set("nmono_waveform", deck.nmono.waveform + 1, true)
   for _, name in ipairs({
     "sub", "cutoff", "resonance", "attack", "release",
@@ -4149,6 +4169,7 @@ function init()
   params:set_action("nmono_preset", function(v)
     local deck = current_deck()
     local settings = nmono_role_defaults(v)
+    settings.model = (deck.nmono and deck.nmono.model) or 0
     deck.nmono = settings
     internal_engine.set_nmono(internal_engine.deck_id(deck, deck_a), settings)
     params:set("nmono_waveform", settings.waveform + 1, true)
@@ -4158,6 +4179,12 @@ function init()
     }) do
       params:set("nmono_" .. name, math.floor(settings[name] * 100 + 0.5), true)
     end
+  end)
+  params:add_option("nmono_model", "n-mono model", nmono_model_names, 1)
+  params:set_action("nmono_model", function(v)
+    local deck = current_deck()
+    deck.nmono.model = v - 1
+    internal_engine.set_nmono(internal_engine.deck_id(deck, deck_a), deck.nmono)
   end)
   params:add_option("nmono_waveform", "n-mono waveform", {"saw", "square", "triangle"}, 1)
   params:set_action("nmono_waveform", function(v)

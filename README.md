@@ -70,7 +70,8 @@ five Norns-native instrument roles:
 - `n-chord`: gated polyphonic chord voice with eight sound models, generated
   voicings and patches, and the Norns keyboard target
 - `n-mono`: persistent monophonic lead/bass/pluck/FX voice with generated
-  per-song patches
+  per-song patches and six interchangeable sound models: analog, sub, Reese,
+  organ, FM and wobble/growl
 - `n-sampler`: 16 user pads plus 32 bundled original risers with flexible
   playback controls, selected independently per generated song
 
@@ -159,7 +160,11 @@ released.
 Each song receives an independent N-MONO role and patch. Genre families favour
 lead, bass, pluck, or FX settings, with saw/square/triangle oscillator choice,
 sub level, resonant filter, attack/release, glide, LFO rate/depth, and stereo
-delay send. One persistent voice is allocated to each deck, so melodic notes
+delay send. A genre-compatible analog, sub, Reese, organ, FM or wobble/growl
+model is selected once during song generation and stored with the deck; it
+never changes randomly per note. UK Garage palettes exclude acid-only behavior
+and favour sub, Reese, organ and FM models. One persistent voice is allocated
+to each deck, so melodic notes
 retrigger safely while pitch glide and effects remain continuous. External and
 layered NTS-1 routing is unchanged.
 

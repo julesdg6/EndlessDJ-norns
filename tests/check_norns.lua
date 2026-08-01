@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.118", 1, true) then
-  fail("Script version must match PR #118")
+if not source:find("Endless DJ v1.119", 1, true) then
+  fail("Script version must match PR #119")
 end
-pass("Script version matches PR #118")
+pass("Script version matches PR #119")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -200,7 +200,7 @@ do
   end
   for command, format in pairs({
     nmono_note="iiff", nmono_on="iif", nmono_off="i",
-    nmono_set="iiffffffffff"
+    nmono_set="iiffffffffff", nmono_model="ii"
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -481,7 +481,7 @@ if not source:find("nmono_apply_deck(deck_a, false)", 1, true) or
     not source:find("nmono_apply_deck(deck_b, false)", 1, true) then
   fail("Deck A and Deck B n-mono patches must be applied independently")
 end
-for _, param in ipairs({"nmono_preset", "nmono_waveform"}) do
+for _, param in ipairs({"nmono_preset", "nmono_model", "nmono_waveform"}) do
   if not source:find('"' .. param .. '"', 1, true) then
     fail("Missing n-mono parameter " .. param)
   end
@@ -493,6 +493,41 @@ for _, control in ipairs({
   if not source:find('{"' .. control .. '", "n-mono ', 1, true) then
     fail("Missing n-mono control " .. control)
   end
+end
+for _, token in ipairs({
+  "nmono_model_names", "nmono_model_palettes", "nmono_model_for_genre",
+  "TWO_STEP={1,2,3,4}", "DUBSTEP={1,2,4,5}",
+}) do
+  if not source:find(token, 1, true) then
+    fail("Missing deterministic genre-shaped n-mono model token " .. token)
+  end
+end
+local engine_source = read_file("lib/Engine_Endless.sc") or ""
+for _, token in ipairs({
+  "model.clip(0, 5)", "subVoice", "reese", "organ", "fm", "wobble",
+  'addCommand(\\nmono_model, "ii"',
+}) do
+  if not engine_source:find(token, 1, true) then
+    fail("Missing interchangeable n-mono model implementation " .. token)
+  end
+end
+local acid_start = engine_source:find("SynthDef(\\endless303", 1, true)
+local chord_start = engine_source:find("8.do({ arg presetIndex;", 1, true)
+local mono_start = engine_source:find("SynthDef(\\endlessMono", 1, true)
+local sampler_start = engine_source:find("SynthDef(\\endlessSampler", 1, true)
+if not acid_start or not chord_start or
+    engine_source:sub(acid_start, chord_start):find("DetectSilence", 1, true) or
+    not mono_start or not sampler_start or
+    engine_source:sub(mono_start, sampler_start):find("DetectSilence", 1, true) then
+  fail("Persistent n-303 and n-mono voices must not self-pause while idle")
+end
+local mono_set_pos = engine_source:find("nmonoVoices[deck].set(", 1, true)
+local mono_run_pos = engine_source:find("nmonoVoices[deck].run(true);", 1, true)
+local acid_set_pos = engine_source:find("n303Voices[deck].set(*controls);", 1, true)
+local acid_run_pos = engine_source:find("n303Voices[deck].run(true);", 1, true)
+if not mono_set_pos or not mono_run_pos or mono_set_pos > mono_run_pos or
+    not acid_set_pos or not acid_run_pos or acid_set_pos > acid_run_pos then
+  fail("Persistent synth controls must be applied before dormant nodes resume")
 end
 pass("Generated persistent n-mono synth and controls exist")
 
@@ -507,7 +542,6 @@ if not source:find('params:add_file("nsampler_pad_"', 1, true) then
   fail("N-SAMPLER must expose persistent user sample assignments")
 end
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find('addCommand(\\nsampler_hit, "iiffffffi"', 1, true) then
     fail("N-SAMPLER playback controls/choke command is missing")
   end
@@ -582,7 +616,6 @@ end
 pass("N-SAMPLER roles, persistent pads, full controls, gating, and variation exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find("SynthDef(\\endlessSamplerLoop", 1, true) then
     fail("Advanced sampler must provide a persistent loop SynthDef")
   end
@@ -646,7 +679,6 @@ end
 pass("Tempo-synced loops, 8/16 slicing, rearrangement, reverse, repeat, and probability exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if source:find("sampler_repeat_clocks", 1, true) then
     fail("Sampler repeats must not leave Lua clock coroutines behind")
   end
@@ -681,7 +713,6 @@ end
 pass("Sampler repeats use engine-side delay without Lua clock cleanup races")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   if not engine_source:find("SynthDef(\\endlessSamplerGrain", 1, true) or
       not engine_source:find("GrainBuf.ar", 1, true) then
     fail("Granular sampler must use a dedicated GrainBuf SynthDef")
@@ -740,7 +771,6 @@ end
 pass("CPU-bounded, genre-shaped Deck A/B granular playback and freeze exist")
 
 do
-  local engine_source = read_file("lib/Engine_Endless.sc") or ""
   for _, synthdef in ipairs({
     "endlessResampleRecord", "endlessResamplePlayer", "endlessResampleLoop",
     "endlessResampleGrain",
@@ -786,7 +816,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.118"', 'sample_library=sample_library',
+    'version="v1.119"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
