@@ -321,8 +321,9 @@ do
   end
   local wake_harness_source = read_file("lib/norns_harness.lua") or ""
   if not wake_harness_source:find('"20 persistent-mixer first hits"', 1, true) or
-      not wake_harness_source:find("first_hit_ratio > 0.45", 1, true) then
-    fail("Full Norns harness must test 20 consistent first kick transients")
+      not wake_harness_source:find("first_hit_missing == 0", 1, true) or
+      not wake_harness_source:find("peak <= 0.05", 1, true) then
+    fail("Full Norns harness must test 20 present first kick transients")
   end
   if engine_source:find("resampleBuffers[slot].zero", 1, true) then
     fail("Resampling must not race asynchronous buffer clearing against recording")

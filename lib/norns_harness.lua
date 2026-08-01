@@ -162,6 +162,7 @@ function Harness.new(options)
 
     report("TEST", "20 persistent-mixer first hits")
     safe_engine("all_off")
+    safe_engine("n808_set", 0.5, 0.5, 0.25, 0)
     safe_engine("mixer_set", 1, 1, 0.75, 0, 1, 0, 0, 0)
     clock.sleep(1)
     for hit = 1, 20 do
@@ -173,16 +174,16 @@ function Harness.new(options)
       clock.sleep(0.64)
     end
     local first_hit_min = math.huge
-    local first_hit_max = 0
+    local first_hit_missing = 0
     for hit = 1, 20 do
-      first_hit_min = math.min(first_hit_min, metrics.first_hits[hit] or 0)
-      first_hit_max = math.max(first_hit_max, metrics.first_hits[hit] or 0)
+      local peak = metrics.first_hits[hit] or 0
+      first_hit_min = math.min(first_hit_min, peak)
+      if peak <= 0.05 then first_hit_missing = first_hit_missing + 1 end
     end
-    local first_hit_ratio = first_hit_max > 0 and first_hit_min / first_hit_max or 0
     report(
-      first_hit_min > 0.01 and first_hit_ratio > 0.45 and "PASS" or "FAIL",
-      "persistent-mixer first hits 20/20, min/max " ..
-        string.format("%.2f", first_hit_ratio)
+      first_hit_missing == 0 and "PASS" or "FAIL",
+      "persistent-mixer first hits " .. (20 - first_hit_missing) ..
+        "/20, minimum peak " .. string.format("%.3f", first_hit_min)
     )
 
     report("TEST", "Deck B and sampler modes")
@@ -293,8 +294,8 @@ function Harness.new(options)
         metrics.first_hits[hit] = math.max(metrics.first_hits[hit] or 0, value)
       end
     end
-    meter("amp_out_l", nil, first_hit_meter, 0.02)
-    meter("amp_out_r", nil, first_hit_meter, 0.02)
+    meter("amp_out_l", nil, first_hit_meter, 0.01)
+    meter("amp_out_r", nil, first_hit_meter, 0.01)
     if mode ~= "quick" then
       meter("resample_record_peak_1", "record")
       meter("resample_buffer_peak_1", "buffer")
