@@ -3,7 +3,6 @@ on: [push, pull_request]
 permissions:
   contents: read
 
-
 jobs:
   norns-check:
     runs-on: ubuntu-latest
@@ -21,6 +20,6 @@ jobs:
       - name: Endless DJ project checks
         run: |
           lua5.3 tests/check_generation.lua quick
+          lua5.3 tests/check_genre_profiles.lua
           lua5.3 tests/check_transition_engine.lua
           lua5.3 tests/check_norns.lua
-
