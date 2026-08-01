@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.114", 1, true) then
-  fail("Script version must match PR #114")
+if not source:find("Endless DJ v1.118", 1, true) then
+  fail("Script version must match PR #118")
 end
-pass("Script version matches PR #114")
+pass("Script version matches PR #118")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -930,6 +930,30 @@ if not source:find("grid_connect", 1, true) then
   fail("Missing grid_connect function")
 end
 pass("Unified grid interface (grid.connect, grid_redraw, nts1_steps, j6_steps)")
+
+for _, token in ipairs({
+  'g.vgrid and g or rawget(_G, "midigrid")',
+  'device.force_full_refresh = true',
+  'grid palette unavailable or invalid',
+  'has no RGB LUT',
+  'grid palette applied to',
+  'midigrid is active but no grid devices are attached',
+  'midigrid found but its virtual-grid devices are unavailable',
+}) do
+  if not source:find(token, 1, true) then
+    fail("Missing grid palette diagnostic: " .. token)
+  end
+end
+local grid_diagnostics = read_file("tools/grid_diagnostics.lua") or ""
+for _, token in ipairs({
+  "Endless DJ grid diagnostics", "levels 0-15", "rgb_lut",
+  "SysEx RGB driver", "force_full_refresh", "g:refresh()",
+}) do
+  if not grid_diagnostics:find(token, 1, true) then
+    fail("Missing Maiden grid diagnostic behavior: " .. token)
+  end
+end
+pass("Launchpad palette diagnostics and immediate refresh exist")
 
 -- ── Korg NTS-1 checks ─────────────────────────────────────────────────────
 if not source:find("nts1_midi_out", 1, true) then
