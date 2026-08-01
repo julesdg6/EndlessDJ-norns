@@ -3,7 +3,7 @@ local Harness = {}
 local REQUIRED_COMMANDS = {
   "all_off", "automix_set", "deck_level", "fx_return_set", "master_set",
   "mixer_set", "n303_note", "n303_set", "n808_hit", "n808_level",
-  "n808_set", "nchord_all_off", "nchord_note", "nchord_off",
+  "n808_model", "n808_set", "nchord_all_off", "nchord_note", "nchord_off",
   "nchord_model", "nchord_on", "nchord_set", "nmono_model", "nmono_note", "nmono_off", "nmono_on",
   "nmono_set", "nsampler_grain_off", "nsampler_grain_on",
   "nsampler_hit", "nsampler_load", "nsampler_loop_off",
