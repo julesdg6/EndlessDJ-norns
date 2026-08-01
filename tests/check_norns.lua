@@ -1612,4 +1612,43 @@ for _,required in ipairs({
 end
 pass("Optional grid stem/scene interaction during transitions exists")
 
+-- ── Startup readiness cue (vinyl needle-skate) ─────────────────────────────
+do
+  local cue_path = "samples/factory/ui/needle_skate.wav"
+  local cue_data = read_file(cue_path)
+  if not cue_data then
+    fail("Startup cue asset missing: " .. cue_path)
+  elseif cue_data:sub(1, 4) ~= "RIFF" or cue_data:sub(9, 12) ~= "WAVE" then
+    fail("Startup cue asset is not a valid WAV: " .. cue_path)
+  end
+end
+pass("Startup readiness cue WAV asset exists and is valid")
+
+do
+  -- The cue must be guarded by a flag so it fires only once per script load.
+  if not source:find("startup_cue_played", 1, true) then
+    fail("Startup cue is missing a guard flag (startup_cue_played)")
+  end
+  -- There must be exactly one place in the source that sets the flag to true
+  -- and triggers the cue, ensuring no parallel code paths re-trigger it.
+  local _, count = source:gsub("startup_cue_played = true", "")
+  if count ~= 1 then
+    fail("Startup cue must have exactly one trigger path (found " .. count .. ")")
+  end
+  -- The cue must be deferred via clock.run so it fires after engine init.
+  if not source:find("clock.run", 1, true) then
+    fail("Startup cue must be deferred via clock.run")
+  end
+  -- The cue must load the needle-skate slot before params:default().
+  local load_at = source:find("needle_skate.wav", 1, true)
+  local default_at = source:find("params:default()", 1, true)
+  if not load_at then
+    fail("Startup cue sample load is missing from init()")
+  end
+  if not default_at or load_at > default_at then
+    fail("Needle-skate sample must be loaded before params:default()")
+  end
+end
+pass("Startup readiness cue has a single guarded trigger path")
+
 print("All Endless DJ checks passed")
