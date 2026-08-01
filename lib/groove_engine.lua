@@ -35,7 +35,7 @@ local function add_unique(values,step)
 end
 local function timing_for(feel,step,swing)
   if feel=="swung" and step%2==0 then return swing end
-  if feel=="broken" and (step==4 or step==12) then return -0.06 end
+  if feel=="broken" and (step==4 or step==12) then return 0.06 end
   if feel=="polymetric" and step%3==0 then return 0.04 end
   return 0
 end
@@ -95,6 +95,12 @@ end
 function M.is_fill_step(plan,absolute_bar,step)
   if not plan or ((absolute_bar-1)%plan.phrase_bars)+1~=plan.fill.bar then return false end
   return contains(plan.fill.steps,step)
+end
+function M.role_offset(plan,absolute_bar,step,role)
+  if not plan then return 0 end
+  local base=timing_for(plan.family,step,plan.swing or 0)
+  local scale={drums=1,bass=0.75,chords=1,mono=0.5,samples=1}
+  return base*(scale[role] or 1)
 end
 function M.validate(plan)
   if type(plan)~="table" or plan.schema_version~=1 then return false,"unsupported groove schema" end
