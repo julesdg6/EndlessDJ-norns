@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.147
+-- Endless DJ v1.150
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -30,6 +30,7 @@ transition_engine = include("EndlessDJ/lib/transition_engine")
 timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 generation_fixtures = include("EndlessDJ/lib/generation_fixtures")
+engine_registry = include("EndlessDJ/lib/engine_registry")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
@@ -627,7 +628,7 @@ nmono_role_defaults = function(preset)
   }
 end
 
-nmono_model_names = {"analog", "sub", "reese", "organ", "fm", "wobble"}
+nmono_model_names = engine_registry.MONO_NAMES
 
 nmono_model_palettes = {
   HOUSE={0,1,3,4}, FUNKY={0,3,4}, DIRTY={2,4,5},
@@ -921,10 +922,10 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   end
   local nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord"))
   local nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono"))
-  local chord_models = {analog=0,fm=1,organ=2,pad=3,rave=4}
-  local mono_models = {analog=0,sub=1,reese=2,organ=3,fm=4,wobble=5}
-  nchord.model = assert(chord_models[identity.chord_model], "unknown chord model")
-  nmono.model = assert(mono_models[identity.mono_model], "unknown mono model")
+  nchord.model = assert(engine_registry.chord_id(identity.chord_model),
+    "unknown chord model: " .. tostring(identity.chord_model))
+  nmono.model = assert(engine_registry.mono_id(identity.mono_model),
+    "unknown mono model: " .. tostring(identity.mono_model))
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -995,12 +996,12 @@ print_song_identity = function(deck)
   return serialized
 end
 
-local n808_kit_models = { ["808"]=0, ["909"]=1, linn=2, industrial=3, hybrid=4 }
-
 local function n808_apply_deck(deck)
   if not deck or not deck.identity then return end
+  local kit_id = assert(engine_registry.kit_id(deck.identity.kit),
+    "unknown drum kit: " .. tostring(deck.identity.kit))
   internal_engine.set_n808_model(
-    internal_engine.deck_id(deck, deck_a), n808_kit_models[deck.identity.kit] or 0
+    internal_engine.deck_id(deck, deck_a), kit_id
   )
 end
 

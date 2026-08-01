@@ -21,5 +21,6 @@ jobs:
         run: |
           lua5.3 tests/check_generation.lua quick
           lua5.3 tests/check_genre_profiles.lua
+          lua5.3 tests/check_engine_registry.lua
           lua5.3 tests/check_transition_engine.lua
           lua5.3 tests/check_norns.lua
