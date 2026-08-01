@@ -79,7 +79,8 @@ local function make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
     local phrase_position=((bar_number-1)%4)+1
     if feel=="polymetric" and voice=="hats" then steps=rotate_steps(steps,(bar_number-1)*3)
     elseif feel=="polymetric" and voice=="tom" then steps=rotate_steps(steps,(bar_number-1)*5) end
-    if phrase_position==2 and (voice=="hats" or voice=="tom") and rng:chance(0.55) then add_unique(steps,rng:pick({8,12,16}))
+    if phrase_position==2 and (voice=="hats" or voice=="tom") and rng:chance(0.55) then
+      add_unique(steps,rng:pick({8,12,16}))
     elseif phrase_position==3 and voice=="kick" and rng:chance(0.6) then add_unique(steps,rng:pick({4,12,16}))
     elseif bar_number==phrase_bars and voice=="snare" then add_unique(steps,16) end
     if bar_number>4 and bar_number%8==0 and voice=="ohats" then add_unique(steps,16) end
