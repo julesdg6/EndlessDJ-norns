@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.133
+-- Endless DJ v1.134
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -414,7 +414,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.133",
+      version="v1.134",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -884,6 +884,8 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   }
   local patch_rng = song_identity.stream(identity, "patches")
   local deck_rng = song_identity.stream(identity, "motif")
+  local root=deck_rng:pick(roots)
+  identity.root_pitch_class=root%12
   local groove = groove_engine.new(identity)
   local bass = bass_engine.new(identity, groove)
   local arrangement = arrangement_engine.new(identity)
@@ -894,7 +896,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     genre = genre,
     active = false,
     angle = deck_rng:float() * math.pi * 2,
-    root = deck_rng:pick(roots),
+    root = root,
     pc = random_pc(deck_rng),
     norns_preset = deck_rng:int(1, #norns_presets),
     variation_seed = variation_seed,
@@ -922,10 +924,12 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   if acid_build_deck_state then
     deck.acid = acid_build_deck_state(deck)
   end
+  deck.sample_palette=sample_library.plan_for_identity(identity)
   deck.sample_roles = {}
   for index, role in ipairs(sampler_state.roles) do
-    deck.sample_roles[role] =
-      sample_library.role_for_seed(role, deck.variation_seed + index * 97)
+    local selection=sample_library.selection_for(deck.sample_palette,role,"primary")
+    deck.sample_roles[role]=selection and selection.slot or
+      sample_library.role_for_seed(role,deck.variation_seed+index*97)
   end
   return deck
 end
@@ -2782,7 +2786,7 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel, deck, internal_role)
+local function mpx8_trigger(pad_idx, vel, deck, internal_role, variant)
   if output_router.sends_external("samples") and mpx8_enabled and mpx8_midi_out then
     local note = mpx8_pads[pad_idx]
     if note then
@@ -2792,9 +2796,10 @@ local function mpx8_trigger(pad_idx, vel, deck, internal_role)
   end
   if output_router.sends_internal("samples") and deck then
     local role = internal_role or sampler_state.roles[pad_idx]
-    local slot = deck.sample_roles and deck.sample_roles[role]
+    local selection=sample_library.selection_for(deck.sample_palette,role,variant)
+    local slot=(selection and selection.slot) or (deck.sample_roles and deck.sample_roles[role])
     if slot then
-      internal_engine.sampler(internal_engine.deck_id(deck, deck_a), slot, vel)
+      internal_engine.sampler(internal_engine.deck_id(deck,deck_a),slot,vel,selection)
     end
   end
 end
@@ -3344,11 +3349,12 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   local planned_event=arrangement_engine.event_at(deck.arrangement,b)
   if planned_event and not deck.mpx8_events_fired[planned_event] then
     deck.mpx8_events_fired[planned_event]=true
+    local variant=planned_event:find("_b",1,true) and "alternate" or "primary"
     if planned_event:find("riser",1,true) then
-      mpx8_trigger(6,100,deck,"riser")
+      mpx8_trigger(6,100,deck,"riser",variant)
     elseif planned_event:find("impact",1,true) then
-      mpx8_trigger(5,110,deck)
-      mpx8_trigger(8,110,deck)
+      mpx8_trigger(5,110,deck,"impact",variant)
+      mpx8_trigger(8,110,deck,"drop_accent",variant)
     end
   end
 
@@ -3387,7 +3393,9 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- Pad 7: vocal/FX stab at the start of every 8-bar phrase in MAIN/DROP
   if (sec == "MAIN" or sec == "DROP") and b % 8 == 1 then
     local vel = (sec == "DROP") and 100 or 80
-    mpx8_trigger(7, vel, deck)
+    local phrase=arrangement_engine.phrase(deck.arrangement,b)
+    local variant=(phrase and phrase.index%2==0) and "alternate" or "primary"
+    mpx8_trigger(7,vel,deck,"vocal_stab",variant)
   end
 end
 

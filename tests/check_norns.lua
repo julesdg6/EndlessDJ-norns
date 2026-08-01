@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.133", 1, true) then
+if not source:find("Endless DJ v1.134", 1, true) then
   fail("Script version must match PR #132")
 end
-pass("Script version matches PR #133")
+pass("Script version matches PR #134")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -612,8 +612,31 @@ if not source:find('include("EndlessDJ/lib/sample_library")', 1, true) then
   fail("Missing Norns-safe sample library include")
 end
 if not source:find("sample_library.load_factory", 1, true) or
-    not source:find("sample_library.role_for_seed", 1, true) then
+    not source:find("sample_library.plan_for_identity", 1, true) or
+    not source:find("sample_library.selection_for", 1, true) then
   fail("Factory sampler roles must load automatically and vary stably per song")
+end
+local sample_library_file=io.open("lib/sample_library.lua","r")
+if not sample_library_file then fail("Missing sample palette implementation") end
+local sample_library_source=sample_library_file:read("*a")
+sample_library_file:close()
+for _,required in ipairs({
+  "local GENRE_TAGS=","local RISER_FAMILIES=","function SampleLibrary.plan_for_identity",
+  "function SampleLibrary.selection_for","function SampleLibrary.validate_plan",
+  'entry.origin="Endless DJ procedural factory generator"',
+  'entry.license="repository license"',
+}) do
+  if not sample_library_source:find(required,1,true) then
+    fail("Metadata-driven sample palette missing: "..required)
+  end
+end
+for _,required in ipairs({
+  "deck.sample_palette=sample_library.plan_for_identity(identity)",
+  "sample_library.selection_for(deck.sample_palette,role,variant)",
+  'planned_event:find("_b",1,true)',
+  'mpx8_trigger(7,vel,deck,"vocal_stab",variant)',
+}) do
+  if not source:find(required,1,true) then fail("Sample phrase integration missing: "..required) end
 end
 if not source:find('params:add_file("nsampler_pad_"', 1, true) then
   fail("N-SAMPLER must expose persistent user sample assignments")
@@ -893,7 +916,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.133"', 'sample_library=sample_library',
+    'version="v1.134"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
