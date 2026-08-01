@@ -119,6 +119,7 @@ function M.new(options)
     kit=selection:pick(profile.kits),
     bass_family=selection:pick(profile.bass),
     chord_model=selection:pick(profile.chords),
+    chord_role=profile.chord_role,
     mono_model=selection:pick(profile.mono),
     harmony_family=selection:pick(profile.harmony),
     arrangement_family=selection:pick(profile.arrangements),
@@ -161,6 +162,9 @@ function M.validate(identity)
     if not profiles.supports(identity.genre, identity.archetype, dimension, identity[key]) then
       return false, "incompatible " .. key
     end
+  end
+  if identity.chord_role~="off" and identity.chord_role~="support" and identity.chord_role~="featured" then
+    return false,"invalid chord role"
   end
   if type(identity.seed) ~= "number" or type(identity.stream_seeds) ~= "table" then
     return false, "missing seed lineage"
