@@ -3674,7 +3674,7 @@ local function order_parameter_menu()
   local rank = {}
   for i, id in ipairs(section_order) do rank[id] = i end
 
-  local sections = {}
+  local param_sections = {}
   local current
   for original_index, param in ipairs(params.params) do
     if param.t == params.tSEPARATOR or not current then
@@ -3683,12 +3683,12 @@ local function order_parameter_menu()
         original_index = original_index,
         values = {},
       }
-      table.insert(sections, current)
+      table.insert(param_sections, current)
     end
     table.insert(current.values, param)
   end
 
-  table.sort(sections, function(a, b)
+  table.sort(param_sections, function(a, b)
     local a_rank = rank[a.id] or (#section_order + a.original_index)
     local b_rank = rank[b.id] or (#section_order + b.original_index)
     return a_rank < b_rank
@@ -3696,7 +3696,7 @@ local function order_parameter_menu()
 
   local ordered = {}
   params.lookup = {}
-  for _, section in ipairs(sections) do
+  for _, section in ipairs(param_sections) do
     for _, param in ipairs(section.values) do
       table.insert(ordered, param)
       if param.id then params.lookup[param.id] = #ordered end
