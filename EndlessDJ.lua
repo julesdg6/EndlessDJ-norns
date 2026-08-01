@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.127
+-- Endless DJ v1.128
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -23,6 +23,7 @@ internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
 song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
+bass_engine = include("EndlessDJ/lib/bass_engine")
 timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
@@ -412,7 +413,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.127",
+      version="v1.128",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -807,7 +808,6 @@ local LEVEL = {
 }
 
 -- Forward declarations (tables defined after drum/chord pattern tables below)
-local bass_patterns
 local chord_allow_house
 local acid_build_deck_state
 local acid_refresh_phrase
@@ -898,6 +898,10 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   }
   local patch_rng = song_identity.stream(identity, "patches")
   local deck_rng = song_identity.stream(identity, "motif")
+  local groove = groove_engine.new(identity)
+  local bass = bass_engine.new(identity, groove)
+  local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
+  nbass.model = bass.model or nbass.model
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -908,7 +912,9 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     norns_preset = deck_rng:int(1, #norns_presets),
     variation_seed = variation_seed,
     identity = identity,
-    groove = groove_engine.new(identity),
+    groove = groove,
+    bass = bass,
+    nbass = nbass,
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
     nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
     nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono")),
@@ -1001,6 +1007,13 @@ nmono_apply_deck = function(deck, sync_params)
   }) do
     params:set("nmono_" .. name, math.floor(deck.nmono[name] * 100 + 0.5), true)
   end
+end
+
+nbass_apply_deck = function(deck)
+  if not deck or not deck.bass or deck.bass.voice_family == "303" then return end
+  deck.nbass = deck.nbass or nmono_patch_for_genre(deck.genre)
+  deck.nbass.model = deck.bass.model or deck.nbass.model
+  internal_engine.set_nbass(internal_engine.deck_id(deck, deck_a), deck.nbass)
 end
 
 local function nts1_reset_deck_identities()
@@ -1880,33 +1893,6 @@ local function grid_connect()
     grid_redraw(step)
   end
 end
-
-bass_patterns = {
-  HOUSE={0,0,7,0, 0,10,7,0, 0,0,12,10, 7,0,3,0},
-  FUNKY={0,7,0,10, 12,10,7,0, 5,0,7,10, 12,0,10,7},
-  DIRTY={0,0,0,3, 0,0,7,10, 0,0,12,10, 7,3,0,0},
-  TECHNO={0,0,0,0, 7,0,0,0, 0,0,10,0, 7,0,3,0},
-  GARAGE4={0,0,7,0, 10,0,7,0, 0,12,0,10, 7,0,3,0},
-  TWO_STEP={0,0,0,7, 0,10,0,0, 12,0,0,10, 0,7,3,0},
-  BREAKS={0,0,7,0, 0,0,10,0, 12,0,7,0, 3,0,0,10},
-  DUBSTEP={0,0,0,0, -12,0,0,0, 0,0,0,-5, -12,0,0,0},
-  DEEP={0,0,0,0, 0,0,0,0, 5,0,0,0, 7,0,0,0},
-  ACID={0,0,12,0, 5,0,7,10, 0,0,12,0, 5,7,0,0},
-  TRANCE={0,0,5,7, 0,10,5,0, 0,0,7,10, 5,0,7,0},
-  PROG={0,0,0,0, 7,0,0,0, 0,0,0,0, 5,0,0,0},
-  JUNGLE={0,0,0,7, 0,12,0,0, 5,0,0,7, 0,0,12,0},
-  DNB={0,0,7,0, 0,0,10,0, 0,7,0,0, 12,0,5,0},
-  LIQUID={0,5,0,7, 0,10,0,5, 7,0,12,0, 5,0,7,10},
-  HARDTECHNO={0,0,0,0, 0,0,0,0, 7,0,0,0, 0,0,0,0},
-  ELECTRO={0,0,7,0, 0,0,5,0, 0,7,0,10, 0,5,0,0},
-  JUKE={0,7,0,5, 0,7,10,0, 0,5,0,7, 12,0,7,0},
-  AFRO={0,0,5,0, 0,7,0,10, 0,0,5,7, 0,10,0,0},
-  MINIMAL={0,0,0,0, 0,0,0,0, 0,0,7,0, 0,0,0,0},
-  MELODIC={0,0,5,7, 10,0,7,5, 0,5,0,7, 10,7,5,0},
-  SPEED={0,0,7,0, 0,10,0,7, 0,0,12,0, 7,0,5,0},
-  BASSLINE={0,7,0,10, 0,12,7,0, 5,0,7,0, 10,0,7,5},
-  HARDSTYLE={0,0,0,0, 7,0,0,0, 0,0,0,0, 5,0,7,0}
-}
 
 local chord_progs = {
   HOUSE={{0,3,7},{5,8,12},{7,10,14},{3,7,10}},
@@ -2945,18 +2931,6 @@ local hat_vel = {
   HARDTECHNO=85, TRANCE=85
 }
 
--- Per-genre bass note trigger probability (default 0.55).
--- Only genres deviating from the default are listed.
-local bass_prob = {
-  -- original genres
-  DUBSTEP=0.90, TECHNO=0.65,
-  -- new genres
-  DEEP=0.40, MINIMAL=0.35, PROG=0.45,
-  ACID=0.75, TRANCE=0.70, DNB=0.85, BASSLINE=0.90, JUKE=0.85,
-  JUNGLE=0.85, SPEED=0.80, BREAKS=0.75, TWO_STEP=0.70,
-  ELECTRO=0.70, HARDSTYLE=0.80, AFRO=0.65, LIQUID=0.60
-}
-
 -- Per-genre block-chord sustain duration in ticks (default 10).
 -- Only genres deviating from the default are listed.
 local block_chord_dur = {
@@ -2965,12 +2939,6 @@ local block_chord_dur = {
   -- new genres: ambient/melodic styles hold chords longer
   DEEP=14, MINIMAL=14, PROG=12, MELODIC=12, TRANCE=12
 }
-
--- Per-genre bass note octave offset (default 0) and note length in ticks (default 1).
--- Only genres deviating from the default are listed.
-local bass_octave = { DUBSTEP=-12, DNB=-12, HARDSTYLE=-12 }  -- sub-bass register
--- DUBSTEP=long sustained; DEEP/MINIMAL/LIQUID/MELODIC/PROG/HARDSTYLE=breathing legato
-local bass_len    = { DUBSTEP=3, DEEP=2, MINIMAL=2, LIQUID=2, MELODIC=2, PROG=2, HARDSTYLE=2 }
 
 acid_cfg.step_index = function(acid, b, s)
   return (((b - 1) * 16) + (s - 1)) % acid.length + 1
@@ -3144,25 +3112,26 @@ local function play_drums(sec, s, b, mix_fades, deck)
 end
 
 local function play_bass(sec, s, deck, b, mix_fades)
-  if deck.genre == "ACID" and acid_cfg.generator_enabled then
+  if deck.bass and deck.bass.voice_family == "303" and acid_cfg.generator_enabled then
     play_acid_bass(sec, s, deck, b, mix_fades)
     return
   end
   if sec == "INTRO" then return end
-  if sec == "BREAK" and math.random() < 0.55 then return end
+  if sec == "BREAK" and (b % 2 == 0 or s ~= 1) then return end
   local bass_amount = mix_fades and mix_fades.bass or 1
-  if math.random() >= bass_amount then return end
-
-  local pat = bass_patterns[deck.genre] or bass_patterns.HOUSE
-  local degree = pat[((s-1)%16)+1]
-  if degree == nil then return end
-
-  local prob = bass_prob[deck.genre] or 0.55
-
-  if degree ~= 0 or math.random() < prob then
-    local octave = bass_octave[deck.genre] or 0
-    local len    = bass_len[deck.genre]    or 1
-    t8_note(deck.root + octave + degree, sec=="DROP" and 112 or 94, bass_ch, len, deck)
+  if bass_amount <= 0.02 then return end
+  local event = bass_engine.event(deck.bass, b, s)
+  if not event then return end
+  local velocity = math.floor(event.velocity * bass_amount + 0.5)
+  if sec == "DROP" then velocity = math.min(127, velocity + 8) end
+  local note = deck.root + (deck.bass.octave or 0) + event.degree
+  if output_router.sends_external("bass") then
+    note_on_to(midi_out, note, velocity, bass_ch, event.length)
+  end
+  if output_router.sends_internal("bass") then
+    internal_engine.bass_voice(
+      internal_engine.deck_id(deck, deck_a), note, velocity, event.length
+    )
   end
 end
 
@@ -3544,6 +3513,8 @@ local function finish_handover()
   nmono_apply_deck(deck_a, false)
   nmono_apply_deck(deck_b, false)
   nmono_apply_deck(current_deck(), true)
+  nbass_apply_deck(deck_a)
+  nbass_apply_deck(deck_b)
   mixer_apply_deck(deck_a, 1)
   mixer_apply_deck(deck_b, 2)
   current_bar = MIX_BARS + 1
@@ -4742,6 +4713,8 @@ function init()
   nmono_apply_deck(deck_a, false)
   nmono_apply_deck(deck_b, false)
   nmono_apply_deck(current_deck(), true)
+  nbass_apply_deck(deck_a)
+  nbass_apply_deck(deck_b)
   mixer_apply_deck(deck_a, 1)
   mixer_apply_deck(deck_b, 2)
   acid_sync_seed_param(current_deck())

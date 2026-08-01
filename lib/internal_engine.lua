@@ -204,6 +204,29 @@ function InternalEngine.set_nmono_control(deck_id, settings, name, value)
   return true
 end
 
+function InternalEngine.bass_voice(deck_id, note, velocity, length)
+  call("nbass_note", deck_id, note, velocity / 127, length or 1)
+end
+
+function InternalEngine.set_nbass(deck_id, settings)
+  call("nbass_model", deck_id, settings.model or 0)
+  call(
+    "nbass_set",
+    deck_id,
+    settings.preset,
+    settings.waveform,
+    settings.sub,
+    settings.cutoff,
+    settings.resonance,
+    settings.attack,
+    settings.release,
+    settings.glide,
+    settings.lfo_rate,
+    settings.lfo_depth,
+    settings.delay_send
+  )
+end
+
 function InternalEngine.sampler(deck_id, pad, velocity, settings)
   settings = settings or {}
   call(

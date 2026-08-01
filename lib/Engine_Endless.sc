@@ -8,7 +8,7 @@ Engine_Endless : CroneEngine {
 	var resampleMeterBuses, resampleBufferMeterBuses, resamplePlaybackMeterBuses;
 	var resampleAnalyzers;
 	var n303Voices, n303SlidePending;
-	var nmonoVoices;
+	var nmonoVoices, nbassVoices, nbassGenerations;
 	var nchordHeld, nchordPreset, nchordBrightness, nchordFilterEnv, nchordChorus;
 	var nchordSynthDefs;
 	var delaySends, reverbSends;
@@ -600,6 +600,14 @@ Engine_Endless : CroneEngine {
 				\out, instrumentBuses[deck][3].index
 			]);
 		});
+		nbassGenerations = Array.fill(2, { 0 });
+		nbassVoices = Array.fill(2, { arg deck;
+			var synth = Synth.head(context.xg, \endlessMono, [
+				\out, instrumentBuses[deck][1].index
+			]);
+			synth.run(false);
+			synth
+		});
 		autoMeters = Array.fill(2, { arg deck;
 			Synth.tail(context.xg, \endlessAutoMeter, [
 				\kickBus, instrumentBuses[deck][0].index,
@@ -876,6 +884,47 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\nmono_model, "ii", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			nmonoVoices[deck].set(\model, msg[2].asInteger.clip(0, 5));
+		});
+
+		this.addCommand(\nbass_note, "iiff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			var generation;
+			this.wakePart(deck, 1);
+			nbassGenerations[deck] = nbassGenerations[deck] + 1;
+			generation = nbassGenerations[deck];
+			nbassVoices[deck].set(
+				\freq, msg[2].asFloat.midicps, \amp, msg[3].asFloat.clip(0, 1),
+				\sustain, msg[4].asFloat.clip(1, 32) * 0.12,
+				\mode, 0, \gate, 0, \t_trig, 1
+			);
+			nbassVoices[deck].run(true);
+			SystemClock.sched((msg[4].asFloat.clip(1, 32) * 0.12) + 2.6, {
+				if(nbassGenerations[deck] == generation, {
+					nbassVoices[deck].run(false);
+				});
+				nil
+			});
+		});
+
+		this.addCommand(\nbass_set, "iiffffffffff", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			nbassVoices[deck].set(
+				\waveform, msg[3].asFloat.clip(0, 2),
+				\sub, msg[4].asFloat.clip(0, 1),
+				\cutoffControl, msg[5].asFloat.clip(0, 1),
+				\resonanceControl, msg[6].asFloat.clip(0, 1),
+				\attackControl, msg[7].asFloat.clip(0, 1),
+				\releaseControl, msg[8].asFloat.clip(0, 1),
+				\glideControl, msg[9].asFloat.clip(0, 1),
+				\lfoRateControl, msg[10].asFloat.clip(0, 1),
+				\lfoDepth, msg[11].asFloat.clip(0, 1),
+				\delaySend, msg[12].asFloat.clip(0, 1)
+			);
+		});
+
+		this.addCommand(\nbass_model, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			nbassVoices[deck].set(\model, msg[2].asInteger.clip(0, 5));
 		});
 
 		this.addCommand(\nsampler_load, "is", { arg msg;
@@ -1173,8 +1222,10 @@ Engine_Endless : CroneEngine {
 			resampleRecorders = Array.fill(2, { nil });
 			resamplePlayers = Array.fill(2, { Array.fill(2, { nil }) });
 			n303SlidePending = Array.fill(2, { false });
+			nbassGenerations = nbassGenerations.collect({ arg generation; generation + 1; });
 			n303Voices.do({ arg synth; synth.set(\amp, 0, \slide, 0); });
 			nmonoVoices.do({ arg synth; synth.set(\amp, 0, \gate, 0); });
+			nbassVoices.do({ arg synth; synth.set(\amp, 0, \gate, 0); });
 			nchordHeld.do({ arg held;
 				held.do({ arg synth; synth.set(\gate, 0); });
 				held.clear;
@@ -1186,6 +1237,7 @@ Engine_Endless : CroneEngine {
 		voices.do({ arg synth; synth.free; });
 		n303Voices.do({ arg synth; synth.free; });
 		nmonoVoices.do({ arg synth; synth.free; });
+		nbassVoices.do({ arg synth; synth.free; });
 		nchordHeld.do({ arg held; held.do({ arg synth; synth.free; }); });
 		resampleRecorders.do({ arg synth; if(synth.notNil, { synth.free; }); });
 		resampleAnalyzers.do({ arg synth; if(synth.notNil, { synth.free; }); });
