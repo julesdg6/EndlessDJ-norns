@@ -7,7 +7,13 @@ local M = {}
 local profiles = rawget(_G, "genre_profiles")
 if not profiles then
   local ok, result = pcall(require, "genre_profiles")
-  profiles = ok and result or dofile("lib/genre_profiles.lua")
+  if ok then
+    profiles=result
+  elseif type(include)=="function" then
+    profiles=include("EndlessDJ/lib/genre_profiles")
+  else
+    profiles=dofile("lib/genre_profiles.lua")
+  end
 end
 
 local MODULUS = 2147483647
