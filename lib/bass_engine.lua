@@ -165,6 +165,90 @@ local function acid_bar(archetype,bar,rng)
   return events
 end
 
+-- Funky House bass: each archetype has four per-bar step patterns and a
+-- degree pool that encodes octave jumps (+12), chromatic approaches (-1, 1)
+-- and chord tones (3, 5, 7, 10).  Bass notes avoid the kick wherever possible
+-- so kick and bass share the low end without collision.
+local FUNKY_SPECS = {
+  filtered_disco = {
+    -- Electric / slap bass: busy 8th-note feel, frequent octave jumps.
+    steps = {
+      {1,3,5,7,9,11,13,15},
+      {1,3,5,9,11,13},
+      {1,3,7,9,13,15},
+      {1,5,9,11,13,15},
+    },
+    degrees  = {0,0,12,5,7,3,0,12},
+    accents  = {1,9,13},
+    endings  = {7,12},
+    octave_chance = 0.28,
+  },
+  live_clavinet = {
+    -- Funk synth / Moog bass: syncopated with chromatic approaches.
+    steps = {
+      {1,4,7,9,13},
+      {1,3,7,11,13,16},
+      {1,4,9,11,15},
+      {1,3,7,9,12,15},
+    },
+    degrees  = {0,0,7,3,5,12,-1,0},
+    accents  = {1,7,9},
+    endings  = {5,12},
+    octave_chance = 0.22,
+  },
+  brass_vocal = {
+    -- Organ bass: chord-tone walk-ups with space for brass stabs.
+    steps = {
+      {1,3,7,9,13},
+      {1,5,9,11,13},
+      {1,3,7,13,15},
+      {1,7,9,13,15},
+    },
+    degrees  = {0,7,0,5,3,12},
+    accents  = {1,9},
+    endings  = {5,12},
+    octave_chance = 0.18,
+  },
+  french_touch = {
+    -- Filtered analog bass: 4-on-floor anchored with pickup 16ths.
+    steps = {
+      {1,5,9,11,13},
+      {1,3,9,13,15},
+      {1,5,9,13},
+      {1,3,7,11,13},
+    },
+    degrees  = {0,0,7,5,12},
+    accents  = {1,5,9,13},
+    endings  = {7,12},
+    octave_chance = 0.20,
+  },
+}
+
+local function funky_bar(archetype, bar, rng, groove)
+  local spec = FUNKY_SPECS[archetype] or FUNKY_SPECS.filtered_disco
+  local events = {}
+  local steps = spec.steps[((bar - 1) % #spec.steps) + 1]
+  for index, step in ipairs(steps) do
+    local avoid_kick = kick_at(groove, bar, step) and step ~= 1
+    if not avoid_kick or rng:chance(0.15) then
+      local degree = spec.degrees[((index + bar - 2) % #spec.degrees) + 1]
+      if index == 1 then degree = 0 end
+      if bar == 4 and step == steps[#steps] then
+        degree = spec.endings[rng:int(1, #spec.endings)]
+      end
+      if step ~= 1 and rng:chance(spec.octave_chance) then degree = degree + 12 end
+      local accent = contains(spec.accents, step) and rng:chance(0.82)
+      -- Beat-downbeat notes are held longer; pickups and syncopations are short.
+      local length = (step % 4 == 1) and rng:int(2, 3) or 1
+      add_event(events, step, degree, length, rng:int(82, 110), accent, false)
+    end
+  end
+  if next(events) == nil then
+    add_event(events, 1, 0, 2, rng:int(92, 108), true, false)
+  end
+  return events
+end
+
 local function secondary_bar(primary,genre,family,bar,rng,groove)
   local events=make_bar(genre,family,bar,rng,groove)
   local primary_bar=primary.bars[((bar-1)%primary.phrase_bars)+1] or {}
@@ -194,8 +278,13 @@ function M.new(identity, groove)
   local mode = low_end_mode(identity, voice_family)
   local bars = {}
   for bar = 1, 4 do
-    bars[bar] = (identity.genre=="ACID" and voice_family=="303") and
-      acid_bar(identity.archetype,bar,rng) or make_bar(identity.genre, voice_family, bar, rng, groove)
+    if identity.genre == "ACID" and voice_family == "303" then
+      bars[bar] = acid_bar(identity.archetype, bar, rng)
+    elseif identity.genre == "FUNKY" then
+      bars[bar] = funky_bar(identity.archetype, bar, rng, groove)
+    else
+      bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove)
+    end
   end
   if mode == "reverse_bass" then
     bars = {}
