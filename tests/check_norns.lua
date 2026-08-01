@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.127", 1, true) then
-  fail("Script version must match PR #127")
+if not source:find("Endless DJ v1.128", 1, true) then
+  fail("Script version must match PR #128")
 end
-pass("Script version matches PR #127")
+pass("Script version matches PR #128")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -196,7 +196,7 @@ pass("Custom Endless engine selected")
 if source:find('include("EndlessDJ-norns/', 1, true) then
   fail("Norns module includes must use the installed EndlessDJ folder, not the repository name")
 end
-for _, module in ipairs({"output_router", "internal_engine"}) do
+for _, module in ipairs({"output_router", "internal_engine", "bass_engine"}) do
   if not source:find('include("EndlessDJ/lib/' .. module .. '")', 1, true) then
     fail("Missing Norns-safe include path for " .. module)
   end
@@ -255,7 +255,8 @@ do
   end
   for command, format in pairs({
     nmono_note="iiff", nmono_on="iif", nmono_off="i",
-    nmono_set="iiffffffffff", nmono_model="ii"
+    nmono_set="iiffffffffff", nmono_model="ii",
+    nbass_note="iiff", nbass_set="iiffffffffff", nbass_model="ii"
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -265,6 +266,9 @@ do
   end
   if not engine_source:find("nmonoVoices", 1, true) then
     fail("n-mono must allocate one persistent voice per deck")
+  end
+  if not engine_source:find("nbassVoices", 1, true) then
+    fail("genre bass must allocate an independent persistent voice per deck")
   end
 end
 pass("Custom engine uses the supplied Crone audio context")
@@ -884,7 +888,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.127"', 'sample_library=sample_library',
+    'version="v1.128"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1397,6 +1401,26 @@ if not source:find('groove_engine = include("EndlessDJ/lib/groove_engine")', 1, 
   fail("Groove plan is not integrated into deck generation and playback")
 end
 pass("Deterministic multi-bar groove plans drive generated drum playback")
+
+local bass_file = io.open("lib/bass_engine.lua", "r")
+if not bass_file then fail("Missing deterministic genre-aware bass engine") end
+local bass_source = bass_file:read("*a")
+bass_file:close()
+for _, required in ipairs({
+  "function M.new(identity, groove)", "function M.event(plan, absolute_bar, step)",
+  "function M.validate(plan)", 'TWO_STEP={"sub","reese","organ","fm"}',
+  'ACID={"303"}', "kick_at(groove, bar, step)", "phrase_bars=4",
+}) do
+  if not bass_source:find(required, 1, true) then fail("Bass engine missing: " .. required) end
+end
+for _, required in ipairs({
+  'bass_engine = include("EndlessDJ/lib/bass_engine")',
+  "bass = bass_engine.new(identity, groove)", "bass_engine.event(deck.bass, b, s)",
+  "internal_engine.bass_voice", "nbass_apply_deck(deck_a)",
+}) do
+  if not source:find(required, 1, true) then fail("Genre bass integration missing: " .. required) end
+end
+pass("Deterministic genre-aware bass plans drive an independent bass synth voice")
 
 local timing_file = io.open("lib/timing_scheduler.lua", "r")
 if not timing_file then fail("Missing shared timing scheduler") end
