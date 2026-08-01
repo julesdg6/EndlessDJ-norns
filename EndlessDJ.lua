@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.125
+-- Endless DJ v1.126
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -22,6 +22,7 @@ output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
 song_identity = include("EndlessDJ/lib/song_identity")
+groove_engine = include("EndlessDJ/lib/groove_engine")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
 -- Virtual grid connection (monome or midigrid virtual device).
@@ -410,7 +411,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.125",
+      version="v1.126",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -906,6 +907,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     norns_preset = deck_rng:int(1, #norns_presets),
     variation_seed = variation_seed,
     identity = identity,
+    groove = groove_engine.new(identity),
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
     nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
     nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono")),
@@ -3023,7 +3025,10 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local p = drum_patterns[gn] or drum_patterns.HOUSE
   local d = density_for_section(sec)
   -- Use grid-editable drum_steps for the active deck; genre pattern for incoming deck during mix
-  local use_grid = (deck == current_deck())
+  local use_grid = (deck == current_deck() and g ~= nil)
+  local function groove_event(voice)
+    return groove_engine.event(deck.groove, b, voice, s)
+  end
 
   local kick_amount  = mix_fades and mix_fades.kick  or 1
   local drums_amount = mix_fades and mix_fades.drums or 1
@@ -3040,9 +3045,10 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Kick
   local kick_hit
-  if use_grid then kick_hit = drum_steps[1][s] else kick_hit = hit(p.kick, s) end
+  local kick_event = groove_event("kick")
+  if use_grid then kick_hit = drum_steps[1][s] else kick_hit = kick_event ~= nil end
   if kick_hit and math.random() < kick_prob then
-    t8_note(KICK, kick_vel[gn] or 110, drum_ch, 1, deck)
+    t8_note(KICK, (kick_event and kick_event.velocity) or kick_vel[gn] or 110, drum_ch, 1, deck)
   end
 
   -- Snare
@@ -3050,22 +3056,25 @@ local function play_drums(sec, s, b, mix_fades, deck)
   if use_grid then
     snare_hit = drum_steps[2][s]
   else
-    snare_hit = p.snare and hit(p.snare, s)
+    snare_hit = groove_event("snare") ~= nil
   end
   if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
-    t8_note(SNARE, snare_vel[gn] or 100, drum_ch, 1, deck)
+    local event = groove_event("snare")
+    t8_note(SNARE, (event and event.velocity) or snare_vel[gn] or 100, drum_ch, 1, deck)
   end
 
   -- Clap (always generative; not on grid)
-  if p.clap and hit(p.clap, s) and sec ~= "INTRO" and math.random() < clap_prob then
+  local clap_event = groove_event("clap")
+  if clap_event and sec ~= "INTRO" and math.random() < clap_prob then
     if gn ~= "TECHNO" then
-      t8_note(CLAP, 110, drum_ch, 1, deck)
+      t8_note(CLAP, clap_event.velocity or 110, drum_ch, 1, deck)
     end
   end
 
   -- Tom (always generative)
-  if p.tom and hit(p.tom, s) and math.random() < 0.45 * drums_amount then
-    t8_note(TOM, 85, drum_ch, 1, deck)
+  local tom_event = groove_event("tom")
+  if tom_event and math.random() < 0.45 * drums_amount then
+    t8_note(TOM, tom_event.velocity or 85, drum_ch, 1, deck)
   end
 
   -- Closed hi-hat
@@ -3073,10 +3082,11 @@ local function play_drums(sec, s, b, mix_fades, deck)
   if use_grid then
     chh_hit = drum_steps[4][s]
   else
-    chh_hit = p.hats and hit(p.hats, s)
+    chh_hit = groove_event("hats") ~= nil
   end
   if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
-    t8_note(CHH, hat_vel[gn] or 70, drum_ch, 1, deck)
+    local event = groove_event("hats")
+    t8_note(CHH, (event and event.velocity) or hat_vel[gn] or 70, drum_ch, 1, deck)
   end
 
   -- Open hi-hat
@@ -3084,8 +3094,8 @@ local function play_drums(sec, s, b, mix_fades, deck)
     if drum_steps[3][s] and math.random() < drums_amount then
       t8_note(OHH, 70, drum_ch, 1, deck)
     end
-  elseif p.ohats and hit(p.ohats, s) and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
-    t8_note(OHH, 70, drum_ch, 1, deck)
+  elseif groove_event("ohats") and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
+    t8_note(OHH, groove_event("ohats").velocity or 70, drum_ch, 1, deck)
   elseif not p.ohats and (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
     t8_note(OHH, 70, drum_ch, 1, deck)
   end
@@ -3097,7 +3107,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   elseif gn == "BREAKS" or gn == "DNB" or gn == "JUNGLE" or gn == "TWO_STEP" or gn == "JUKE" then
     fill_interval = 8
   end
-  if b % fill_interval == 0 and s >= 13 and math.random() < drums_amount then
+  if b % fill_interval == 0 and groove_engine.is_fill_step(deck.groove, b, s) and math.random() < drums_amount then
     if gn == "TECHNO" or gn == "HARDTECHNO" then
       -- tom-dominant fills for techno styles
       if s == 13 then t8_note(TOM, 92, drum_ch, 1, deck) end
