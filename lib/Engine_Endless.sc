@@ -770,8 +770,8 @@ Engine_Endless : CroneEngine {
 			];
 			if(legato.not, { controls = controls ++ [\t_trig, 1]; });
 			this.wakePart(deck, 1);
-			n303Voices[deck].run(true);
 			n303Voices[deck].set(*controls);
+			n303Voices[deck].run(true);
 			n303SlidePending[deck] = msg[6].asInteger > 0;
 		});
 
@@ -847,22 +847,22 @@ Engine_Endless : CroneEngine {
 		this.addCommand(\nmono_note, "iiff", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			this.wakePart(deck, 3);
-			nmonoVoices[deck].run(true);
 			nmonoVoices[deck].set(
 				\freq, msg[2].asFloat.midicps, \amp, msg[3].asFloat.clip(0, 1),
 				\sustain, msg[4].asFloat.clip(1, 32) * 0.12,
 				\mode, 0, \gate, 0, \t_trig, 1
 			);
+			nmonoVoices[deck].run(true);
 		});
 
 		this.addCommand(\nmono_on, "iif", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
 			this.wakePart(deck, 3);
-			nmonoVoices[deck].run(true);
 			nmonoVoices[deck].set(
 				\freq, msg[2].asFloat.midicps, \amp, msg[3].asFloat.clip(0, 1),
 				\mode, 1, \gate, 1
 			);
+			nmonoVoices[deck].run(true);
 		});
 
 		this.addCommand(\nmono_off, "i", { arg msg;

@@ -511,6 +511,14 @@ for _, token in ipairs({
     fail("Missing interchangeable n-mono model implementation " .. token)
   end
 end
+local mono_set_pos = engine_source:find("nmonoVoices[deck].set(", 1, true)
+local mono_run_pos = engine_source:find("nmonoVoices[deck].run(true);", 1, true)
+local acid_set_pos = engine_source:find("n303Voices[deck].set(*controls);", 1, true)
+local acid_run_pos = engine_source:find("n303Voices[deck].run(true);", 1, true)
+if not mono_set_pos or not mono_run_pos or mono_set_pos > mono_run_pos or
+    not acid_set_pos or not acid_run_pos or acid_set_pos > acid_run_pos then
+  fail("Persistent synth controls must be applied before dormant nodes resume")
+end
 pass("Generated persistent n-mono synth and controls exist")
 
 if not source:find('include("EndlessDJ/lib/sample_library")', 1, true) then
