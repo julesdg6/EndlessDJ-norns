@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.147", 1, true) then
-  fail("Script version must match PR #147")
+if not source:find("Endless DJ v1.150", 1, true) then
+  fail("Script version must match PR #150")
 end
-pass("Script version matches PR #147")
+pass("Script version matches PR #150")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -196,12 +196,17 @@ pass("Custom Endless engine selected")
 if source:find('include("EndlessDJ-norns/', 1, true) then
   fail("Norns module includes must use the installed EndlessDJ folder, not the repository name")
 end
-for _, module in ipairs({"output_router", "internal_engine", "bass_engine"}) do
+for _, module in ipairs({"output_router", "internal_engine", "bass_engine", "engine_registry"}) do
   if not source:find('include("EndlessDJ/lib/' .. module .. '")', 1, true) then
     fail("Missing Norns-safe include path for " .. module)
   end
 end
 pass("Internal modules use the installed EndlessDJ folder")
+
+if source:find("n808_kit_models[deck.identity.kit] or 0", 1, true) then
+  fail("Kit model lookup must use engine_registry and assert, not silently fall back to model 0")
+end
+pass("Kit model lookup uses engine_registry and fails fast on unknown models")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc")

@@ -10,6 +10,7 @@ globals = {
   "cleanup",
   "enc",
   "engine",
+  "engine_registry",
   "grid",
   "groove_engine",
   "generation_fixtures",
