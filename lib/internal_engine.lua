@@ -83,6 +83,10 @@ function InternalEngine.set_n808(tone, decay, drive, variation)
   call("n808_set", tone, decay, drive, variation)
 end
 
+function InternalEngine.set_n808_model(deck_id, model)
+  call("n808_model", deck_id, model or 0)
+end
+
 function InternalEngine.set_n808_control(name, value)
   if InternalEngine.n808[name] == nil then return false end
   InternalEngine.n808[name] = value
