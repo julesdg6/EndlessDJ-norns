@@ -971,7 +971,7 @@ end
 
 local n808_kit_models = { ["808"]=0, ["909"]=1, linn=2, industrial=3, hybrid=4 }
 
-n808_apply_deck = function(deck)
+local function n808_apply_deck(deck)
   if not deck or not deck.identity then return end
   internal_engine.set_n808_model(
     internal_engine.deck_id(deck, deck_a), n808_kit_models[deck.identity.kit] or 0
