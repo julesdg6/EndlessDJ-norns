@@ -123,9 +123,6 @@ Engine_Endless : CroneEngine {
 			Out.ar(outBus, signal);
 			Out.ar(delayBus, signal * Lag.kr(delaySend, 0.03));
 			Out.ar(reverbBus, signal * Lag.kr(reverbSend, 0.03));
-			DetectSilence.ar(
-				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 0.75, doneAction: 1
-			);
 		}).add;
 
 		SynthDef(\endlessDelayReturn, { arg inBus=0, out=0, level=0.7;
