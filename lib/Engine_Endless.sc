@@ -309,9 +309,6 @@ Engine_Endless : CroneEngine {
 			signal = Limiter.ar(signal * ampEnv * amp * accentGain, 0.85, 0.01);
 			signal = Pan2.ar(signal);
 			Out.ar(out, signal);
-			DetectSilence.ar(
-				signal[0].abs + signal[1].abs + Impulse.ar(0), 0.0001, 0.8, doneAction: 1
-			);
 		}).add;
 
 		8.do({ arg presetIndex;
@@ -389,7 +386,7 @@ Engine_Endless : CroneEngine {
 				lfoRateControl=0.2, lfoDepth=0.08, delaySend=0.15;
 			var attack, release, lfoRate, lfo, pitch, analog, subVoice, reese;
 			var organ, fm, wobble, osc, subOsc, timedEnv, gatedEnv;
-			var env, awakeGuard, cutoff, rq, filtered, dry, delayed, output;
+			var env, cutoff, rq, filtered, dry, delayed, output;
 			attack = attackControl.linexp(0, 1, 0.002, 0.45);
 			release = releaseControl.linexp(0, 1, 0.05, 2.5);
 			lfoRate = lfoRateControl.linexp(0, 1, 0.05, 14);
@@ -421,9 +418,6 @@ Engine_Endless : CroneEngine {
 			);
 			gatedEnv = EnvGen.kr(Env.asr(attack, 1, release, -4), gate);
 			env = Select.kr(mode, [timedEnv, gatedEnv]);
-			awakeGuard = K2A.ar(
-				(gate + Trig1.kr(t_trig, sustain + release + 0.1)).clip(0, 1)
-			) * 0.001;
 			cutoff = (
 				cutoffControl.linexp(0, 1, 120, 9000)
 				* (1 + (lfo * lfoDepth * 0.65))
@@ -438,10 +432,6 @@ Engine_Endless : CroneEngine {
 			output = XFade2.ar(dry, delayed, delaySend.linlin(0, 1, -1, 0.65));
 			output = Limiter.ar(output * env * amp, 0.82, 0.01);
 			Out.ar(out, output);
-			DetectSilence.ar(
-				output[0].abs + output[1].abs + awakeGuard + Impulse.ar(0),
-				0.0001, 0.8, doneAction: 1
-			);
 		}).add;
 
 		SynthDef(\endlessSampler, {

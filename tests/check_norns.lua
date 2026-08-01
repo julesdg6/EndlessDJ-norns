@@ -505,11 +505,21 @@ end
 local engine_source = read_file("lib/Engine_Endless.sc") or ""
 for _, token in ipairs({
   "model.clip(0, 5)", "subVoice", "reese", "organ", "fm", "wobble",
-  "awakeGuard", "Trig1.kr(t_trig", 'addCommand(\\nmono_model, "ii"',
+  'addCommand(\\nmono_model, "ii"',
 }) do
   if not engine_source:find(token, 1, true) then
     fail("Missing interchangeable n-mono model implementation " .. token)
   end
+end
+local acid_start = engine_source:find("SynthDef(\\endless303", 1, true)
+local chord_start = engine_source:find("8.do({ arg presetIndex;", 1, true)
+local mono_start = engine_source:find("SynthDef(\\endlessMono", 1, true)
+local sampler_start = engine_source:find("SynthDef(\\endlessSampler", 1, true)
+if not acid_start or not chord_start or
+    engine_source:sub(acid_start, chord_start):find("DetectSilence", 1, true) or
+    not mono_start or not sampler_start or
+    engine_source:sub(mono_start, sampler_start):find("DetectSilence", 1, true) then
+  fail("Persistent n-303 and n-mono voices must not self-pause while idle")
 end
 local mono_set_pos = engine_source:find("nmonoVoices[deck].set(", 1, true)
 local mono_run_pos = engine_source:find("nmonoVoices[deck].run(true);", 1, true)
