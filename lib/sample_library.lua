@@ -146,7 +146,9 @@ end
 local function select_entry(role,identity,target_energy,offset,excluded_slot)
   local ranked={}
   for _,entry in ipairs(candidates(role)) do
-    if entry.slot~=excluded_slot then ranked[#ranked+1]={entry=entry,score=compatibility_score(entry,identity,target_energy)} end
+    if entry.slot~=excluded_slot then
+      ranked[#ranked+1]={entry=entry,score=compatibility_score(entry,identity,target_energy)}
+    end
   end
   table.sort(ranked,function(a,b)
     if a.score==b.score then return a.entry.slot<b.entry.slot end
