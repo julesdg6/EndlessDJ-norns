@@ -5,6 +5,7 @@ globals = {
   "audio",
   "automix_patch_for_genre",
   "bass_engine",
+  "arrangement_engine",
   "clock",
   "cleanup",
   "enc",
