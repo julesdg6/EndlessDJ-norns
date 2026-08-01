@@ -160,6 +160,31 @@ function Harness.new(options)
 
     if mode == "quick" then return end
 
+    report("TEST", "20 persistent-mixer first hits")
+    safe_engine("all_off")
+    safe_engine("mixer_set", 1, 1, 0.75, 0, 1, 0, 0, 0)
+    clock.sleep(1)
+    for hit = 1, 20 do
+      metrics.first_hit_index = hit
+      metrics.first_hits[hit] = 0
+      safe_engine("n808_hit", 1, 0, 0.8)
+      clock.sleep(0.16)
+      metrics.first_hit_index = nil
+      clock.sleep(0.64)
+    end
+    local first_hit_min = math.huge
+    local first_hit_max = 0
+    for hit = 1, 20 do
+      first_hit_min = math.min(first_hit_min, metrics.first_hits[hit] or 0)
+      first_hit_max = math.max(first_hit_max, metrics.first_hits[hit] or 0)
+    end
+    local first_hit_ratio = first_hit_max > 0 and first_hit_min / first_hit_max or 0
+    report(
+      first_hit_min > 0.01 and first_hit_ratio > 0.45 and "PASS" or "FAIL",
+      "persistent-mixer first hits 20/20, min/max " ..
+        string.format("%.2f", first_hit_ratio)
+    )
+
     report("TEST", "Deck B and sampler modes")
     safe_engine("n808_hit", 2, 4, 0.65)
     if risers > 0 then
@@ -230,6 +255,7 @@ function Harness.new(options)
     local active_polls = {}
     local metrics = {
       cpu_avg=0, cpu_peak=0, record=0, buffer=0, playback=0,
+      first_hits={}, first_hit_index=nil,
     }
     local failures = 0
     local started_at = os.date("%Y-%m-%d %H:%M:%S")
@@ -239,17 +265,21 @@ function Harness.new(options)
       if status == "FAIL" then failures = failures + 1 end
     end
 
-    local function meter(name, field)
+    local function meter(name, field, callback, interval)
       local ok, poll_instance = pcall(function()
         return poll.set(name, function(value)
-          metrics[field] = math.max(metrics[field], value or 0)
+          if callback then
+            callback(value or 0)
+          else
+            metrics[field] = math.max(metrics[field], value or 0)
+          end
         end)
       end)
       if not ok or not poll_instance then
         report("FAIL", "poll " .. name)
         return
       end
-      poll_instance.time = 0.2
+      poll_instance.time = interval or 0.2
       poll_instance:start()
       table.insert(active_polls, poll_instance)
     end
@@ -257,6 +287,14 @@ function Harness.new(options)
     force_internal_routes()
     meter("cpu_avg", "cpu_avg")
     meter("cpu_peak", "cpu_peak")
+    local function first_hit_meter(value)
+      local hit = metrics.first_hit_index
+      if hit then
+        metrics.first_hits[hit] = math.max(metrics.first_hits[hit] or 0, value)
+      end
+    end
+    meter("amp_out_l", nil, first_hit_meter, 0.02)
+    meter("amp_out_r", nil, first_hit_meter, 0.02)
     if mode ~= "quick" then
       meter("resample_record_peak_1", "record")
       meter("resample_buffer_peak_1", "buffer")

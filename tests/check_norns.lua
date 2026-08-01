@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.123", 1, true) then
-  fail("Script version must match PR #123")
+if not source:find("Endless DJ v1.124", 1, true) then
+  fail("Script version must match PR #124")
 end
-pass("Script version matches PR #123")
+pass("Script version matches PR #124")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -311,6 +311,18 @@ do
     if not engine_source:find(wake, 1, true) then
       fail("Silent mixer suspension is missing wake path " .. wake)
     end
+  end
+  local instrument_mixer = engine_source:match(
+    "SynthDef%(\\endlessInstrumentMixer,(.-)SynthDef%(\\endlessDelayReturn,"
+  ) or ""
+  if instrument_mixer:find("DetectSilence", 1, true) or
+      instrument_mixer:find("doneAction: 1", 1, true) then
+    fail("Stem mixers must remain persistent so the first transient is never lost")
+  end
+  local wake_harness_source = read_file("lib/norns_harness.lua") or ""
+  if not wake_harness_source:find('"20 persistent-mixer first hits"', 1, true) or
+      not wake_harness_source:find("first_hit_ratio > 0.45", 1, true) then
+    fail("Full Norns harness must test 20 consistent first kick transients")
   end
   if engine_source:find("resampleBuffers[slot].zero", 1, true) then
     fail("Resampling must not race asynchronous buffer clearing against recording")
@@ -871,7 +883,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.119"', 'sample_library=sample_library',
+    'version="v1.124"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
