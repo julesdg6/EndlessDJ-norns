@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.143", 1, true) then
-  fail("Script version must match PR #143")
+if not source:find("Endless DJ v1.145", 1, true) then
+  fail("Script version must match PR #145")
 end
-pass("Script version matches PR #143")
+pass("Script version matches PR #145")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -240,6 +240,12 @@ do
   end
   if not engine_source:find("Limiter.ar", 1, true) then
     fail("n-303 must bound resonant and driven output")
+  end
+  if not engine_source:find("modelGain = #[0.92, 0.78, 0.48, 0.86, 0.70]", 1, true) then
+    fail("Chord models must define bounded equal-loudness compensation")
+  end
+  if not engine_source:find("1.15, 1.20, 1.10, 0.58, 1.10, 0.95", 1, true) then
+    fail("Bass/mono models must define bounded equal-loudness compensation")
   end
   for command, format in pairs({
     nchord_on="iifi", nchord_off="ii", nchord_all_off="i", nchord_set="iifff",
@@ -936,7 +942,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.143"', 'sample_library=sample_library',
+    'version="v1.145"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)

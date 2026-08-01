@@ -5,7 +5,9 @@ local REQUIRED_COMMANDS = {
   "mixer_set", "n303_note", "n303_set", "n808_hit", "n808_level",
   "n808_model", "n808_set", "nchord_all_off", "nchord_note", "nchord_off",
   "nchord_model", "nchord_on", "nchord_set", "nmono_model", "nmono_note", "nmono_off", "nmono_on",
-  "nmono_set", "nsampler_grain_off", "nsampler_grain_on",
+  "nmono_set", "nbass_model", "nbass_note", "nbass_set",
+  "nsecondary_bass_model", "nsecondary_bass_note", "nsecondary_bass_set",
+  "nsampler_grain_off", "nsampler_grain_on",
   "nsampler_hit", "nsampler_load", "nsampler_loop_off",
   "nsampler_loop_on", "nsampler_off", "nsampler_on",
   "nsampler_repeat", "resample_analyze", "resample_grain_on",
@@ -164,6 +166,59 @@ function Harness.new(options)
 
     if mode == "quick" then return end
 
+    report("TEST", "equal-loudness bass model sweep")
+    safe_engine("all_off")
+    safe_engine("mixer_set", 1, 2, 0.72, 0, 1, 0, 0, 0)
+    safe_engine("nbass_set", 1, 2, 0, 0.25, 0.72, 0.2, 0.02, 0.25, 0.03, 0.2, 0.08, 0)
+    for model = 0, 5 do
+      metrics.model_kind = "bass"
+      metrics.model_index = model + 1
+      metrics.model_peaks.bass[model + 1] = 0
+      report("LISTEN", "bass model " .. model)
+      safe_engine("nbass_model", 1, model)
+      safe_engine("nbass_note", 1, 48, 0.62, 4)
+      clock.sleep(0.72)
+    end
+    metrics.model_kind = nil
+    metrics.model_index = nil
+
+    report("TEST", "equal-loudness chord model sweep")
+    safe_engine("all_off")
+    clock.sleep(0.2)
+    safe_engine("nchord_set", 1, 1, 0.6, 0.35, 0.2)
+    safe_engine("mixer_set", 1, 3, 0.62, 0, 1, 0, 0, 0)
+    for model = 0, 4 do
+      metrics.model_kind = "chord"
+      metrics.model_index = model + 1
+      metrics.model_peaks.chord[model + 1] = 0
+      report("LISTEN", "chord model " .. model)
+      safe_engine("nchord_model", 1, model)
+      for _, note in ipairs({60, 63, 67}) do
+        safe_engine("nchord_on", 1, note, 0.42, 1)
+      end
+      clock.sleep(0.55)
+      safe_engine("nchord_all_off", 1)
+      clock.sleep(0.2)
+    end
+    metrics.model_kind = nil
+    metrics.model_index = nil
+
+    local function report_model_spread(kind, count)
+      local minimum, maximum = math.huge, 0
+      for index = 1, count do
+        local peak = metrics.model_peaks[kind][index] or 0
+        if peak > 0.001 then minimum = math.min(minimum, peak) end
+        maximum = math.max(maximum, peak)
+      end
+      local ratio = minimum < math.huge and maximum / minimum or math.huge
+      report(
+        minimum < math.huge and ratio <= 4 and "PASS" or "FAIL",
+        kind .. " model peak spread " .. string.format("%.2f", ratio) .. "x"
+      )
+    end
+    report_model_spread("bass", 6)
+    report_model_spread("chord", 5)
+
     report("TEST", "20 persistent-mixer first hits")
     safe_engine("all_off")
     safe_engine("n808_set", 0.5, 0.5, 0.25, 0)
@@ -234,9 +289,10 @@ function Harness.new(options)
       "resample playback peak " .. string.format("%.4f", metrics.playback)
     )
 
-    if mode == "interactive" then
+    if mode == "interactive" or mode == "acceptance" then
       report("LISTEN", "confirm drums, acid, chord, mono, sampler and replay were audible")
       report("LISTEN", "confirm Deck A/B balance, FX and master level were clean")
+      report("LISTEN", "confirm bass/chord model changes preserve comparable loudness")
     end
 
     report("INFO", "CPU max avg " .. string.format("%.2f", metrics.cpu_avg))
@@ -246,8 +302,9 @@ function Harness.new(options)
   function instance:run(mode)
     mode = mode or "quick"
     if mode == "resample" then mode = "full" end
-    if mode ~= "quick" and mode ~= "full" and mode ~= "interactive" then
-      print("ENDLESS HARNESS FAIL: mode must be quick, full or interactive")
+    if mode ~= "quick" and mode ~= "full" and mode ~= "interactive" and
+        mode ~= "acceptance" then
+      print("ENDLESS HARNESS FAIL: mode must be quick, full, interactive or acceptance")
       return false
     end
     if self.running then
@@ -261,6 +318,7 @@ function Harness.new(options)
     local metrics = {
       cpu_avg=0, cpu_peak=0, record=0, buffer=0, playback=0,
       first_hits={}, first_hit_index=nil,
+      model_peaks={bass={}, chord={}}, model_kind=nil, model_index=nil,
     }
     local failures = 0
     local started_at = os.date("%Y-%m-%d %H:%M:%S")
@@ -292,14 +350,20 @@ function Harness.new(options)
     force_internal_routes()
     meter("cpu_avg", "cpu_avg")
     meter("cpu_peak", "cpu_peak")
-    local function first_hit_meter(value)
+    local function output_meter(value)
       local hit = metrics.first_hit_index
       if hit then
         metrics.first_hits[hit] = math.max(metrics.first_hits[hit] or 0, value)
       end
+      local kind, index = metrics.model_kind, metrics.model_index
+      if kind and index then
+        metrics.model_peaks[kind][index] = math.max(
+          metrics.model_peaks[kind][index] or 0, value or 0
+        )
+      end
     end
-    meter("amp_out_l", nil, first_hit_meter, 0.01)
-    meter("amp_out_r", nil, first_hit_meter, 0.01)
+    meter("amp_out_l", nil, output_meter, 0.01)
+    meter("amp_out_r", nil, output_meter, 0.01)
     if mode ~= "quick" then
       meter("resample_record_peak_1", "record")
       meter("resample_buffer_peak_1", "buffer")
