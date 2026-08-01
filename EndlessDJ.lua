@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.138
+-- Endless DJ v1.139
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -21,6 +21,7 @@ engine.name = "Endless"
 output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
+genre_profiles = include("EndlessDJ/lib/genre_profiles")
 song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
 bass_engine = include("EndlessDJ/lib/bass_engine")
@@ -31,8 +32,8 @@ norns_harness = include("EndlessDJ/lib/norns_harness")
 generation_fixtures = include("EndlessDJ/lib/generation_fixtures")
 
 -- Virtual grid connection (monome or midigrid virtual device).
--- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
--- Mini MK3 controllers appear as one 16×8 virtual grid.  Physical-device
+-- With the midigrid mod enabled (SYSTEM â MODS â MIDIGRID), two Launchpad
+-- Mini MK3 controllers appear as one 16Ã8 virtual grid.  Physical-device
 -- setup, Programmer mode, rotation, RGB conversion, and LED buffering are
 -- handled by midigrid; this script uses only the standard grid API.
 local g   -- grid object; nil when no grid is connected
@@ -45,9 +46,9 @@ local mdev = 1
 local chord_mdev = 1
 local mx1_mdev = 1
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Norns instrument (n-chord voice in the Endless SuperCollider engine)
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local norns_inst_enabled = true
 local norns_inst_vol = 0.8
 
@@ -62,9 +63,9 @@ local norns_presets = {
 }
 local norns_preset_idx = 1
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Acapella playback via softcut
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local acapella_enabled = false
 local acapella_vol = 0.7
 local acapella_files = {}   -- list of {path, filename, bpm, semitone, key}
@@ -76,9 +77,9 @@ local mx1_ch = 1
 local mx1_fx_enabled = true
 local mx1_fx_cc = 12
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Korg NTS-1 (optional melodic voice)
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local nts1_midi_out
 local nts1_mdev = 1
 local nts1_enabled = false
@@ -125,9 +126,9 @@ local acid_cfg = {
   seed_value = 314159265
 }
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Akai MPX8 (optional one-shot / sample layer)
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local mpx8_midi_out
 local mpx8_mdev = 1
 local mpx8_enabled = false
@@ -416,7 +417,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.138",
+      version="v1.139",
       sample_library=sample_library,
       generation_fixtures=generation_fixtures.build(song_identity),
       restore_audio=function()
@@ -772,11 +773,11 @@ local TOM = 47
 local CHH = 42
 local OHH = 46
 
--- ──────────────────────────────────────────────
--- Virtual 16×8 grid state
--- Left half  (x 1–8):  four-lane drum sequencer
--- Right half (x 9–16): NTS-1 and J-6 trigger lanes + playable keyboard
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
+-- Virtual 16Ã8 grid state
+-- Left half  (x 1â8):  four-lane drum sequencer
+-- Right half (x 9â16): NTS-1 and J-6 trigger lanes + playable keyboard
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 -- 4 drum lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
 local drum_steps = {}
@@ -795,19 +796,19 @@ for i = 1, 16 do j6_steps[i]   = false end
 local grid_nts1_level = 0
 local grid_j6_level   = 0
 
--- ──────────────────────────────────────────────
--- Keyboard state (right half, y = 5–8)
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
+-- Keyboard state (right half, y = 5â8)
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local kb_base    = 48   -- MIDI note at bottom-left of keyboard area (C3)
 local kb_octave  = 0    -- additional octave shift (params: grid_kb_octave)
-local kb_pressed = {}   -- note → true while pad is held (for note-off cleanup)
+local kb_pressed = {}   -- note â true while pad is held (for note-off cleanup)
 local kb_target  = 1    -- 1 = NTS-1  2 = J-6  3 = Norns instrument
 
--- ──────────────────────────────────────────────
--- Semantic grid brightness levels (0–15)
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
+-- Semantic grid brightness levels (0â15)
 -- midigrid maps these to device-specific RGB via lib/palettes/endless_dj.lua,
 -- which is injected automatically on grid connect (see grid_connect()).
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 local LEVEL = {
   OFF      = 0,
   INACTIVE = 1,   -- inactive step
@@ -908,6 +909,12 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   local arrangement = arrangement_engine.new(identity)
   local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
   nbass = bass_engine.apply_voice_profile(bass, nbass)
+  local nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord"))
+  local nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono"))
+  local chord_models = {analog=0,fm=1,organ=2,pad=3,rave=4}
+  local mono_models = {analog=0,sub=1,reese=2,organ=3,fm=4,wobble=5}
+  nchord.model = assert(chord_models[identity.chord_model], "unknown chord model")
+  nmono.model = assert(mono_models[identity.mono_model], "unknown mono model")
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -923,8 +930,8 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     arrangement = arrangement,
     nbass = nbass,
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
-    nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
-    nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono")),
+    nchord = nchord,
+    nmono = nmono,
     ngrain = granular_patch_for_genre(genre, variation_seed),
     automix = automix_patch_for_genre(genre, variation_seed),
     nts1_identity = nil,
@@ -1288,11 +1295,11 @@ local function service_pending_notes()
   end
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Acapella helpers
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
--- Map key-string pitch class → semitone 0-11.
+-- Map key-string pitch class â semitone 0-11.
 local KEY_SEMITONE = {
   C=0,  ["C#"]=1, Cs=1, Db=1,
   D=2,  ["D#"]=3, Ds=3, Eb=3,
@@ -1304,14 +1311,14 @@ local KEY_SEMITONE = {
 }
 
 -- Parse acapella filename. Expected format: {bpm}_{key}_{description}.{ext}
--- e.g. 128_Am_House_Vocal.mp3  →  bpm=128, semitone=9 (A), key="Am"
+-- e.g. 128_Am_House_Vocal.mp3  â  bpm=128, semitone=9 (A), key="Am"
 -- key: note letter (A-G), optional accidental (b/#), optional minor suffix (m/M)
 -- Returns bpm (number), semitone (0-11 or nil), key_str on success; nil on failure.
 local function parse_acapella_filename(filename)
   local bpm_str, key_str = filename:match("^(%d+)_([A-Ga-g][b#]?[mM]?)_")
   if not bpm_str then return nil end
   local bpm_val = tonumber(bpm_str)
-  -- Reject implausible BPM values (valid music range: 40–250)
+  -- Reject implausible BPM values (valid music range: 40â250)
   if not bpm_val or bpm_val < 40 or bpm_val > 250 then return nil end
   -- Strip trailing 'm'/'M' to get pitch class then normalise capitalisation.
   local key_base = key_str:gsub("[mM]$", "")
@@ -1573,13 +1580,13 @@ local drum_patterns = {
   }
 }
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Grid coordinate helpers
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
--- Map drum (lane 1-4, step 1-16) → grid (x 1-8, y 1-8).
+-- Map drum (lane 1-4, step 1-16) â grid (x 1-8, y 1-8).
 -- Layout (y=1 = top row):
---   lane 1 kick:       y 1-2,  steps 1-8 → y=1, steps 9-16 → y=2
+--   lane 1 kick:       y 1-2,  steps 1-8 â y=1, steps 9-16 â y=2
 --   lane 2 snare:      y 3-4
 --   lane 3 open hat:   y 5-6
 --   lane 4 closed hat: y 7-8
@@ -1590,14 +1597,14 @@ local function drum_to_xy(lane, s)
   return x, y
 end
 
--- Map grid (x 1-8, y 1-8) → drum (lane 1-4, step 1-16).
+-- Map grid (x 1-8, y 1-8) â drum (lane 1-4, step 1-16).
 local function xy_to_drum(x, y)
   local lane = math.ceil(y / 2)
   local s = x + ((y - 1) % 2) * 8
   return lane, s
 end
 
--- Map synth (inst 1-2, step 1-16) → grid (x 9-16, y 1-4).
+-- Map synth (inst 1-2, step 1-16) â grid (x 9-16, y 1-4).
 -- inst 1 = NTS-1 (y=1-2), inst 2 = J-6 (y=3-4)
 local function synth_to_xy(inst, s)
   local row_offset = s > 8 and 1 or 0
@@ -1606,7 +1613,7 @@ local function synth_to_xy(inst, s)
   return x, y
 end
 
--- Map grid (x 9-16, y 1-4) → synth (inst 1-2, step 1-16); nil if outside.
+-- Map grid (x 9-16, y 1-4) â synth (inst 1-2, step 1-16); nil if outside.
 local function xy_to_synth(x, y)
   if y < 1 or y > 4 then return nil, nil end
   local inst = math.ceil(y / 2)
@@ -1615,7 +1622,7 @@ local function xy_to_synth(x, y)
   return inst, s
 end
 
--- Map keyboard grid (x 9-16, y 5-8) → MIDI note.
+-- Map keyboard grid (x 9-16, y 5-8) â MIDI note.
 -- y=8 (bottom row) starts at kb_base + kb_octave*12; each row adds 8 semitones.
 local function kb_note_for(x, y)
   local row = 8 - y    -- 0=bottom (y=8), 3=top (y=5)
@@ -1639,9 +1646,9 @@ local function is_scale_note(note, root)
   return false
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- J-6 trigger pattern initialisation
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 -- Populate j6_steps with the genre's default chord-trigger steps so the
 -- initial grid pattern matches the generative engine's timing rules.
@@ -1684,9 +1691,9 @@ local function grid_load_pattern(genre)
   nts1_steps[1] = true
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Grid drawing
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 local function grid_redraw(s)
   if not g then return end
@@ -1781,9 +1788,9 @@ local function grid_clear()
   g:refresh()
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Keyboard MIDI output
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 local function kb_note_on(note)
   if kb_target == 1 then
@@ -1820,9 +1827,9 @@ local function kb_all_notes_off()
   kb_pressed = {}
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- Grid key handler and connection
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 local function grid_key(x, y, z)
   if x <= 8 then
@@ -1961,9 +1968,9 @@ local function choose(t)
   return t[math.random(#t)]
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- NTS-1 motif helpers
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 local function nts1_lcg(seed)
   return (math.max(1, seed or 1) * 1103515245 + 12345) % NTS1_LCG_MOD
@@ -2680,7 +2687,7 @@ local NTS1_CC = {
   FILTER_RESONANCE = 44,
   AMP_ATTACK = 16,
   AMP_RELEASE = 72,
-  EG_TYPE    = 20,   -- NTS-1 CC 20: EG type; CC value ranges: 0–41=Gate, 42–85=AR, 86–127=AR Loop
+  EG_TYPE    = 20,   -- NTS-1 CC 20: EG type; CC value ranges: 0â41=Gate, 42â85=AR, 86â127=AR Loop
   EG_AR      = 43,   -- standard attack/release, no loop (midpoint of the AR range)
   EG_AR_LOOP = 86,   -- AR loop: envelope repeats while note held (midpoint of the AR Loop range)
   FX_TYPE = 88,
@@ -2807,9 +2814,9 @@ local function nts1_mutate_motif(deck, sec, b)
   deck.nts1_motif = motif
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- MPX8 helpers
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
@@ -3239,9 +3246,9 @@ local function play_norns_instrument(sec, s, deck, b, mix_fades)
   end
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- NTS-1 melodic voice
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 -- Play the deck's NTS-1 motif at bar/step boundaries.
 -- Each deck keeps a stable motif/rhythm/timbre identity, then applies
@@ -3355,9 +3362,9 @@ local function play_nts1(sec, s, deck, b, mix_fades)
   grid_nts1_level = 4
 end
 
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 -- MPX8 sample layer
--- ──────────────────────────────────────────────
+-- ââââââââââââââââââââââââââââââââââââââââââââââ
 
 -- Trigger MPX8 pads at genre- and section-appropriate bar/phrase boundaries.
 -- Percussion and fills follow the "other drums" phase (mix_fades.drums).
@@ -3385,7 +3392,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
     end
   end
 
-  -- ── Recurring fills, stabs, and accents ────────
+  -- ââ Recurring fills, stabs, and accents ââââââââ
   -- These are gated by the "other drums" mix phase during transitions.
   if sec == "INTRO" or sec == "GROOVE" or sec == "BREAK" or sec == "MIX" then return end
 
@@ -3520,9 +3527,9 @@ local function finish_handover()
   transition_state.plan=nil
   acid_sync_seed_param(current_deck())
   -- Do NOT call quiet_notes() here.  Sending 4096 note-off messages (128
-  -- notes × 16 channels × 2 MIDI devices) in a tight Lua loop blocks the
+  -- notes Ã 16 channels Ã 2 MIDI devices) in a tight Lua loop blocks the
   -- metro callback thread, causing several bars of silence followed by a
-  -- rapid "catch-up" burst — exactly the symptom reported in issue #24.
+  -- rapid "catch-up" burst â exactly the symptom reported in issue #24.
   -- Every note_on is already paired with a scheduled note_off in the
   -- notes_off queue (via note_on_to), so no hanging notes can occur.
   -- The MX-1 effect depth is reset to 0 automatically on the next tick by
@@ -4543,7 +4550,7 @@ function init()
     grid_redraw(step)
   end)
 
-  -- ── Norns instrument ──────────────────────────
+  -- ââ Norns instrument ââââââââââââââââââââââââââ
   params:add_separator("norns_inst_sep", "NORNS INSTRUMENT")
 
   params:add_option("norns_inst_enabled", "norns inst enabled", {"off","on"}, 2)
@@ -4565,7 +4572,7 @@ function init()
     norns_inst_vol = v / 10
   end)
 
-  -- ── Acapella ──────────────────────────────────
+  -- ââ Acapella ââââââââââââââââââââââââââââââââââ
   params:add_separator("acapella_sep", "ACAPELLA")
 
   params:add_option("acapella_enabled", "acapella enabled", {"off","on"}, 1)
@@ -4595,7 +4602,7 @@ function init()
     softcut.level(ACAPELLA_VOICE, acapella_vol)
   end)
 
-  -- ── Korg NTS-1 ────────────────────────────────
+  -- ââ Korg NTS-1 ââââââââââââââââââââââââââââââââ
   params:add_separator("nts1_sep", "NTS-1 PERFORMANCE")
 
   params:add_option("nts1_enabled", "nts1 enabled", {"off","on"}, 1)
@@ -4646,7 +4653,7 @@ function init()
     end
   end)
 
-  -- ── Akai MPX8 ─────────────────────────────────
+  -- ââ Akai MPX8 âââââââââââââââââââââââââââââââââ
   params:add_separator("mpx8_sep", "MPX8 PADS")
 
   params:add_option("mpx8_enabled", "mpx8 enabled", {"off","on"}, 1)
