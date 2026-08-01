@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.137
+-- Endless DJ v1.138
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -28,6 +28,7 @@ arrangement_engine = include("EndlessDJ/lib/arrangement_engine")
 transition_engine = include("EndlessDJ/lib/transition_engine")
 timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
+generation_fixtures = include("EndlessDJ/lib/generation_fixtures")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
@@ -415,8 +416,9 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.137",
+      version="v1.138",
       sample_library=sample_library,
+      generation_fixtures=generation_fixtures.build(song_identity),
       restore_audio=function()
         mixer_apply_channel()
         for deck_id = 1, 2 do
