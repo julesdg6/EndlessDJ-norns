@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.135", 1, true) then
-  fail("Script version must match PR #135")
+if not source:find("Endless DJ v1.136", 1, true) then
+  fail("Script version must match PR #136")
 end
-pass("Script version matches PR #135")
+pass("Script version matches PR #136")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -220,7 +220,7 @@ do
   if not engine_source:find("server.sync", 1, true) then
     fail("Custom engine must wait for SynthDef uploads before creating mixer nodes")
   end
-  for _, command in ipairs({"n808_set", "n808_level"}) do
+  for _, command in ipairs({"n808_set", "n808_level", "n808_model"}) do
     if not engine_source:find("addCommand(\\" .. command, 1, true) then
       fail("Custom engine is missing " .. command .. " command")
     end
@@ -428,18 +428,20 @@ pass("Auto mixer, five channels, dual send/returns, and mastering exist")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
-  for _, voice in ipairs({
-    "Kick", "Snare", "Clap", "Tom", "ClosedHat", "OpenHat",
+  for _, token in ipairs({
+    "n808SynthDefs = Array.fill(5", "Array.fill(6",
+    "SynthDef(n808SynthDefs[kitIndex][voiceIndex]",
+    "n808SynthDefs[n808Model[deck]][voice]",
   }) do
-    if not engine_source:find("SynthDef(\\endless808" .. voice, 1, true) then
-      fail("n-808 CPU optimization is missing dedicated " .. voice .. " SynthDef")
+    if not engine_source:find(token, 1, true) then
+      fail("n-808 kit architecture is missing " .. token)
     end
   end
   if engine_source:find("voiceSignals", 1, true) then
     fail("n-808 must not calculate all six drum voices for every hit")
   end
 end
-pass("n-808 calculates only the requested drum voice")
+pass("n-808 calculates only the requested kit voice")
 
 do
   local engine_source = read_file("lib/Engine_Endless.sc") or ""
@@ -920,7 +922,7 @@ do
     "SynthDef%(\\\\endlessDeckMixer,(.-)SynthDef%(\\\\endlessMaster,"
   ) or ""
   local master_mixer = engine_source:match(
-    "SynthDef%(\\\\endlessMaster,(.-)SynthDef%(\\\\endless808Kick,"
+    "SynthDef%(\\\\endlessMaster,(.-)5%.do%(%{ arg kitIndex;"
   ) or ""
   if deck_mixer:find("DetectSilence", 1, true) or
       master_mixer:find("DetectSilence", 1, true) then
@@ -929,7 +931,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.135"', 'sample_library=sample_library',
+    'version="v1.136"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
