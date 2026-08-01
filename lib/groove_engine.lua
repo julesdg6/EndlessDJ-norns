@@ -113,7 +113,8 @@ function M.new(identity)
   assert(identity and identity.genre,"song identity required")
   local rng=rng_new(assert(identity.stream_seeds and identity.stream_seeds.groove,"groove seed required"))
   local compatible=FEELS[identity.genre] or {"straight"}
-  local feel=rng:pick(compatible)
+  local feel=identity.groove_family or rng:pick(compatible)
+  assert(PATTERNS[feel],"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
   local bars={}

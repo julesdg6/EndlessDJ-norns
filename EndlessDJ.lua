@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.138
+-- Endless DJ v1.140
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -21,6 +21,7 @@ engine.name = "Endless"
 output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
+genre_profiles = include("EndlessDJ/lib/genre_profiles")
 song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
 bass_engine = include("EndlessDJ/lib/bass_engine")
@@ -416,7 +417,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.138",
+      version="v1.140",
       sample_library=sample_library,
       generation_fixtures=generation_fixtures.build(song_identity),
       restore_audio=function()
@@ -908,6 +909,12 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   local arrangement = arrangement_engine.new(identity)
   local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
   nbass = bass_engine.apply_voice_profile(bass, nbass)
+  local nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord"))
+  local nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono"))
+  local chord_models = {analog=0,fm=1,organ=2,pad=3,rave=4}
+  local mono_models = {analog=0,sub=1,reese=2,organ=3,fm=4,wobble=5}
+  nchord.model = assert(chord_models[identity.chord_model], "unknown chord model")
+  nmono.model = assert(mono_models[identity.mono_model], "unknown mono model")
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
@@ -923,8 +930,8 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     arrangement = arrangement,
     nbass = nbass,
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
-    nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
-    nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono")),
+    nchord = nchord,
+    nmono = nmono,
     ngrain = granular_patch_for_genre(genre, variation_seed),
     automix = automix_patch_for_genre(genre, variation_seed),
     nts1_identity = nil,
@@ -3120,9 +3127,12 @@ end
 
 local function play_chords(sec, s, deck, b, mix_fades)
   if sec == "INTRO" then return end
+  local chord_role = deck.identity and deck.identity.chord_role or "support"
+  if chord_role == "off" then return end
+  local role_amount = chord_role == "featured" and 0.82 or 0.48
   local melody_amount = mix_fades and (mix_fades.chords or mix_fades.melody) or 1
   local chord_level=arrangement_engine.role_level(deck.arrangement,b,"chords")
-  if not arrangement_engine.gate(deck.arrangement,b,s,"chords",melody_amount*chord_level) then return end
+  if not arrangement_engine.gate(deck.arrangement,b,s,"chords",melody_amount*chord_level*role_amount) then return end
 
   -- Determine whether this step is allowed to trigger.
   -- For the active deck: use the grid-editable j6_steps pattern.
@@ -3169,7 +3179,12 @@ local function play_chords(sec, s, deck, b, mix_fades)
     deck.chord_style = choose(chord_styles[gn] or {"block"})
   end
   local style = deck.chord_style
-  local vel = sec=="DROP" and 98 or 78
+  local vel
+  if chord_role == "featured" then
+    vel = sec=="DROP" and 84 or 70
+  else
+    vel = sec=="DROP" and 68 or 56
+  end
 
   if style == "block" then
     local dur = block_chord_dur[gn] or 10

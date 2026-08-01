@@ -4,6 +4,12 @@
 
 local M = {}
 
+local profiles = rawget(_G, "genre_profiles")
+if not profiles then
+  local ok, result = pcall(require, "genre_profiles")
+  profiles = ok and result or dofile("lib/genre_profiles.lua")
+end
+
 local MODULUS = 2147483647
 local MULTIPLIER = 48271
 
@@ -78,38 +84,6 @@ local archetypes = {
   HARDSTYLE={"reverse_bass", "euphoric", "rawstyle", "classic_hardstyle"},
 }
 
-local kit_families = {
-  HOUSE={"909","808","hybrid"}, FUNKY={"linn","909","hybrid"},
-  DIRTY={"909","industrial","hybrid"}, TECHNO={"909","industrial"},
-  GARAGE4={"909","linn","hybrid"}, TWO_STEP={"linn","909","hybrid"},
-  BREAKS={"linn","909","hybrid"}, DUBSTEP={"808","linn","industrial"},
-  DEEP={"808","909"}, ACID={"808","909"}, TRANCE={"909","hybrid"},
-  PROG={"909","hybrid"}, JUNGLE={"linn","909","hybrid"},
-  DNB={"linn","909","industrial"}, LIQUID={"linn","909"},
-  HARDTECHNO={"industrial","909"}, ELECTRO={"808","linn"},
-  JUKE={"808","linn"}, AFRO={"808","linn","hybrid"},
-  MINIMAL={"808","909"}, MELODIC={"909","hybrid"},
-  SPEED={"909","linn","industrial"}, BASSLINE={"909","linn","hybrid"},
-  HARDSTYLE={"industrial","909","hybrid"},
-}
-local groove_families = {"straight", "swung", "broken", "syncopated"}
-local harmony_families = {"minor_modal", "seventh_ninth", "pedal_tone", "borrowed_motion"}
-local arrangement_families = {
-  HOUSE={"club_linear","hook_ab","slow_burn"},
-  FUNKY={"hook_ab","club_linear","double_drop"}, DIRTY={"double_drop","club_linear"},
-  TECHNO={"slow_burn","double_drop","club_linear"}, GARAGE4={"hook_ab","club_linear"},
-  TWO_STEP={"hook_ab","double_drop"}, BREAKS={"double_drop","hook_ab"},
-  DUBSTEP={"double_drop","slow_burn"}, DEEP={"slow_burn","club_linear"},
-  ACID={"club_linear","double_drop"}, TRANCE={"double_drop","slow_burn"},
-  PROG={"slow_burn","hook_ab"}, JUNGLE={"double_drop","hook_ab"},
-  DNB={"double_drop","club_linear"}, LIQUID={"hook_ab","slow_burn"},
-  HARDTECHNO={"double_drop","club_linear"}, ELECTRO={"hook_ab","double_drop"},
-  JUKE={"hook_ab","double_drop"}, AFRO={"slow_burn","club_linear"},
-  MINIMAL={"slow_burn","club_linear"}, MELODIC={"slow_burn","double_drop"},
-  SPEED={"double_drop","hook_ab"}, BASSLINE={"double_drop","hook_ab"},
-  HARDSTYLE={"double_drop","club_linear"},
-}
-
 function M.archetypes_for_genre(genre)
   return archetypes[genre]
 end
@@ -133,16 +107,24 @@ function M.new(options)
   local seed = math.max(1, math.floor(options.seed or 1) % MODULUS)
   local deck_key = tostring(options.deck or "?")
   local selection = Rng:new(hash_text("identity:" .. deck_key, seed))
+  local archetype = selection:pick(choices)
+  local profile = assert(profiles.profile(options.genre, archetype), "missing genre profile")
   local identity = {
-    schema_version=1,
+    schema_version=2,
     seed=seed,
     deck=deck_key,
     genre=options.genre,
-    archetype=selection:pick(choices),
-    groove_family=selection:pick(groove_families),
-    kit=selection:pick(kit_families[options.genre]),
-    harmony_family=selection:pick(harmony_families),
-    arrangement_family=selection:pick(arrangement_families[options.genre]),
+    archetype=archetype,
+    groove_family=selection:pick(profile.grooves),
+    kit=selection:pick(profile.kits),
+    bass_family=selection:pick(profile.bass),
+    chord_model=selection:pick(profile.chords),
+    chord_role=profile.chord_role,
+    mono_model=selection:pick(profile.mono),
+    harmony_family=selection:pick(profile.harmony),
+    arrangement_family=selection:pick(profile.arrangements),
+    sample_tags=profile.sample_tags,
+    hook_role=profile.hook,
     stream_seeds={},
     stems={
       kick={role="rhythm", low_end_owner=true},
@@ -164,7 +146,7 @@ function M.new(options)
 end
 
 function M.validate(identity)
-  if type(identity) ~= "table" or identity.schema_version ~= 1 then
+  if type(identity) ~= "table" or identity.schema_version ~= 2 then
     return false, "unsupported identity schema"
   end
   local choices = archetypes[identity.genre]
@@ -174,10 +156,24 @@ function M.validate(identity)
     if name == identity.archetype then known = true break end
   end
   if not known then return false, "incompatible archetype" end
+  for dimension, key in pairs({kits="kit", grooves="groove_family", bass="bass_family",
+      chords="chord_model", mono="mono_model", harmony="harmony_family",
+      arrangements="arrangement_family"}) do
+    if not profiles.supports(identity.genre, identity.archetype, dimension, identity[key]) then
+      return false, "incompatible " .. key
+    end
+  end
+  if identity.chord_role~="off" and identity.chord_role~="support" and identity.chord_role~="featured" then
+    return false,"invalid chord role"
+  end
   if type(identity.seed) ~= "number" or type(identity.stream_seeds) ~= "table" then
     return false, "missing seed lineage"
   end
   return true
+end
+
+function M.profile_for(identity)
+  return identity and profiles.profile(identity.genre, identity.archetype) or nil
 end
 
 local function encode(value)

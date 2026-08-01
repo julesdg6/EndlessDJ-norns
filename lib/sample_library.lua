@@ -139,6 +139,9 @@ local function compatibility_score(entry,identity,target_energy)
   for _,tag in ipairs(GENRE_TAGS[identity.genre] or {"club"}) do
     if has(entry.tags,tag) then value=value+4 end
   end
+  for _,tag in ipairs(identity.sample_tags or {}) do
+    if has(entry.tags,tag) then value=value+7 end
+  end
   value=value-math.abs((entry.energy or 0.5)-target_energy)*3
   return value
 end

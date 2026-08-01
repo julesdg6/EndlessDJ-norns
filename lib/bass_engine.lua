@@ -120,7 +120,8 @@ function M.new(identity, groove)
   local rng = rng_new(assert(identity.stream_seeds and identity.stream_seeds.bass,
     "bass seed required"))
   local palette = VOICES[identity.genre] or VOICES.HOUSE
-  local voice_family = rng:pick(palette)
+  local voice_family = identity.bass_family or rng:pick(palette)
+  assert(MODEL[voice_family] or voice_family == "303", "identity selected unknown bass")
   local mode = low_end_mode(identity, voice_family)
   local bars = {}
   for bar = 1, 4 do bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove) end
@@ -177,9 +178,8 @@ function M.validate(plan)
   if type(plan) ~= "table" or plan.schema_version ~= 1 then
     return false, "unsupported bass schema"
   end
-  local palette = VOICES[plan.genre]
-  if not palette or not contains(palette, plan.voice_family) then
-    return false, "voice family is not eligible for genre"
+  if not MODEL[plan.voice_family] and plan.voice_family ~= "303" then
+    return false, "unknown voice family"
   end
   if plan.genre == "TWO_STEP" and plan.voice_family == "303" then
     return false, "2-Step must not default to 303"

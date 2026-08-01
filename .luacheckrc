@@ -13,6 +13,7 @@ globals = {
   "grid",
   "groove_engine",
   "generation_fixtures",
+  "genre_profiles",
   "generate_song_identity",
   "generation_fixtures",
   "identity_random_float",
