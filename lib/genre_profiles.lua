@@ -436,6 +436,14 @@ local allowed={
  harmony={"minor_modal","seventh_ninth","pedal_tone","borrowed_motion"},
  arrangements={"club_linear","hook_ab","double_drop","slow_burn"},
 }
+local SECONDARY_BASS={
+  TECHNO={"fm","reese"}, GARAGE4={"organ","fm"},
+  TWO_STEP={"reese","fm","organ"}, BREAKS={"reese","fm"},
+  DUBSTEP={"reese","wobble","fm"}, JUNGLE={"reese","fm"},
+  DNB={"reese","fm"}, HARDTECHNO={"reese","fm"},
+  SPEED={"reese","organ","fm"}, BASSLINE={"organ","reese","wobble","fm"},
+  HARDSTYLE={"reese","fm"},
+}
 local function contains(values,wanted)
   for _,value in ipairs(values or {}) do if value==wanted then return true end end
   return false
@@ -456,6 +464,14 @@ end
 
 for _,profiles in pairs(P) do
   for _,profile in pairs(profiles) do profile.chord_role=chord_role_for(profile) end
+end
+
+for genre,profiles in pairs(P) do
+  for _,profile in pairs(profiles) do
+    if profile.chord_role=="off" and SECONDARY_BASS[genre] then
+      profile.secondary_bass=SECONDARY_BASS[genre]
+    end
+  end
 end
 
 function M.profile(genre,archetype)
@@ -484,6 +500,11 @@ function M.validate(genre,archetype)
   if genre=="TWO_STEP" and contains(profile.bass,"303") then return false,"2-Step profile allows 303" end
   if genre=="ACID" and not contains(profile.bass,"303") then return false,"Acid profile lacks 303" end
   if not contains({"off","support","featured"},profile.chord_role) then return false,"invalid chord role" end
+  for _,voice in ipairs(profile.secondary_bass or {}) do
+    if not contains(allowed.mono,voice) or voice=="sub" then
+      return false,"invalid secondary bass "..tostring(voice)
+    end
+  end
   return true
 end
 function M.each()

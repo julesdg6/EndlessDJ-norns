@@ -115,6 +115,25 @@ local function make_bar(genre, family, bar, rng, groove)
   return events
 end
 
+local function secondary_bar(primary,genre,family,bar,rng,groove)
+  local events=make_bar(genre,family,bar,rng,groove)
+  local primary_bar=primary.bars[((bar-1)%primary.phrase_bars)+1] or {}
+  for step in pairs(primary_bar) do events[step]=nil end
+  if next(events)==nil then
+    for _,step in ipairs({3,7,11,15}) do
+      if not primary_bar[step] and not kick_at(groove,bar,step) then
+        add_event(events,step,rng:pick({0,3,5,7,10}),1,rng:int(62,82),false,false)
+        break
+      end
+    end
+  end
+  for _,event in pairs(events) do
+    event.velocity=math.min(88,math.max(58,event.velocity-22))
+    event.length=math.min(2,event.length)
+  end
+  return events
+end
+
 function M.new(identity, groove)
   assert(identity and identity.genre, "song identity required")
   local rng = rng_new(assert(identity.stream_seeds and identity.stream_seeds.bass,
@@ -154,6 +173,23 @@ function M.new(identity, groove)
   }
 end
 
+function M.new_secondary(identity,groove,primary)
+  local family=identity and identity.secondary_bass_family
+  if not family then return nil end
+  assert(MODEL[family] and family~="sub","secondary bass must be a non-sub model")
+  local seed=assert(identity.stream_seeds and identity.stream_seeds.bass,"bass seed required")
+  local rng=rng_new(seed+104729)
+  local bars={}
+  for bar=1,4 do bars[bar]=secondary_bar(primary,identity.genre,family,bar,rng,groove) end
+  return {
+    schema_version=1,genre=identity.genre,archetype=identity.archetype,
+    voice_family=family,model=MODEL[family],phrase_bars=4,
+    octave=(primary.octave or 0)+12,bars=bars,low_end_mode="secondary",
+    low_end_owner="primary_bass",kick_relationship="counter",
+    modulation={base=0.62,drop=0.78,second_drop=0.88,transpose=rng:pick({0,5,7,12})},
+  }
+end
+
 function M.event(plan, absolute_bar, step, section)
   if not plan or not plan.bars then return nil end
   local bar = ((absolute_bar - 1) % plan.phrase_bars) + 1
@@ -187,11 +223,12 @@ function M.validate(plan)
   if type(plan.bars) ~= "table" or #plan.bars ~= plan.phrase_bars then
     return false, "invalid phrase length"
   end
-  if not contains({"bass","sub_bass","rumble","reverse_bass","pitched_kick"},
+  if not contains({"bass","sub_bass","rumble","reverse_bass","pitched_kick","secondary"},
       plan.low_end_mode) then
     return false, "invalid low-end mode"
   end
-  local expected_owner = plan.low_end_mode == "pitched_kick" and "kick" or "bass"
+  local expected_owner=(plan.low_end_mode=="pitched_kick" and "kick") or
+    (plan.low_end_mode=="secondary" and "primary_bass") or "bass"
   if plan.low_end_owner ~= expected_owner then return false, "invalid low-end ownership" end
   if type(plan.modulation) ~= "table" or not plan.modulation.second_drop then
     return false, "missing phrase modulation"
@@ -212,6 +249,11 @@ function M.apply_voice_profile(plan, patch)
   for name, target in pairs(profile) do
     local original = result[name] or target
     result[name] = (target * 0.85) + (original * 0.15)
+  end
+  if plan.low_end_mode=="secondary" then
+    result.sub=0
+    result.cutoff=math.max(0.48,result.cutoff or 0.48)
+    result.delay_send=math.min(0.08,result.delay_send or 0)
   end
   if plan.modulation then
     result.lfo_depth = math.min(1, result.lfo_depth * plan.modulation.base)

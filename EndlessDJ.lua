@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.140
+-- Endless DJ v1.142
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -417,7 +417,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.140",
+      version="v1.142",
       sample_library=sample_library,
       generation_fixtures=generation_fixtures.build(song_identity),
       restore_audio=function()
@@ -906,9 +906,15 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   identity.root_pitch_class=root%12
   local groove = groove_engine.new(identity)
   local bass = bass_engine.new(identity, groove)
+  local secondary_bass=bass_engine.new_secondary(identity,groove,bass)
   local arrangement = arrangement_engine.new(identity)
   local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
   nbass = bass_engine.apply_voice_profile(bass, nbass)
+  local nsecondary_bass=nil
+  if secondary_bass then
+    nsecondary_bass=nmono_patch_for_genre(genre,patch_rng:fork("secondary_bass"))
+    nsecondary_bass=bass_engine.apply_voice_profile(secondary_bass,nsecondary_bass)
+  end
   local nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord"))
   local nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono"))
   local chord_models = {analog=0,fm=1,organ=2,pad=3,rave=4}
@@ -927,8 +933,10 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     identity = identity,
     groove = groove,
     bass = bass,
+    secondary_bass=secondary_bass,
     arrangement = arrangement,
     nbass = nbass,
+    nsecondary_bass=nsecondary_bass,
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
     nchord = nchord,
     nmono = nmono,
@@ -1041,6 +1049,13 @@ nbass_apply_deck = function(deck)
   deck.nbass = deck.nbass or nmono_patch_for_genre(deck.genre)
   deck.nbass = bass_engine.apply_voice_profile(deck.bass, deck.nbass)
   internal_engine.set_nbass(internal_engine.deck_id(deck, deck_a), deck.nbass)
+  if deck.secondary_bass then
+    deck.nsecondary_bass=deck.nsecondary_bass or
+      bass_engine.apply_voice_profile(deck.secondary_bass,nmono_patch_for_genre(deck.genre))
+    internal_engine.set_secondary_bass(
+      internal_engine.deck_id(deck,deck_a),deck.nsecondary_bass
+    )
+  end
 end
 
 local function nts1_reset_deck_identities()
@@ -2820,7 +2835,7 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel, deck, internal_role, variant)
+local function mpx8_trigger(pad_idx, vel, deck, internal_role, variant, target_beats)
   if output_router.sends_external("samples") and mpx8_enabled and mpx8_midi_out then
     local note = mpx8_pads[pad_idx]
     if note then
@@ -2831,6 +2846,9 @@ local function mpx8_trigger(pad_idx, vel, deck, internal_role, variant)
   if output_router.sends_internal("samples") and deck then
     local role = internal_role or sampler_state.roles[pad_idx]
     local selection=sample_library.selection_for(deck.sample_palette,role,variant)
+    if selection and target_beats then
+      selection=sample_library.sync_settings(selection,bpm,target_beats)
+    end
     local slot=(selection and selection.slot) or (deck.sample_roles and deck.sample_roles[role])
     if slot then
       internal_engine.sampler(internal_engine.deck_id(deck,deck_a),slot,vel,selection)
@@ -3125,6 +3143,24 @@ local function play_bass(sec, s, deck, b, mix_fades)
   end
 end
 
+local function play_secondary_bass(sec,s,deck,b,mix_fades)
+  local plan=deck.secondary_bass
+  if not plan or sec=="INTRO" or sec=="BREAK" then return end
+  local amount=(mix_fades and mix_fades.bass or 1)*
+    arrangement_engine.role_level(deck.arrangement,b,"bass")*0.62
+  if amount<=0.05 then return end
+  local event=bass_engine.event(plan,b,s,sec)
+  if not event then return end
+  local velocity=math.floor(event.velocity*amount+0.5)
+  if velocity<24 then return end
+  local note=deck.root+(plan.octave or 12)+event.degree
+  if output_router.sends_internal("bass") then
+    internal_engine.secondary_bass_voice(
+      internal_engine.deck_id(deck,deck_a),note,velocity,event.length
+    )
+  end
+end
+
 local function play_chords(sec, s, deck, b, mix_fades)
   if sec == "INTRO" then return end
   local chord_role = deck.identity and deck.identity.chord_role or "support"
@@ -3382,18 +3418,15 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   if not output_router.sends_internal("samples") and
       (not output_router.sends_external("samples") or
        not mpx8_enabled or not mpx8_midi_out) then return end
-  -- MPX8 is a bar-level device; only act at the start of each bar
-  if s ~= 1 then return end
-
   -- One-shot transition samples are emitted by the stored phrase plan rather
   -- than hard-coded universal bar numbers.  Double-drop plans therefore get a
   -- distinct second riser/impact without retriggering an earlier event.
-  local planned_event=arrangement_engine.event_at(deck.arrangement,b)
+  local planned_event=s==1 and arrangement_engine.event_at(deck.arrangement,b) or nil
   if planned_event and not deck.mpx8_events_fired[planned_event] then
     deck.mpx8_events_fired[planned_event]=true
     local variant=planned_event:find("_b",1,true) and "alternate" or "primary"
     if planned_event:find("riser",1,true) then
-      mpx8_trigger(6,100,deck,"riser",variant)
+      mpx8_trigger(6,100,deck,"riser",variant,4)
     elseif planned_event:find("impact",1,true) then
       mpx8_trigger(5,110,deck,"impact",variant)
       mpx8_trigger(8,110,deck,"drop_accent",variant)
@@ -3412,28 +3445,28 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   local accent_offset = (deck.variation_seed or 1) % 4
 
   -- Pad 1: percussion accent at 4-bar boundaries (offset by deck seed)
-  if (b + accent_offset) % 4 == 0 then
+  if s==1 and (b + accent_offset) % 4 == 0 then
     local vel = (sec == "DROP") and 100 or 82
     mpx8_trigger(1, vel, deck)
   end
   -- Pad 2: alternate percussion at 8-bar boundaries in DROP only
-  if sec == "DROP" and (b + accent_offset) % 8 == 0 then
+  if s==1 and sec == "DROP" and (b + accent_offset) % 8 == 0 then
     mpx8_trigger(2, 90, deck)
   end
 
   -- Pad 3: short fill at every 4-bar boundary
-  if b % 4 == 0 then
+  if s==13 and b % 4 == 0 then
     local vel = (sec == "DROP") and 102 or 85
-    mpx8_trigger(3, vel, deck)
+    mpx8_trigger(3,vel,deck,"short_fill",nil,1)
   end
   -- Pad 4: long fill at every 8-bar boundary
-  if b % 8 == 0 then
+  if s==9 and b % 8 == 0 then
     local vel = (sec == "DROP") and 108 or 90
-    mpx8_trigger(4, vel, deck)
+    mpx8_trigger(4,vel,deck,"long_fill",nil,2)
   end
 
   -- Pad 7: vocal/FX stab at the start of every 8-bar phrase in MAIN/DROP
-  if (sec == "MAIN" or sec == "DROP") and b % 8 == 1 then
+  if s==1 and (sec == "MAIN" or sec == "DROP") and b % 8 == 1 then
     local vel = (sec == "DROP") and 100 or 80
     local phrase=arrangement_engine.phrase(deck.arrangement,b)
     local variant=(phrase and phrase.index%2==0) and "alternate" or "primary"
@@ -3450,6 +3483,7 @@ local function play_deck(deck, b, s, mix_fades)
   end
   schedule("drums", function() play_drums(sec, s, b, mix_fades, deck) end)
   schedule("bass", function() play_bass(sec, s, deck, b, mix_fades) end)
+  schedule("bass", function() play_secondary_bass(sec,s,deck,b,mix_fades) end)
   schedule("chords", function() play_chords(sec, s, deck, b, mix_fades) end)
   schedule("mono", function()
     play_norns_instrument(sec, s, deck, b, mix_fades)

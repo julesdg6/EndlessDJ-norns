@@ -12,6 +12,14 @@ for _, row in ipairs(rows) do
   counts[row.genre] = (counts[row.genre] or 0) + 1
   assert(row.profile.chord_role=="off" or row.profile.chord_role=="support" or row.profile.chord_role=="featured",
     row.genre .. "/" .. row.archetype .. ": invalid chord role")
+  if row.profile.secondary_bass then
+    assert(row.profile.chord_role=="off",row.genre.."/"..row.archetype..
+      ": secondary bass must replace chords")
+    for _,voice in ipairs(row.profile.secondary_bass) do
+      assert(voice~="sub" and voice~="303",row.genre.."/"..row.archetype..
+        ": secondary bass must not own the sub register")
+    end
+  end
 end
 for genre, count in pairs(counts) do assert(count == 4, genre .. " must have four profiles") end
 assert(#profiles.archetypes("TWO_STEP") == 4)

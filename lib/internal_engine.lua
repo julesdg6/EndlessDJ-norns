@@ -236,6 +236,22 @@ function InternalEngine.set_nbass(deck_id, settings)
   )
 end
 
+function InternalEngine.secondary_bass_voice(deck_id,note,velocity,length)
+  call("nsecondary_bass_note",deck_id,note,velocity/127,length or 1)
+end
+
+function InternalEngine.set_secondary_bass(deck_id,settings)
+  if not settings then return end
+  call("nsecondary_bass_model",deck_id,settings.model or 0)
+  call(
+    "nsecondary_bass_set",deck_id,
+    settings.preset,settings.waveform,0,
+    settings.cutoff,settings.resonance,settings.attack,settings.release,
+    settings.glide,settings.lfo_rate,settings.lfo_depth,
+    math.min(0.08,settings.delay_send or 0)
+  )
+end
+
 function InternalEngine.sampler(deck_id, pad, velocity, settings)
   settings = settings or {}
   call(
