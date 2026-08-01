@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.130
+-- Endless DJ v1.131
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -413,7 +413,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.130",
+      version="v1.131",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -3120,7 +3120,8 @@ local function play_bass(sec, s, deck, b, mix_fades)
   if sec == "BREAK" and (b % 2 == 0 or s ~= 1) then return end
   local bass_amount = mix_fades and mix_fades.bass or 1
   if bass_amount <= 0.02 then return end
-  local event = bass_engine.event(deck.bass, b, s)
+  if deck.bass.low_end_owner == "kick" then return end
+  local event = bass_engine.event(deck.bass, b, s, sec)
   if not event then return end
   local velocity = math.floor(event.velocity * bass_amount + 0.5)
   if sec == "DROP" then velocity = math.min(127, velocity + 8) end
