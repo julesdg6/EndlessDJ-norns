@@ -151,9 +151,10 @@ The six n-808 voices also use separate synthesis graphs. A hat hit therefore
 calculates only the requested hat rather than simultaneously calculating and
 discarding the kick, snare, clap, tom, and other hat models.
 
-The eight n-chord sound models are likewise compiled as separate graphs. Each
-note calculates only its song's selected chord model instead of all eight
-models, which keeps polyphonic chord entrances within the Norns audio budget.
+The five n-chord synthesis engines and eight musical envelope roles are compiled
+as separate graphs. Each note calculates only its song's selected engine/role
+pair instead of every alternative, keeping polyphonic entrances within the
+Norns audio budget.
 
 In the `OUTPUT ROUTING` parameter group, drums, bass, chords, mono, and samples
 can each be set manually to `off`, `external`, `internal`, or `both`. Every route
@@ -175,12 +176,15 @@ or filter envelopes. Accent raises amplitude, cutoff, and filter-envelope depth
 together. A limiter bounds resonant and driven settings before the signal
 reaches the deck mixer.
 
-Each song also receives an independent, genre-shaped N-CHORD patch. The patch
-selects one of eight starting sounds (house stab, deep chord, rave chord, soft
-pad, organ, strings, detuned saw, or digital pluck) and generates inversion,
-octave spread, strum, brightness, filter-envelope, and chorus settings. These
-settings affect only the internal voice; external J-6 notes and timing remain
-unchanged. The `N-CHORD` parameter group follows and edits the current deck.
+Each song also receives an independent, genre-shaped N-CHORD patch. It selects
+one compatible synthesis engine—analog, FM, organ/piano, supersaw/pad, or
+rave/hoover—plus one of eight envelope roles (house stab, deep chord, rave
+chord, soft pad, organ, strings, detuned saw, or digital pluck). It then
+generates inversion, octave spread, strum, brightness, filter-envelope, and
+chorus settings. Engine choice is deterministic and remains fixed for the
+record. These settings affect only the internal voice; external J-6 notes and
+timing remain unchanged. The `N-CHORD` parameter group follows and edits the
+current deck.
 Grid keyboard notes targeting Norns now remain gated until their pads are
 released.
 
