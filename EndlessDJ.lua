@@ -942,7 +942,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     arrangement = arrangement,
     nbass = nbass,
     nsecondary_bass=nsecondary_bass,
-    n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
+    n303 = (bass.voice_family == "303") and n303_patch_for_genre(genre, patch_rng:fork("n303")) or nil,
     nchord = nchord,
     nmono = nmono,
     ngrain = granular_patch_for_genre(genre, variation_seed),
@@ -958,7 +958,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     mpx8_drop_accent_fired = false,
     mpx8_events_fired = {},
   }
-  if acid_build_deck_state then
+  if acid_build_deck_state and bass.voice_family == "303" then
     deck.acid = acid_build_deck_state(deck)
   end
   deck.sample_palette=sample_library.plan_for_identity(identity)
@@ -1007,6 +1007,7 @@ end
 
 n303_apply_deck = function(deck, sync_params)
   if not deck then return end
+  if not deck.bass or deck.bass.voice_family ~= "303" then return end
   deck.n303 = deck.n303 or n303_patch_for_genre(deck.genre)
   internal_engine.set_n303(internal_engine.deck_id(deck, deck_a), deck.n303)
   if not sync_params then return end
@@ -2610,7 +2611,7 @@ acid_build_deck_state = function(deck, existing)
 end
 
 acid_refresh_phrase = function(deck, sec, b)
-  if deck.genre ~= "ACID" then return end
+  if deck.genre ~= "ACID" and (not deck.bass or deck.bass.voice_family ~= "303") then return end
   if not deck.acid then
     deck.acid = acid_build_deck_state(deck)
   end
@@ -2663,8 +2664,12 @@ acid_sync_seed_param = function(deck)
   end
 end
 
-deck_a.acid = deck_a.acid or acid_build_deck_state(deck_a)
-deck_b.acid = deck_b.acid or acid_build_deck_state(deck_b)
+if deck_a.bass and deck_a.bass.voice_family == "303" then
+  deck_a.acid = deck_a.acid or acid_build_deck_state(deck_a)
+end
+if deck_b.bass and deck_b.bass.voice_family == "303" then
+  deck_b.acid = deck_b.acid or acid_build_deck_state(deck_b)
+end
 
 local function nts1_snap_to_pcs(note, root, pcs, min_note, max_note)
   if #pcs == 0 then return clamp(note, min_note, max_note) end

@@ -122,6 +122,12 @@ for seed = 1, 64 do
   if not expressive then fail("Acid phrase lacks accents and slides") end
 end
 
+for seed = 1, 512 do
+  local identity = identity_engine.new{seed=seed,deck="A",genre="HOUSE"}
+  local plan = bass_engine.new(identity, groove_engine.new(identity))
+  if plan.voice_family == "303" then fail("House must not default to 303 bass voice") end
+end
+
 local distinct = {}
 for seed = 1, 96 do
   local identity = identity_engine.new{seed=seed,deck="A",genre="HOUSE"}
