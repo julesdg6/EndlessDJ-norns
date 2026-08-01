@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.124", 1, true) then
-  fail("Script version must match PR #124")
+if not source:find("Endless DJ v1.125", 1, true) then
+  fail("Script version must match PR #125")
 end
-pass("Script version matches PR #124")
+pass("Script version matches PR #125")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -884,7 +884,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.124"', 'sample_library=sample_library',
+    'version="v1.125"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1368,5 +1368,16 @@ do
   end
   pass("Acid generator statistics avoid empty, fully gated, and overly repetitive patterns")
 end
+
+if not source:find('include("EndlessDJ/lib/song_identity")', 1, true) or
+    not source:find("identity = identity", 1, true) or
+    not source:find("song_identity.stream(identity, \"patches\")", 1, true) then
+  fail("Generated decks must own deterministic song identities and patch streams")
+end
+if not source:find("generate_song_identity = function", 1, true) or
+    not source:find("print_song_identity = function", 1, true) then
+  fail("Song identities must expose non-mutating Maiden diagnostics")
+end
+pass("Deterministic independent song identity foundation exists")
 
 print("All Endless DJ checks passed")
