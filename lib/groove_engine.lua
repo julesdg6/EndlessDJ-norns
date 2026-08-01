@@ -24,9 +24,15 @@ local PATTERNS = {
 }
 
 local BASE_VELOCITY={kick=110,snare=100,clap=104,hats=70,ohats=74,tom=88}
-local function contains(values,wanted) for _,value in ipairs(values or {}) do if value==wanted then return true end end return false end
+local function contains(values,wanted)
+  for _,value in ipairs(values or {}) do if value==wanted then return true end end
+  return false
+end
 local function copy(values) local result={} for i,v in ipairs(values or {}) do result[i]=v end return result end
-local function add_unique(values,step) if not contains(values,step) then values[#values+1]=step end table.sort(values) end
+local function add_unique(values,step)
+  if not contains(values,step) then values[#values+1]=step end
+  table.sort(values)
+end
 local function timing_for(feel,step,swing)
   if feel=="swung" and step%2==0 then return swing end
   if feel=="broken" and (step==4 or step==12) then return -0.06 end
@@ -51,7 +57,11 @@ local function make_bar(pattern,bar_number,rng,feel,swing)
     elseif bar_number==4 and voice=="snare" then add_unique(steps,16) end
     bar[voice]={}
     for index,step in ipairs(steps) do
-      local event={velocity=math.max(30,math.min(127,BASE_VELOCITY[voice]+((index-1)%4)*2+rng:int(-5,5))),offset=timing_for(feel,step,swing)}
+      local velocity=BASE_VELOCITY[voice]+((index-1)%4)*2+rng:int(-5,5)
+      local event={
+        velocity=math.max(30,math.min(127,velocity)),
+        offset=timing_for(feel,step,swing),
+      }
       event.ghost=(voice=="snare" and step~=5 and step~=9 and step~=13)
       if event.ghost then event.velocity=rng:int(48,70) end
       bar[voice][step]=event
@@ -68,7 +78,14 @@ function M.new(identity)
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local bars={}
   for bar_number=1,4 do bars[bar_number]=make_bar(PATTERNS[feel],bar_number,rng,feel,swing) end
-  return {schema_version=1,genre=identity.genre,archetype=identity.archetype,family=feel,swing=swing,phrase_bars=4,bars=bars,fill={bar=4,steps={13,14,15,16},style=(feel=="halftime") and "sparse" or "turnaround"}}
+  return {
+    schema_version=1, genre=identity.genre, archetype=identity.archetype,
+    family=feel, swing=swing, phrase_bars=4, bars=bars,
+    fill={
+      bar=4, steps={13,14,15,16},
+      style=(feel=="halftime") and "sparse" or "turnaround",
+    },
+  }
 end
 function M.event(plan,absolute_bar,voice,step)
   if not plan or not plan.bars then return nil end
