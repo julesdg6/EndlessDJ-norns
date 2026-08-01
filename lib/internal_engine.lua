@@ -149,6 +149,7 @@ function InternalEngine.chord_all_off(deck_id)
 end
 
 function InternalEngine.set_nchord(deck_id, settings)
+  call("nchord_model", deck_id, settings.model or 0)
   call(
     "nchord_set",
     deck_id,
