@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.140", 1, true) then
-  fail("Script version must match PR #140")
+if not source:find("Endless DJ v1.142", 1, true) then
+  fail("Script version must match PR #142")
 end
-pass("Script version matches PR #140")
+pass("Script version matches PR #142")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -257,7 +257,9 @@ do
   for command, format in pairs({
     nmono_note="iiff", nmono_on="iif", nmono_off="i",
     nmono_set="iiffffffffff", nmono_model="ii",
-    nbass_note="iiff", nbass_set="iiffffffffff", nbass_model="ii"
+    nbass_note="iiff", nbass_set="iiffffffffff", nbass_model="ii",
+    nsecondary_bass_note="iiff", nsecondary_bass_set="iiffffffffff",
+    nsecondary_bass_model="ii"
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -270,6 +272,9 @@ do
   end
   if not engine_source:find("nbassVoices", 1, true) then
     fail("genre bass must allocate an independent persistent voice per deck")
+  end
+  if not engine_source:find("nsecondaryBassVoices",1,true) then
+    fail("secondary bass must allocate an independent persistent voice per deck")
   end
   for _, token in ipairs({"nbassGenerations", "SystemClock.sched", "synth.run(false)"}) do
     if not engine_source:find(token, 1, true) then
@@ -931,7 +936,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.140"', 'sample_library=sample_library',
+    'version="v1.142"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1455,6 +1460,7 @@ for _, required in ipairs({
   "function M.validate(plan)", 'TWO_STEP={"sub","reese","organ","fm"}',
   'ACID={"303"}', "kick_at(groove, bar, step)", "phrase_bars=4",
   "function M.apply_voice_profile(plan, patch)", "VOICE_PROFILES",
+  "function M.new_secondary(identity,groove,primary)",
 }) do
   if not bass_source:find(required, 1, true) then fail("Bass engine missing: " .. required) end
 end
@@ -1462,10 +1468,25 @@ for _, required in ipairs({
   'bass_engine = include("EndlessDJ/lib/bass_engine")',
   "bass = bass_engine.new(identity, groove)", "bass_engine.event(deck.bass, b, s, sec)",
   "internal_engine.bass_voice", "nbass_apply_deck(deck_a)",
+  "internal_engine.secondary_bass_voice", "play_secondary_bass",
 }) do
   if not source:find(required, 1, true) then fail("Genre bass integration missing: " .. required) end
 end
 pass("Deterministic genre-aware bass plans drive an independent bass synth voice")
+
+local sample_file=assert(io.open("lib/sample_library.lua","r"))
+local sample_source=sample_file:read("*a")
+sample_file:close()
+for _,required in ipairs({
+  "function SampleLibrary.sync_settings(selection,bpm,target_beats)",
+  'mpx8_trigger(6,100,deck,"riser",variant,4)',
+  's==13 and b % 4 == 0', 's==9 and b % 8 == 0',
+}) do
+  if not source:find(required,1,true) and not sample_source:find(required,1,true) then
+    fail("Phrase-synced samples missing: "..required)
+  end
+end
+pass("Risers and fills are stretched and launched to end on phrase boundaries")
 
 local arrangement_file=io.open("lib/arrangement_engine.lua","r")
 if not arrangement_file then fail("Missing phrase arrangement engine") end
