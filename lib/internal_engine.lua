@@ -30,6 +30,10 @@ function InternalEngine.set_deck_levels(a, b)
   call("deck_level", 2, b * compensation)
 end
 
+function InternalEngine.set_deck_eq(deck_id, low, mid, high)
+  call("deck_eq",deck_id,low or 1,mid or 1,high or 1)
+end
+
 function InternalEngine.set_transition_compensation(amount)
   transition_compensation = math.max(0, math.min(0.5, amount or 0))
 end

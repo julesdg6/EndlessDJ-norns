@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.136", 1, true) then
-  fail("Script version must match PR #136")
+if not source:find("Endless DJ v1.137", 1, true) then
+  fail("Script version must match PR #137")
 end
-pass("Script version matches PR #136")
+pass("Script version matches PR #137")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -220,7 +220,7 @@ do
   if not engine_source:find("server.sync", 1, true) then
     fail("Custom engine must wait for SynthDef uploads before creating mixer nodes")
   end
-  for _, command in ipairs({"n808_set", "n808_level", "n808_model"}) do
+  for _, command in ipairs({"n808_set", "n808_level", "n808_model", "deck_eq"}) do
     if not engine_source:find("addCommand(\\" .. command, 1, true) then
       fail("Custom engine is missing " .. command .. " command")
     end
@@ -931,7 +931,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.136"', 'sample_library=sample_library',
+    'version="v1.137"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1493,6 +1493,32 @@ if source:find('sec == "BUILD" and b == 81',1,true) or
   fail("Transition samples still use the universal fixed-bar arrangement")
 end
 pass("Deterministic phrase plans drive stem energy, samples and display metadata")
+
+local transition_file=io.open("lib/transition_engine.lua","r")
+if not transition_file then fail("Missing stem transition engine") end
+local transition_source=transition_file:read("*a")
+transition_file:close()
+for _,required in ipairs({
+  'M.STEMS = {"kick", "percussion", "bass", "chords", "lead", "samples", "fx"}',
+  'M.MODES = {"classic", "stem", "producer"}',
+  "function M.new(outgoing,incoming,options)","function M.levels(plan,bar)",
+  "function M.ownership(plan,bar,stem)","function M.preview(plan,bar)",
+  "function M.override(plan,stem,owner)","function M.cancel(plan)",
+  "function M.validate(plan)","bass_swap=true","percussion_overlay=true",
+  "vocal_tease=true","clean_cut=true","fx_exit=true",
+}) do
+  if not transition_source:find(required,1,true) then fail("Transition engine missing: "..required) end
+end
+for _,required in ipairs({
+  'transition_engine = include("EndlessDJ/lib/transition_engine")',
+  "transition_engine.new(","transition_engine.levels(transition_state.plan,mix_bar)",
+  '"transition_mode", "DJ transition mode"',"draw_transition_status()",
+  "transition_engine.override(","transition_engine.cancel(",
+  'internal_engine.set_deck_eq(deck_id,eq.low,eq.mid,eq.high)',
+}) do
+  if not source:find(required,1,true) then fail("Stem transition integration missing: "..required) end
+end
+pass("Phrase-aligned stem DJ planning, controls, preview and Classic fallback exist")
 
 local timing_file = io.open("lib/timing_scheduler.lua", "r")
 if not timing_file then fail("Missing shared timing scheduler") end

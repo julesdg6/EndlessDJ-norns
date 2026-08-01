@@ -62,6 +62,7 @@ globals = {
   "timing_clock_pulse",
   "timing_pulse",
   "timing_scheduler",
+  "transition_engine",
   "timing_subpulse",
   "sampler_playback_settings",
   "sampler_advanced_tick",
