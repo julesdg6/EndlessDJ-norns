@@ -25,6 +25,14 @@ local first = identity.new{seed=42042, deck="A", genre="TWO_STEP"}
 local replay = identity.new{seed=42042, deck="A", genre="TWO_STEP"}
 assert(identity.serialize(first) == identity.serialize(replay), "same seed must replay")
 
+local acid = identity.new{seed=6, deck="A", genre="ACID"}
+assert(type(acid.acid_identity)=="table", "Acid must store deterministic acid identity data")
+assert(acid.acid_identity.style and acid.acid_identity.pattern_length,
+  "Acid identity must include archetype-specific playback settings")
+local acid_replay = identity.new{seed=6, deck="A", genre="ACID"}
+assert(identity.serialize(acid) == identity.serialize(acid_replay),
+  "Acid song identity must replay exactly")
+
 local deck_b = identity.new{seed=42042, deck="B", genre="TWO_STEP"}
 assert(identity.serialize(first) ~= identity.serialize(deck_b), "deck streams must be independent")
 

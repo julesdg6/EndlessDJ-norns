@@ -36,6 +36,40 @@ local VOICE_PROFILES = {
 local LOW = {DUBSTEP=-12,JUNGLE=-12,DNB=-12,LIQUID=-12,JUKE=-12,HARDSTYLE=-12}
 local DENSE = {TWO_STEP=true,BREAKS=true,JUNGLE=true,DNB=true,JUKE=true,SPEED=true,BASSLINE=true}
 local LONG = {DUBSTEP=true,DEEP=true,LIQUID=true,MINIMAL=true,MELODIC=true,PROG=true}
+local ACID_SPECS = {
+  classic_303={
+    steps={{1,4,7,11,13},{1,3,7,9,12,15},{1,4,7,10,13,15},{1,3,7,11,14,16}},
+    degrees={0,0,3,7,10,12},
+    accents={1,7,13,15},
+    slides={3,10,11,14},
+    endings={7,12},
+    octave_chance=0.14,
+  },
+  jack_acid={
+    steps={{1,4,7,10,13,16},{1,3,6,9,12,15},{1,4,8,11,13,15},{1,3,7,10,12,16}},
+    degrees={0,3,5,7,10,12},
+    accents={1,4,10,13,16},
+    slides={3,6,10,12,15},
+    endings={10,12},
+    octave_chance=0.18,
+  },
+  deep_acid={
+    steps={{1,7,11,15},{1,8,11,14},{1,7,10,15},{1,8,12,16}},
+    degrees={0,0,3,7,10},
+    accents={1,11,15},
+    slides={7,11},
+    endings={3,7},
+    octave_chance=0.06,
+  },
+  rave_acid={
+    steps={{1,3,6,7,10,11,14,15},{1,4,7,9,12,13,15},{1,3,7,10,11,14,16},{1,4,7,10,12,15,16}},
+    degrees={0,3,7,10,12,15},
+    accents={1,3,7,11,15},
+    slides={3,6,10,14,15},
+    endings={12,15},
+    octave_chance=0.24,
+  },
+}
 
 local function low_end_mode(identity, voice_family)
   if identity.genre == "HARDSTYLE" then
@@ -115,6 +149,22 @@ local function make_bar(genre, family, bar, rng, groove)
   return events
 end
 
+local function acid_bar(archetype,bar,rng)
+  local spec=ACID_SPECS[archetype] or ACID_SPECS.classic_303
+  local events={}
+  local steps=spec.steps[((bar-1)%#spec.steps)+1]
+  for index,step in ipairs(steps) do
+    local degree=spec.degrees[((index+bar-2)%#spec.degrees)+1]
+    if index==1 then degree=0 end
+    if bar==4 and step==steps[#steps] then degree=spec.endings[rng:int(1,#spec.endings)] end
+    if step~=1 and rng:chance(spec.octave_chance or 0) then degree=degree+12 end
+    local slide=contains(spec.slides,step) and index<#steps and rng:chance(0.72)
+    local accent=(step==1 or contains(spec.accents,step)) and rng:chance(0.88)
+    add_event(events,step,degree,slide and 2 or 1,rng:int(88,114),accent,slide)
+  end
+  return events
+end
+
 local function secondary_bar(primary,genre,family,bar,rng,groove)
   local events=make_bar(genre,family,bar,rng,groove)
   local primary_bar=primary.bars[((bar-1)%primary.phrase_bars)+1] or {}
@@ -143,7 +193,10 @@ function M.new(identity, groove)
   assert(MODEL[voice_family] or voice_family == "303", "identity selected unknown bass")
   local mode = low_end_mode(identity, voice_family)
   local bars = {}
-  for bar = 1, 4 do bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove) end
+  for bar = 1, 4 do
+    bars[bar] = (identity.genre=="ACID" and voice_family=="303") and
+      acid_bar(identity.archetype,bar,rng) or make_bar(identity.genre, voice_family, bar, rng, groove)
+  end
   if mode == "reverse_bass" then
     bars = {}
     for bar = 1, 4 do
@@ -157,9 +210,9 @@ function M.new(identity, groove)
     bars = {{},{},{},{}}
   end
   local modulation = {
-    base=0.78 + rng:float() * 0.12,
-    drop=1.05 + rng:float() * 0.12,
-    second_drop=1.18 + rng:float() * 0.18,
+    base=((identity.genre=="ACID") and 0.82 or 0.78) + rng:float() * 0.12,
+    drop=((identity.genre=="ACID") and 1.12 or 1.05) + rng:float() * 0.12,
+    second_drop=((identity.genre=="ACID") and 1.28 or 1.18) + rng:float() * 0.18,
     transpose=rng:pick({0,0,0,5,7,12}),
   }
   return {

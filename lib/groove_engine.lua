@@ -31,6 +31,29 @@ local PHRASE_LENGTHS = {
   MELODIC={8,16}, SPEED={2,4,8}, BASSLINE={2,4,8}, HARDSTYLE={4,8},
 }
 
+local ACID_GROOVES = {
+  classic_303={
+    feel="straight", phrase_bars=8,
+    pattern={kick={1,5,9,13},snare={5,13},clap={5,13},hats={3,7,11,15},ohats={7,15},tom={8,16}},
+    fill={{12,"hats"},{15,"tom"},{16,"snare"}},
+  },
+  jack_acid={
+    feel="syncopated", phrase_bars=8,
+    pattern={kick={1,5,9,13},snare={5,13},clap={5,13},hats={2,4,7,10,12,15},ohats={4,11,15},tom={8,16}},
+    fill={{11,"tom"},{14,"snare"},{15,"tom"},{16,"clap"}},
+  },
+  deep_acid={
+    feel="straight", phrase_bars=16,
+    pattern={kick={1,5,9,13},snare={13},clap={5,13},hats={7,11,15},ohats={15},tom={}},
+    fill={{14,"hats"},{16,"clap"}},
+  },
+  rave_acid={
+    feel="straight", phrase_bars=8,
+    pattern={kick={1,5,9,13},snare={5,13},clap={5,13},hats={2,3,6,7,10,11,14,15},ohats={7,11,15},tom={8,12,16}},
+    fill={{13,"snare"},{14,"tom"},{15,"snare"},{16,"clap"}},
+  },
+}
+
 local FILL_RECIPES = {
   straight={{14,"tom"},{15,"snare"},{16,"clap"}},
   swung={{12,"hats"},{15,"tom"},{16,"clap"}},
@@ -99,33 +122,37 @@ local function make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
   return bar
 end
 
-local function make_fill(feel,phrase_bars,rng)
+local function make_fill(feel,phrase_bars,rng,recipe,style)
   local events={}
-  for index,item in ipairs(FILL_RECIPES[feel] or FILL_RECIPES.straight) do
+  for index,item in ipairs(recipe or FILL_RECIPES[feel] or FILL_RECIPES.straight) do
     local step,voice=item[1],item[2]
     events[step]={voice=voice,velocity=math.min(127,
       (BASE_VELOCITY[voice] or 88)+index*3+rng:int(-3,3))}
   end
-  return {bar=phrase_bars,style=feel.."_turnaround",events=events}
+  return {bar=phrase_bars,style=style or (feel.."_turnaround"),events=events}
 end
 
 function M.new(identity)
   assert(identity and identity.genre,"song identity required")
   local rng=rng_new(assert(identity.stream_seeds and identity.stream_seeds.groove,"groove seed required"))
   local compatible=FEELS[identity.genre] or {"straight"}
-  local feel=identity.groove_family or rng:pick(compatible)
-  assert(PATTERNS[feel],"identity selected unknown groove")
+  local acid_spec=identity.genre=="ACID" and ACID_GROOVES[identity.archetype] or nil
+  local feel=(acid_spec and acid_spec.feel) or identity.groove_family or rng:pick(compatible)
+  local pattern=(acid_spec and acid_spec.pattern) or PATTERNS[feel]
+  assert(pattern,"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
+  if acid_spec then phrase_bars=acid_spec.phrase_bars end
   local bars={}
   for bar_number=1,phrase_bars do
-    bars[bar_number]=make_bar(PATTERNS[feel],bar_number,phrase_bars,rng,feel,swing)
+    bars[bar_number]=make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
   end
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,
     family=feel, swing=swing, phrase_bars=phrase_bars, bars=bars,
     cycles=(feel=="polymetric") and {hats=3,tom=5} or nil,
-    fill=make_fill(feel,phrase_bars,rng),
+    fill=make_fill(feel,phrase_bars,rng,acid_spec and acid_spec.fill,
+      acid_spec and (identity.archetype.."_fill") or nil),
   }
 end
 function M.event(plan,absolute_bar,voice,step)

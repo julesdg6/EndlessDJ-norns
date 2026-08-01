@@ -19,6 +19,22 @@ for _,genre in ipairs({"HOUSE","TWO_STEP","BREAKS","DUBSTEP","DNB","AFRO","HARDS
   assert(a.phrase_bars==2 or a.phrase_bars==4 or a.phrase_bars==8 or a.phrase_bars==16)
   assert(#a.bars==a.phrase_bars)
 end
+local acid_fixtures={
+  classic_303={seed=6,phrase_bars=8,family="straight"},
+  jack_acid={seed=8,phrase_bars=8,family="syncopated"},
+  deep_acid={seed=1,phrase_bars=16,family="straight"},
+  rave_acid={seed=4,phrase_bars=8,family="straight"},
+}
+local acid_signatures={}
+for archetype,fixture in pairs(acid_fixtures) do
+  local plan=groove.new(identity.new{seed=fixture.seed,deck="A",genre="ACID"})
+  assert(plan.archetype==archetype,"wrong acid archetype fixture selected")
+  assert(plan.phrase_bars==fixture.phrase_bars,"acid archetype phrase length mismatch")
+  assert(plan.family==fixture.family,"acid archetype groove family mismatch")
+  acid_signatures[archetype]=signature(plan)
+end
+assert(acid_signatures.classic_303~=acid_signatures.deep_acid,"acid archetypes collapsed to one groove")
+assert(acid_signatures.jack_acid~=acid_signatures.rave_acid,"acid archetypes need distinct drum language")
 local house=groove.new(identity.new{seed=1,deck="A",genre="HOUSE"})
 local two_step=groove.new(identity.new{seed=1,deck="A",genre="TWO_STEP"})
 assert(signature(house)~=signature(two_step),"contrasting genres collapsed to one groove")

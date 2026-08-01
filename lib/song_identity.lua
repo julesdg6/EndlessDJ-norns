@@ -95,8 +95,80 @@ local archetypes = {
   HARDSTYLE={"reverse_bass", "euphoric", "rawstyle", "classic_hardstyle"},
 }
 
+local ACID_IDENTITIES = {
+  classic_303={
+    style="Chicago 808 Acid House",
+    pattern_lengths={16},
+    density={0.56,0.60,0.64},
+    pitch_variety={0.24,0.30,0.36},
+    repeat_bias={0.68,0.74,0.80},
+    slide_amount={0.20,0.24,0.28},
+    accent_amount={0.22,0.28,0.34},
+    octave_amount={0.10,0.14,0.18},
+    evolution_amount={0.18,0.22,0.28},
+    mutation_interval={8},
+  },
+  jack_acid={
+    style="909 warehouse acid",
+    pattern_lengths={24},
+    density={0.64,0.68,0.72},
+    pitch_variety={0.34,0.40,0.46},
+    repeat_bias={0.48,0.56,0.62},
+    slide_amount={0.26,0.32,0.38},
+    accent_amount={0.26,0.32,0.38},
+    octave_amount={0.14,0.18,0.22},
+    evolution_amount={0.28,0.34,0.40},
+    mutation_interval={8},
+  },
+  deep_acid={
+    style="Minimal hypnotic acid",
+    pattern_lengths={32},
+    density={0.46,0.50,0.54},
+    pitch_variety={0.16,0.22,0.28},
+    repeat_bias={0.76,0.82,0.88},
+    slide_amount={0.14,0.18,0.22},
+    accent_amount={0.12,0.16,0.20},
+    octave_amount={0.04,0.08,0.12},
+    evolution_amount={0.12,0.18,0.22},
+    mutation_interval={16},
+  },
+  rave_acid={
+    style="Ravey piano-and-acid",
+    pattern_lengths={24,32},
+    density={0.68,0.72,0.76},
+    pitch_variety={0.40,0.46,0.52},
+    repeat_bias={0.36,0.42,0.50},
+    slide_amount={0.30,0.36,0.42},
+    accent_amount={0.34,0.40,0.46},
+    octave_amount={0.18,0.24,0.30},
+    evolution_amount={0.34,0.42,0.50},
+    mutation_interval={4,8},
+  },
+}
+
 function M.archetypes_for_genre(genre)
   return archetypes[genre]
+end
+
+local function acid_identity_for(archetype, seed)
+  local spec = ACID_IDENTITIES[archetype]
+  if not spec then return nil end
+  local rng = Rng:new(hash_text("acid_identity:" .. archetype, seed))
+  local function pick(name)
+    return spec[name][rng:int(1, #spec[name])]
+  end
+  return {
+    style=spec.style,
+    pattern_length=pick("pattern_lengths"),
+    density=pick("density"),
+    pitch_variety=pick("pitch_variety"),
+    repeat_bias=pick("repeat_bias"),
+    slide_amount=pick("slide_amount"),
+    accent_amount=pick("accent_amount"),
+    octave_amount=pick("octave_amount"),
+    evolution_amount=pick("evolution_amount"),
+    mutation_interval=pick("mutation_interval"),
+  }
 end
 
 function M.stream(identity, label)
@@ -142,6 +214,7 @@ function M.new(options)
     arrangement_family=selection:pick(profile.arrangements),
     sample_tags=profile.sample_tags,
     hook_role=profile.hook,
+    acid_identity=options.genre=="ACID" and acid_identity_for(archetype, seed) or nil,
     stream_seeds={},
     stems={
       kick={role="rhythm", low_end_owner=true},

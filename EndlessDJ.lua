@@ -2197,6 +2197,47 @@ acid_cfg.settings_for_genre = function(genre)
   }
 end
 
+acid_cfg.identity_for_deck = function(deck)
+  return deck and deck.identity and deck.identity.acid_identity or nil
+end
+
+acid_cfg.settings_for_deck = function(deck)
+  local settings = acid_cfg.settings_for_genre(deck and deck.genre or "ACID")
+  local identity = acid_cfg.identity_for_deck(deck)
+  if not identity then return settings end
+  settings.length = identity.pattern_length or settings.length
+  settings.density = identity.density or settings.density
+  settings.pitch_variety = identity.pitch_variety or settings.pitch_variety
+  settings.repeat_bias = identity.repeat_bias or settings.repeat_bias
+  settings.slide_amount = identity.slide_amount or settings.slide_amount
+  settings.accent_amount = identity.accent_amount or settings.accent_amount
+  settings.octave_amount = identity.octave_amount or settings.octave_amount
+  settings.evolution_amount = identity.evolution_amount or settings.evolution_amount
+  settings.identity = identity
+  return settings
+end
+
+acid_cfg.seed_for_deck = function(deck)
+  if acid_cfg.seed_lock then return acid_cfg.seed_value end
+  local identity = deck and deck.identity
+  if not identity then
+    return acid_cfg.new_seed()
+  end
+  local seed = ((identity.seed or 1) * 48271 + ((deck.root or 0) * 257) +
+    ((identity.root_pitch_class or 0) * 97)) % ACID_SEED_MAX
+  seed = math.max(1, seed)
+  local archetype = tostring(identity.archetype or deck.genre or "ACID")
+  for index = 1, #archetype do
+    seed = acid_cfg.lcg(seed + archetype:byte(index) * (index + 17))
+  end
+  local deck_key = tostring(identity.deck or deck.name or "A")
+  for index = 1, #deck_key do
+    seed = acid_cfg.lcg(seed + deck_key:byte(index) * (index + 29))
+  end
+  seed = (seed + ((identity.seed or 1) * 97)) % ACID_SEED_MAX
+  return math.max(1, seed)
+end
+
 acid_cfg.order_scale = function(scale)
   local ordered = {}
   local seen = {}
@@ -2461,6 +2502,9 @@ acid_cfg.build_pattern = function(deck, seed, settings, existing)
 end
 
 acid_cfg.mutation_interval = function(settings)
+  if settings and settings.identity and settings.identity.mutation_interval then
+    return settings.identity.mutation_interval
+  end
   if settings.evolution_amount >= 0.67 then return 4 end
   if settings.evolution_amount >= 0.34 then return 8 end
   return 16
@@ -2521,7 +2565,7 @@ end
 
 acid_cfg.mutate_pattern = function(deck, sec, variation)
   local acid = deck.acid
-  local settings = acid_cfg.settings_for_genre(deck.genre)
+  local settings = acid_cfg.settings_for_deck(deck)
   local section_density = {
     INTRO = 0.45,
     GROOVE = 0.80,
@@ -2531,6 +2575,18 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
     DROP = 1.00,
     MIX = 0.70
   }
+  local identity = acid_cfg.identity_for_deck(deck)
+  if identity then
+    if identity.style == "Chicago 808 Acid House" then
+      section_density={INTRO=0.34,GROOVE=0.72,MAIN=0.88,BREAK=0.30,BUILD=0.84,DROP=1.00,MIX=0.62}
+    elseif identity.style == "909 warehouse acid" then
+      section_density={INTRO=0.42,GROOVE=0.82,MAIN=0.94,BREAK=0.36,BUILD=0.90,DROP=1.00,MIX=0.68}
+    elseif identity.style == "Minimal hypnotic acid" then
+      section_density={INTRO=0.28,GROOVE=0.66,MAIN=0.80,BREAK=0.40,BUILD=0.78,DROP=0.92,MIX=0.58}
+    elseif identity.style == "Ravey piano-and-acid" then
+      section_density={INTRO=0.40,GROOVE=0.78,MAIN=0.92,BREAK=0.34,BUILD=0.94,DROP=1.00,MIX=0.70}
+    end
+  end
   local density_scale = section_density[sec] or 1
   local pattern = acid_cfg.apply_section_mask(
     acid.base_pattern,
@@ -2538,6 +2594,11 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
     density_scale
   )
   local section_boost = ({GROOVE=0.35, MAIN=0.55, BUILD=0.80, DROP=1.00, MIX=0.20})[sec] or 0
+  if identity and identity.style == "Ravey piano-and-acid" then
+    section_boost = section_boost + ((sec=="BUILD" or sec=="DROP") and 0.12 or 0)
+  elseif identity and identity.style == "Minimal hypnotic acid" then
+    section_boost = math.max(0, section_boost - 0.10)
+  end
   local mutation_ops = acid_cfg.mutation_ops
   local op_count = math.floor(
     clamp(
@@ -2584,8 +2645,8 @@ acid_cfg.mutate_pattern = function(deck, sec, variation)
 end
 
 acid_build_deck_state = function(deck, existing)
-  local seed = acid_cfg.seed_lock and acid_cfg.seed_value or acid_cfg.new_seed()
-  local settings = acid_cfg.settings_for_genre(deck.genre)
+  local seed = acid_cfg.seed_for_deck(deck)
+  local settings = acid_cfg.settings_for_deck(deck)
   local base_pattern, scale = acid_cfg.build_pattern(deck, seed, settings, existing and existing.base_pattern)
   local acid = {
     seed = seed,
@@ -2599,6 +2660,7 @@ acid_build_deck_state = function(deck, existing)
     accent_amount = settings.accent_amount,
     octave_amount = settings.octave_amount,
     evolution_amount = settings.evolution_amount,
+    style = settings.identity and settings.identity.style or deck.genre,
     scale = scale,
     base_pattern = acid_cfg.copy_pattern(base_pattern),
     pattern = acid_cfg.copy_pattern(base_pattern),
@@ -2642,7 +2704,7 @@ acid_regenerate_deck = function(deck, opts)
   acid_cfg.seed_lock = original_lock
   if opts.seed then
     deck.acid.seed = acid_cfg.seed_value
-    local settings = acid_cfg.settings_for_genre(deck.genre)
+    local settings = acid_cfg.settings_for_deck(deck)
     local base_pattern, scale = acid_cfg.build_pattern(
       deck,
       deck.acid.seed,
@@ -3079,7 +3141,7 @@ acid_cfg.mix_gate = function(seed, step_index, amount)
   return ((value % 1000) / 1000) < amount
 end
 
-acid_cfg.velocity = function(step_data, sec)
+acid_cfg.velocity = function(step_data, sec, deck)
   local accent_scale = {
     INTRO = 0.70,
     GROOVE = 0.90,
@@ -3089,6 +3151,14 @@ acid_cfg.velocity = function(step_data, sec)
     DROP = 1.15,
     MIX = 0.88
   }
+  local identity = acid_cfg.identity_for_deck(deck)
+  if identity and identity.style == "Ravey piano-and-acid" then
+    accent_scale.BUILD = 1.12
+    accent_scale.DROP = 1.18
+  elseif identity and identity.style == "Minimal hypnotic acid" then
+    accent_scale.INTRO = 0.62
+    accent_scale.MIX = 0.80
+  end
   local base = step_data.accent and 110 or 92
   return clamp(math.floor(base * (accent_scale[sec] or 1) + 0.5), 36, 127)
 end
@@ -3103,7 +3173,7 @@ local function play_acid_bass(sec, s, deck, b, mix_fades)
   local bass_amount = mix_fades and mix_fades.bass or 1
   if not acid_cfg.mix_gate(acid.seed + acid.variation * 17, step_index, bass_amount) then return false end
   local note = acid_cfg.clamp_note(deck.root + step_data.degree + (step_data.octave * 12))
-  t8_note(note, acid_cfg.velocity(step_data, sec), bass_ch, step_data.length or 1, deck, {
+  t8_note(note, acid_cfg.velocity(step_data, sec, deck), bass_ch, step_data.length or 1, deck, {
     accent = step_data.accent,
     slide = step_data.slide,
   })
@@ -5180,7 +5250,9 @@ if rawget(_G, "_UNIT_TEST") then
     acid_build_deck_state = acid_build_deck_state,
     acid_refresh_phrase = acid_refresh_phrase,
     acid_copy_pattern = acid_cfg.copy_pattern,
+    acid_seed_for_deck = acid_cfg.seed_for_deck,
     acid_step_index = acid_cfg.step_index,
+    acid_settings_for_deck = acid_cfg.settings_for_deck,
     acid_settings_for_genre = acid_cfg.settings_for_genre,
     nts1_collect_scale = nts1_collect_scale,
   }
