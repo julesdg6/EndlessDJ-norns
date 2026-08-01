@@ -12,6 +12,26 @@ for _, genre in ipairs(genres) do
   assert(#identity.archetypes_for_genre(genre) >= 4, genre .. " needs four archetypes")
 end
 
+local allowed_kits = {
+  HOUSE={"808","909","hybrid"}, TECHNO={"909","industrial"},
+  TWO_STEP={"linn","909","hybrid"}, JUNGLE={"linn","909","hybrid"},
+  HARDTECHNO={"industrial","909"}, ELECTRO={"808","linn"},
+  HARDSTYLE={"industrial","909","hybrid"},
+}
+for genre, allowed in pairs(allowed_kits) do
+  local seen = {}
+  for seed = 1, 96 do
+    local song = identity.new{seed=seed, deck="A", genre=genre}
+    local valid = false
+    for _, kit in ipairs(allowed) do valid = valid or song.kit == kit end
+    assert(valid, genre .. " selected incompatible kit " .. tostring(song.kit))
+    seen[song.kit] = true
+  end
+  local count = 0
+  for _ in pairs(seen) do count = count + 1 end
+  assert(count >= 2, genre .. " kit selection collapsed")
+end
+
 local first = identity.new{seed=42042, deck="A", genre="TWO_STEP"}
 local replay = identity.new{seed=42042, deck="A", genre="TWO_STEP"}
 assert(identity.serialize(first) == identity.serialize(replay), "same seed must replay")
