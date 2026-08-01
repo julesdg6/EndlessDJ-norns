@@ -60,6 +60,7 @@ function Harness.new(options)
   local instance = {
     version = options.version or "unknown",
     sample_library = options.sample_library or {},
+    generation_fixtures = options.generation_fixtures or {},
     restore_audio = options.restore_audio,
     running = false,
     active_clock = nil,
@@ -119,6 +120,9 @@ function Harness.new(options)
     local roles = count_role_samples(instance.sample_library)
     report(risers == 32 and "PASS" or "FAIL", "factory risers " .. risers .. "/32")
     report(roles == 28 and "PASS" or "FAIL", "role one-shots " .. roles .. "/28")
+    local listening = instance.generation_fixtures.listening or {}
+    report(#listening == 96 and "PASS" or "FAIL",
+      "deterministic listening fixtures " .. #listening .. "/96")
 
     safe_engine("deck_level", 1, 1)
     safe_engine("deck_level", 2, mode == "quick" and 0 or 0.65)

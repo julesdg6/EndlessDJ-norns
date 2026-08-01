@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.137", 1, true) then
-  fail("Script version must match PR #137")
+if not source:find("Endless DJ v1.138", 1, true) then
+  fail("Script version must match PR #138")
 end
-pass("Script version matches PR #137")
+pass("Script version matches PR #138")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -931,7 +931,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.137"', 'sample_library=sample_library',
+    'version="v1.138"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)

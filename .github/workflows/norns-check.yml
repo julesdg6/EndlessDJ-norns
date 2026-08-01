@@ -19,5 +19,6 @@ jobs:
         run: luacheck .
       - name: Endless DJ project checks
         run: |
+          lua5.3 tests/check_generation.lua quick
           lua5.3 tests/check_transition_engine.lua
           lua5.3 tests/check_norns.lua
