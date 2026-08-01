@@ -33,6 +33,31 @@ for _, genre in ipairs(genres) do
   if not valid then fail(genre .. " bass plan is invalid: " .. tostring(reason)) end
   if encode(first) ~= encode(second) then fail(genre .. " bass plan is not deterministic") end
   if first.phrase_bars ~= 4 or #first.bars ~= 4 then fail(genre .. " must use a four-bar phrase") end
+  if not first.low_end_owner or not first.kick_relationship or not first.modulation then
+    fail(genre .. " lacks explicit low-end ownership and modulation")
+  end
+end
+
+local reverse_identity = identity_engine.new{seed=37,deck="A",genre="HARDSTYLE"}
+reverse_identity.archetype = "reverse_bass"
+local reverse_plan = bass_engine.new(reverse_identity, groove_engine.new(reverse_identity))
+if reverse_plan.low_end_mode ~= "reverse_bass" or reverse_plan.low_end_owner ~= "bass" or
+    reverse_plan.kick_relationship ~= "offbeat" then
+  fail("reverse bass must explicitly own offbeat low end")
+end
+local pitched_identity = identity_engine.new{seed=38,deck="B",genre="HARDSTYLE"}
+pitched_identity.archetype = "rawstyle"
+local pitched_plan = bass_engine.new(pitched_identity, groove_engine.new(pitched_identity))
+if pitched_plan.low_end_mode ~= "pitched_kick" or pitched_plan.low_end_owner ~= "kick" or
+    next(pitched_plan.bars[1]) ~= nil then
+  fail("pitched-kick mode must suppress the separate bass phrase")
+end
+
+local normal_event = bass_engine.event(reverse_plan, 1, 3, "MAIN")
+local developed_event = bass_engine.event(reverse_plan, 9, 3, "DROP")
+if not normal_event or not developed_event or
+    developed_event.modulation <= normal_event.modulation or developed_event.velocity <= normal_event.velocity then
+  fail("second drop must deterministically develop the bass phrase")
 end
 
 local two_step_voices = {}
