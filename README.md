@@ -1071,7 +1071,26 @@ than depending on unrelated per-note randomness.
 Risers and impacts are emitted by section-boundary events in the arrangement
 plan. A double-drop record can therefore have distinct first and second build/drop
 cues. The Norns display shows the active section and phrase position, while the
-same metadata is available to the transition system for future stem-aware mixes.
+same metadata drives the stem-aware transition system.
+
+STEM-AWARE DJ TRANSITIONS
+
+The final 32 bars are planned as four deterministic eight-bar phrases across
+kick, percussion, bass, chords, lead, samples/vocals and FX. Each transition
+stores its outgoing and incoming song seeds, mode, strategy, harmonic warning,
+stem envelopes and low-end ownership. Automatic Stem DJ and Producer DJ plans
+never create an accidental double kick or double bass; Classic DJ retains a
+bounded conventional blend and the manual crossfader fallback.
+
+Available strategies are bass swap, percussion overlay, vocal tease, clean cut,
+FX exit and classic blend. Selection considers the genre pair, energy seed and
+harmonic distance, with explicit plans for representative contrasting pairs and
+a safe clean-cut/FX fallback when compatibility is poor. Encoder 1 selects a
+stem during a transition, Encoder 2 assigns it to the outgoing deck, incoming
+deck or off, Encoder 3 retains manual crossfading, and Key 3 cancels safely.
+The screen shows both genres, mode, strategy, phrase progress, kick/bass owner,
+selected stem, warnings and next-phrase entries/exits. Deck A/B low, mid and
+high EQ remain available in parameters for manual and Classic DJ operation.
 
 SHARED MICROTIMING SCHEDULER
 
