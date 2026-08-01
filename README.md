@@ -1002,3 +1002,13 @@ with:
 or preview an identity without changing playback:
 
     tab.print(generate_song_identity(42042, "A", "TWO_STEP"))
+
+GROOVE PLANS
+
+Every generated deck also owns a deterministic four-bar groove plan. The plan
+selects a genre-compatible feel, stable velocity arcs, ghost-note roles,
+microtiming offsets and a phrase-boundary turnaround. With no grid connected it
+drives generated drums directly; a connected grid keeps its editable pattern
+while inheriting the plan's velocity and phrase metadata. Timing offsets are
+stored for the shared scheduler rather than approximated with random per-hit
+delays.

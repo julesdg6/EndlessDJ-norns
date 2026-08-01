@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.125", 1, true) then
-  fail("Script version must match PR #125")
+if not source:find("Endless DJ v1.126", 1, true) then
+  fail("Script version must match PR #126")
 end
-pass("Script version matches PR #125")
+pass("Script version matches PR #126")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -884,7 +884,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.125"', 'sample_library=sample_library',
+    'version="v1.126"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1379,5 +1379,23 @@ if not source:find("generate_song_identity = function", 1, true) or
   fail("Song identities must expose non-mutating Maiden diagnostics")
 end
 pass("Deterministic independent song identity foundation exists")
+
+local groove_file = io.open("lib/groove_engine.lua", "r")
+if not groove_file then fail("Missing deterministic groove engine") end
+local groove_source = groove_file:read("*a")
+groove_file:close()
+for _, required in ipairs({
+  'function M.new(identity)', 'function M.event(plan,absolute_bar,voice,step)',
+  'function M.is_fill_step(plan,absolute_bar,step)', 'function M.validate(plan)',
+  'phrase_bars=4', 'offset=timing_for(feel,step,swing)',
+}) do
+  if not groove_source:find(required, 1, true) then fail("Groove engine missing: " .. required) end
+end
+if not source:find('groove_engine = include("EndlessDJ/lib/groove_engine")', 1, true) or
+    not source:find("groove = groove_engine.new(identity)", 1, true) or
+    not source:find('groove_engine.event(deck.groove, b, voice, s)', 1, true) then
+  fail("Groove plan is not integrated into deck generation and playback")
+end
+pass("Deterministic multi-bar groove plans drive generated drum playback")
 
 print("All Endless DJ checks passed")
