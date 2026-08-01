@@ -32,7 +32,7 @@ Engine_Endless : CroneEngine {
 	alloc {
 		server = context.server;
 		voices = List.new;
-		sampleBuffers = Array.fill(76, { nil });
+		sampleBuffers = Array.fill(108, { nil });
 		samplerChokes = Array.fill(2, { Array.fill(4, { nil }) });
 		samplerHeld = Array.fill(2, { Array.fill(16, { nil }) });
 		samplerLoops = Array.fill(2, { Array.fill(16, { nil }) });
@@ -959,14 +959,14 @@ Engine_Endless : CroneEngine {
 		});
 
 		this.addCommand(\nsampler_load, "is", { arg msg;
-			var pad = msg[1].asInteger.clip(1, 76) - 1;
+			var pad = msg[1].asInteger.clip(1, 108) - 1;
 			if(sampleBuffers[pad].notNil, { sampleBuffers[pad].free; });
 			sampleBuffers[pad] = Buffer.readChannel(server, msg[2].asString, channels: [0]);
 		});
 
 		this.addCommand(\nsampler_hit, "iiffffffi", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			var pad = msg[2].asInteger.clip(1, 76) - 1;
+			var pad = msg[2].asInteger.clip(1, 108) - 1;
 			var buffer = sampleBuffers[pad];
 			var choke = msg[9].asInteger.clip(0, 4);
 			if(buffer.notNil, {
@@ -991,7 +991,7 @@ Engine_Endless : CroneEngine {
 
 		this.addCommand(\nsampler_repeat, "iiffffffif", { arg msg;
 			var deck = msg[1].asInteger.clip(1, 2) - 1;
-			var pad = msg[2].asInteger.clip(1, 76) - 1;
+			var pad = msg[2].asInteger.clip(1, 108) - 1;
 			var buffer = sampleBuffers[pad];
 			var choke = msg[9].asInteger.clip(0, 4);
 			if(buffer.notNil, {

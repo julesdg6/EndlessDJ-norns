@@ -12,8 +12,8 @@ end
 local identity=dofile("lib/song_identity.lua")
 local library=dofile("lib/sample_library.lua")
 library.scan()
-assert(#library.catalog==60,"sample catalog must describe all 60 factory WAVs")
-assert(#library.factory_risers==32,"factory riser catalog is incomplete")
+assert(#library.catalog==92,"sample catalog must describe all 92 factory WAVs")
+assert(#library.factory_risers==64,"factory riser catalog is incomplete")
 
 local provenance={}
 for _,entry in ipairs(library.catalog) do

@@ -84,4 +84,67 @@ for (let n = 1; n <= 8; n++) {
     }, 4000 + n);
 }
 
-console.log(`Generated 32 mono 48 kHz risers in ${OUT}`);
+// Family 5: reggae-inspired warm bass sweeps (33-40)
+for (let n = 1; n <= 8; n++) {
+  let phase = 0, low = 0;
+  wav(`${String(n + 32).padStart(2, "0")}_reggae_skank_${String(n).padStart(2, "0")}.wav`,
+    2.5 + n * 0.18, (t, p, r) => {
+      const freq = (60 + n * 6) * Math.pow(3.5 + n * 0.2, p);
+      phase += 2 * Math.PI * freq / RATE;
+      const bass = Math.sin(phase) * 0.65 + Math.sin(phase * 2) * 0.22;
+      const skank = Math.abs(Math.sin(Math.PI * (t * (3.5 + n * 0.5) + 0.25))) * 0.28;
+      const noise = r() * 2 - 1;
+      low += (noise - low) * 0.008;
+      return (bass + skank * (noise - low * 0.5)) * Math.pow(p, 1.3);
+    }, 5000 + n);
+}
+
+// Family 6: Indian tanpura/sitar-inspired harmonic glide (41-48)
+for (let n = 1; n <= 8; n++) {
+  let ph1 = 0, ph2 = 0, ph3 = 0;
+  wav(`${String(n + 40).padStart(2, "0")}_indian_tanpura_${String(n).padStart(2, "0")}.wav`,
+    3.2 + n * 0.15, (t, p, r) => {
+      const base = (65 + n * 5) * Math.pow(4 + n * 0.4, p);
+      ph1 += 2 * Math.PI * base / RATE;
+      ph2 += 2 * Math.PI * base * 2.001 / RATE;
+      ph3 += 2 * Math.PI * base * 3.002 / RATE;
+      const sarangi = Math.sin(ph1) * 0.5 + Math.sin(ph2) * 0.3 + Math.sin(ph3) * 0.15;
+      const buzz = Math.sin(ph1 * 4.03) * 0.08 * p;
+      return (sarangi + buzz + (r() * 2 - 1) * 0.05) * Math.pow(p, 1.2);
+    }, 6000 + n);
+}
+
+// Family 7: Afro/world-fusion polyrhythmic warmth (49-56)
+for (let n = 1; n <= 8; n++) {
+  let phase = 0, low = 0;
+  wav(`${String(n + 48).padStart(2, "0")}_world_fusion_${String(n).padStart(2, "0")}.wav`,
+    2.6 + n * 0.2, (t, p, r) => {
+      const freq = (70 + n * 8) * Math.pow(4.5 + n * 0.3, p);
+      phase += 2 * Math.PI * freq / RATE;
+      const carrier = Math.sin(phase) * 0.5 + Math.sin(phase * 1.5) * 0.28;
+      const perc = Math.exp(-((t * (4 + n * 0.7)) % 1) * 14) * 0.25;
+      const noise = r() * 2 - 1;
+      low += (noise - low) * 0.012;
+      return (carrier + perc * (noise - low * 0.6)) * Math.pow(p, 1.28);
+    }, 7000 + n);
+}
+
+// Family 8: cinematic orchestral swells (57-64)
+for (let n = 1; n <= 8; n++) {
+  let ph1 = 0, ph2 = 0, ph3 = 0, ph4 = 0;
+  wav(`${String(n + 56).padStart(2, "0")}_cinematic_swell_${String(n).padStart(2, "0")}.wav`,
+    3.4 + n * 0.16, (t, p, r) => {
+      const base = (50 + n * 6) * Math.pow(6 + n * 0.5, p);
+      ph1 += 2 * Math.PI * base / RATE;
+      ph2 += 2 * Math.PI * base * 1.998 / RATE;
+      ph3 += 2 * Math.PI * base * 2.995 / RATE;
+      ph4 += 2 * Math.PI * base * 4.01 / RATE;
+      const strings = Math.sin(ph1) * 0.45 + Math.sin(ph2) * 0.3 +
+        Math.sin(ph3) * 0.18 + Math.sin(ph4) * 0.08;
+      const vibrato = 1 + 0.02 * Math.sin(2 * Math.PI * 5.5 * t) * p;
+      const brass = Math.exp(-Math.pow((p - 0.85) * 6, 2)) * Math.sin(ph1 * 0.5) * 0.35;
+      return (strings * vibrato + brass + (r() * 2 - 1) * 0.04) * Math.pow(p, 1.15);
+    }, 8000 + n);
+}
+
+console.log(`Generated 64 mono 48 kHz risers in ${OUT}`);

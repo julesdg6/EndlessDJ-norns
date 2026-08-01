@@ -697,7 +697,7 @@ do
       fail("N-SAMPLER is missing gated command " .. command)
     end
   end
-  if not engine_source:find("Array.fill(76", 1, true) or
+  if not engine_source:find("Array.fill(108", 1, true) or
       not engine_source:find("samplerChokes", 1, true) then
     fail("N-SAMPLER must allocate user, riser, role buffers and choke state")
   end
@@ -717,7 +717,7 @@ do
     count = count + 1
   end
   p:close()
-  if count ~= 32 then fail("Expected 32 factory risers, found " .. count) end
+  if count ~= 64 then fail("Expected 64 factory risers, found " .. count) end
 end
 do
   local p = io.popen("find samples/factory/oneshots -type f -name '*.wav' | sort")
