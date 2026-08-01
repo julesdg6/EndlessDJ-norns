@@ -107,6 +107,45 @@ do
 end
 pass("Last-used pset is restored after parameter registration")
 
+do
+  local expected_sections = {
+    "hardware_connections_sep", "output_routes_sep", "transport", "mixer_sep",
+    "n808_sep", "n303_sep", "acid_sep", "nchord_sep", "nmono_sep",
+    "norns_inst_sep", "nsampler_sep", "resample_sep", "acapella_sep",
+    "mx1", "nts1_sep", "mpx8_sep", "grid_sep",
+  }
+  local order_cursor = source:find('local section_order = {', 1, true)
+  if not order_cursor then fail("Missing explicit PARAMS menu section order") end
+  for _, id in ipairs(expected_sections) do
+    local found = source:find('"' .. id .. '"', order_cursor, true)
+    if not found or found < order_cursor then
+      fail("PARAMS menu section is missing or out of order: " .. id)
+    end
+    order_cursor = found + #id + 2
+  end
+
+  local hardware_start = source:find(
+    'params:add_separator("hardware_connections_sep"', 1, true
+  )
+  local routing_start = source:find(
+    'params:add_separator("output_routes_sep"', hardware_start, true
+  )
+  if not hardware_start or not routing_start then
+    fail("Missing hardware-connections or output-routing section")
+  end
+  local hardware = source:sub(hardware_start, routing_start)
+  for _, id in ipairs({
+    "t8_midi_device", "drum_ch", "bass_ch",
+    "j6_midi_device", "chord_ch", "mx1_midi_device", "mx1_ch",
+    "nts1_midi_device", "nts1_ch", "mpx8_midi_device", "mpx8_ch",
+  }) do
+    if not hardware:find('"' .. id .. '"', 1, true) then
+      fail("Hardware mapping must be at the top of PARAMS: " .. id)
+    end
+  end
+end
+pass("PARAMS menu starts with hardware mapping and follows workflow order")
+
 if not source:find("chord_midi_out", 1, true) then
   fail("J-6 must use a separate MIDI output")
 end
