@@ -78,7 +78,20 @@ local archetypes = {
   HARDSTYLE={"reverse_bass", "euphoric", "rawstyle", "classic_hardstyle"},
 }
 
-local kit_families = {"808", "909", "linn", "hybrid"}
+local kit_families = {
+  HOUSE={"909","808","hybrid"}, FUNKY={"linn","909","hybrid"},
+  DIRTY={"909","industrial","hybrid"}, TECHNO={"909","industrial"},
+  GARAGE4={"909","linn","hybrid"}, TWO_STEP={"linn","909","hybrid"},
+  BREAKS={"linn","909","hybrid"}, DUBSTEP={"808","linn","industrial"},
+  DEEP={"808","909"}, ACID={"808","909"}, TRANCE={"909","hybrid"},
+  PROG={"909","hybrid"}, JUNGLE={"linn","909","hybrid"},
+  DNB={"linn","909","industrial"}, LIQUID={"linn","909"},
+  HARDTECHNO={"industrial","909"}, ELECTRO={"808","linn"},
+  JUKE={"808","linn"}, AFRO={"808","linn","hybrid"},
+  MINIMAL={"808","909"}, MELODIC={"909","hybrid"},
+  SPEED={"909","linn","industrial"}, BASSLINE={"909","linn","hybrid"},
+  HARDSTYLE={"industrial","909","hybrid"},
+}
 local groove_families = {"straight", "swung", "broken", "syncopated"}
 local harmony_families = {"minor_modal", "seventh_ninth", "pedal_tone", "borrowed_motion"}
 local arrangement_families = {
@@ -127,7 +140,7 @@ function M.new(options)
     genre=options.genre,
     archetype=selection:pick(choices),
     groove_family=selection:pick(groove_families),
-    kit=selection:pick(kit_families),
+    kit=selection:pick(kit_families[options.genre]),
     harmony_family=selection:pick(harmony_families),
     arrangement_family=selection:pick(arrangement_families[options.genre]),
     stream_seeds={},
