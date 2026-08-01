@@ -61,12 +61,14 @@ reach its BUILD section.
 INTERNAL INSTRUMENTS / TRAVEL MODE
 
 Endless DJ includes one custom SuperCollider engine named `Endless`. It provides
-five Norns-native instrument roles:
+six Norns-native instrument roles:
 
 - `n-808`: six synthesized drum voices with per-voice levels, shared tone,
   decay, drive, and variation controls, plus per-deck open/closed-hat choking
 - `n-303`: persistent monophonic acid/bass voice with accent, legato slide,
   saw/square waveform, filter, envelope, decay, drive, and slide-time controls
+- `n-bass`: an independent per-deck bass voice using analog, sub, Reese, organ,
+  FM or wobble models selected only where they suit the generated genre
 - `n-chord`: gated polyphonic chord voice with eight sound models, generated
   voicings and patches, and the Norns keyboard target
 - `n-mono`: persistent monophonic lead/bass/pluck/FX voice with generated
@@ -77,6 +79,14 @@ five Norns-native instrument roles:
 
 The engine mixes internal Deck A and Deck B through separate stereo buses. The
 existing Endless DJ crossfader drives those buses with an equal-power curve.
+
+Bass parts are deterministic four-bar riffs rather than isolated random notes.
+They leave deliberate gaps around kick hits, add a phrase-end turnaround and
+retain the same riff identity through sections and transitions. Acid House uses
+the n-303 with phrase-level accents and slides. UK Garage 2-Step explicitly
+chooses deep sub, Reese, organ or FM bass and never defaults to acid; 303 is
+eligible only for styles where it is musically intentional. External T-8 bass
+receives the same generated notes, so existing MIDI behaviour is preserved.
 
 INTERNAL MIXER
 
