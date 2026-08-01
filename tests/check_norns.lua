@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.128", 1, true) then
-  fail("Script version must match PR #128")
+if not source:find("Endless DJ v1.130", 1, true) then
+  fail("Script version must match PR #130")
 end
-pass("Script version matches PR #128")
+pass("Script version matches PR #130")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -893,7 +893,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.128"', 'sample_library=sample_library',
+    'version="v1.130"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1415,6 +1415,7 @@ for _, required in ipairs({
   "function M.new(identity, groove)", "function M.event(plan, absolute_bar, step)",
   "function M.validate(plan)", 'TWO_STEP={"sub","reese","organ","fm"}',
   'ACID={"303"}', "kick_at(groove, bar, step)", "phrase_bars=4",
+  "function M.apply_voice_profile(plan, patch)", "VOICE_PROFILES",
 }) do
   if not bass_source:find(required, 1, true) then fail("Bass engine missing: " .. required) end
 end
