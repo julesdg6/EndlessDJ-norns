@@ -268,6 +268,7 @@ Engine_Endless : CroneEngine {
 					gate=1, brightness=0.5, filterEnvAmount=0.5, chorus=0.35;
 				var autoGate, envelopeGate, attack, release, env, filterEnv;
 				var detune, osc, cutoff, filtered, dry, wet, output;
+				var modelGain, presetGain;
 				autoGate = Line.kr(1, 0, sustain.max(0.03));
 				envelopeGate = Select.kr(timed, [gate, autoGate]);
 				attack = #[0.004, 0.02, 0.003, 0.35, 0.01, 0.18, 0.015, 0.002][presetIndex];
@@ -297,6 +298,10 @@ Engine_Endless : CroneEngine {
 							+ (Pulse.ar(freq * 0.5, SinOsc.kr(0.31).range(0.25, 0.7)) * 0.38)
 					}
 				);
+				// Equal-loudness compensation. Model architecture and envelope role
+				// should change colour, not unexpectedly change channel gain.
+				modelGain = #[0.92, 0.78, 0.48, 0.86, 0.70][modelIndex];
+				presetGain = #[0.90, 0.85, 0.95, 0.78, 0.88, 0.76, 0.82, 0.92][presetIndex];
 				cutoff = (
 					brightness.linexp(0, 1, 280, 7200)
 					+ (filterEnv * filterEnvAmount * 5000)
@@ -312,7 +317,9 @@ Engine_Endless : CroneEngine {
 					)
 				];
 				output = XFade2.ar(dry, wet, chorus.linlin(0, 1, -1, 1));
-				Out.ar(out, Limiter.ar(output * env * amp, 0.85, 0.01));
+				Out.ar(out, Limiter.ar(
+					output * env * amp * modelGain * presetGain, 0.85, 0.01
+				));
 			}).add;
 		});
 		});
@@ -325,7 +332,7 @@ Engine_Endless : CroneEngine {
 				lfoRateControl=0.2, lfoDepth=0.08, delaySend=0.15;
 			var attack, release, lfoRate, lfo, pitch, analog, subVoice, reese;
 			var organ, fm, wobble, osc, subOsc, timedEnv, gatedEnv;
-			var env, cutoff, rq, filtered, dry, delayed, output;
+			var env, cutoff, rq, filtered, dry, delayed, output, modelGain;
 			attack = attackControl.linexp(0, 1, 0.002, 0.45);
 			release = releaseControl.linexp(0, 1, 0.05, 2.5);
 			lfoRate = lfoRateControl.linexp(0, 1, 0.05, 14);
@@ -352,6 +359,11 @@ Engine_Endless : CroneEngine {
 			osc = SelectX.ar(model.clip(0, 5), [
 				analog, subVoice, reese, organ, fm, wobble
 			]);
+			// The raw model oscillators have very different summed energy. Keep
+			// their character but compensate before the shared limiter/mixer.
+			modelGain = Select.kr(model.clip(0, 5), [
+				1.15, 1.20, 1.10, 0.58, 1.10, 0.95
+			]);
 			subOsc = SinOsc.ar(pitch * 0.5) * sub;
 			timedEnv = EnvGen.kr(
 				Env.perc(attack, sustain.max(release * 0.35), 1, -4), t_trig
@@ -370,7 +382,7 @@ Engine_Endless : CroneEngine {
 				CombC.ar(filtered, 0.5, 0.375, 1.8)
 			];
 			output = XFade2.ar(dry, delayed, delaySend.linlin(0, 1, -1, 0.65));
-			output = Limiter.ar(output * env * amp, 0.82, 0.01);
+			output = Limiter.ar(output * env * amp * modelGain, 0.82, 0.01);
 			Out.ar(out, output);
 		}).add;
 
