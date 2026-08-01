@@ -983,3 +983,22 @@ Before changing code:
 7. Do not silently remove features.
 
 The immediate objective is to turn the current prototype into a genuinely endless, genre-aware generative DJ that produces recognisable electronic tracks with proper DJ phrase structure and mixes them continuously using the T-8 and J-6.
+
+SONG IDENTITY FOUNDATION
+
+Every newly generated deck owns a deterministic `identity` record. It stores
+the deck seed lineage, genre archetype, groove family, drum-kit family,
+harmony family, arrangement family and stem-role metadata. Named child random
+streams isolate patches, groove, bass, harmony, motifs, samples, fills and
+arrangement so adding a choice to one subsystem cannot silently rewrite the
+rest of a tune.
+
+The same seed, deck label and genre reproduce the same serialized identity;
+Deck A and Deck B use separate streams. In Maiden, inspect the active record
+with:
+
+    print_song_identity()
+
+or preview an identity without changing playback:
+
+    tab.print(generate_song_identity(42042, "A", "TWO_STEP"))
