@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.131
+-- Endless DJ v1.132
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -413,7 +413,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.131",
+      version="v1.132",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -3071,43 +3071,12 @@ local function play_drums(sec, s, b, mix_fades, deck)
     t8_note(OHH, 70, drum_ch, 1, deck)
   end
 
-  -- Bar fills: genre-specific interval and voice selection
-  local fill_interval = 16
-  if gn == "DUBSTEP" or gn == "MINIMAL" or gn == "DEEP" then
-    fill_interval = 32
-  elseif gn == "BREAKS" or gn == "DNB" or gn == "JUNGLE" or gn == "TWO_STEP" or gn == "JUKE" then
-    fill_interval = 8
-  end
-  if b % fill_interval == 0 and groove_engine.is_fill_step(deck.groove, b, s) and math.random() < drums_amount then
-    if gn == "TECHNO" or gn == "HARDTECHNO" then
-      -- tom-dominant fills for techno styles
-      if s == 13 then t8_note(TOM, 92, drum_ch, 1, deck) end
-      if s == 14 then t8_note(TOM, 98, drum_ch, 1, deck) end
-      if s == 15 then t8_note(TOM, 105, drum_ch, 1, deck) end
-      if s == 16 then t8_note(CLAP, 110, drum_ch, 1, deck) end
-    elseif gn == "DUBSTEP" then
-      -- sparse half-time fill
-      if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
-      if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
-    elseif gn == "DNB" or gn == "JUNGLE" then
-      -- energetic Amen-style fills
-      if s == 13 then t8_note(SNARE, 98, drum_ch, 1, deck) end
-      if s == 14 then t8_note(SNARE, 105, drum_ch, 1, deck) end
-      if s == 15 then t8_note(TOM, 95, drum_ch, 1, deck) end
-      if s == 16 then t8_note(SNARE, 115, drum_ch, 1, deck) end
-    elseif gn == "BREAKS" then
-      -- syncopated breaks fill
-      if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
-      if s == 14 then t8_note(SNARE, 108, drum_ch, 1, deck) end
-      if s == 15 then t8_note(TOM, 92, drum_ch, 1, deck) end
-      if s == 16 then t8_note(SNARE, 112, drum_ch, 1, deck) end
-    else
-      -- default fill
-      if s == 13 then t8_note(SNARE, 95, drum_ch, 1, deck) end
-      if s == 14 then t8_note(TOM, 90, drum_ch, 1, deck) end
-      if s == 15 then t8_note(SNARE, 105, drum_ch, 1, deck) end
-      if s == 16 then t8_note(CLAP, 115, drum_ch, 1, deck) end
-    end
+  -- Phrase-derived fill: style, placement, voice and velocity belong to the
+  -- stored groove plan instead of a universal genre-independent roll.
+  local fill = groove_engine.fill_event(deck.groove, b, s)
+  if fill and math.random() < drums_amount then
+    local notes={kick=KICK,snare=SNARE,clap=CLAP,hats=CHH,ohats=OHH,tom=TOM}
+    t8_note(notes[fill.voice] or SNARE, fill.velocity or 96, drum_ch, 1, deck)
   end
 end
 

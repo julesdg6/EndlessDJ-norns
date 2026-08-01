@@ -100,6 +100,11 @@ offbeats, industrial rumble owns the kick tail, and pitched-kick Hardstyle
 suppresses the separate bass voice so the two layers cannot fight. Drop and
 second-drop modulation are stored in the song plan and replay deterministically.
 
+Groove plans now span deterministic 2, 4, 8 or 16-bar phrases according to
+genre. Polymetric families rotate hat and percussion cycles across bar lines,
+and each feel supplies its own phrase-ending fill roles, steps and velocities.
+The same stored microtiming continues to drive internal and external parts.
+
 INTERNAL MIXER
 
 Every internal instrument now feeds its own stereo channel before reaching its

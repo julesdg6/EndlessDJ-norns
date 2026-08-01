@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.131", 1, true) then
-  fail("Script version must match PR #131")
+if not source:find("Endless DJ v1.132", 1, true) then
+  fail("Script version must match PR #132")
 end
-pass("Script version matches PR #131")
+pass("Script version matches PR #132")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -893,7 +893,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.131"', 'sample_library=sample_library',
+    'version="v1.132"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1396,7 +1396,8 @@ groove_file:close()
 for _, required in ipairs({
   'function M.new(identity)', 'function M.event(plan,absolute_bar,voice,step)',
   'function M.is_fill_step(plan,absolute_bar,step)', 'function M.validate(plan)',
-  'phrase_bars=4', 'offset=timing_for(feel,step,swing)',
+  'local PHRASE_LENGTHS = {', 'phrase_bars=rng:pick',
+  'offset=timing_for(feel,step,swing)', 'function M.fill_event',
 }) do
   if not groove_source:find(required, 1, true) then fail("Groove engine missing: " .. required) end
 end
