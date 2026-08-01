@@ -96,7 +96,7 @@ function M.is_fill_step(plan,absolute_bar,step)
   if not plan or ((absolute_bar-1)%plan.phrase_bars)+1~=plan.fill.bar then return false end
   return contains(plan.fill.steps,step)
 end
-function M.role_offset(plan,absolute_bar,step,role)
+function M.role_offset(plan,_absolute_bar,step,role)
   if not plan then return 0 end
   local base=timing_for(plan.family,step,plan.swing or 0)
   local scale={drums=1,bass=0.75,chords=1,mono=0.5,samples=1}
