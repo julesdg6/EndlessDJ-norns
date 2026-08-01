@@ -28,6 +28,13 @@ On every script launch, both virtual decks are generated through the normal
 song-creation path. Deck A starts active, Deck B is queued, and their initial
 genres are selected randomly without duplicating one another.
 
+A brief vinyl needle-skate sound (`samples/factory/ui/needle_skate.wav`) plays
+once after the `Endless` audio engine initialises successfully. It confirms
+readiness without requiring visual feedback, reinforces the turntable identity,
+and is routed internally so it is always audible regardless of the selected
+output routes. The cue never re-fires on pset restore, parameter change, or
+grid reconnect; reloading the script intentionally replays it once.
+
 INSTALLING AND UPDATING ON NORNS
 
 Install the complete repository, not only `EndlessDJ.lua` or the files in

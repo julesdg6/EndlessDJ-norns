@@ -467,6 +467,7 @@ local transition_state = {
 local xfade = 0
 local manual_xfade = false
 local generation = 0
+local startup_cue_played = false
 
 local drum_ch = 9
 local bass_ch = 8
@@ -3879,6 +3880,13 @@ function init()
   scan_acapellas()
   setup_softcut()
   sample_library.load_factory(internal_engine)
+  -- Slot 1 is reserved for the startup readiness cue (needle-skate WAV).
+  -- Loading it here ensures the buffer exists by the time the deferred cue
+  -- fires at the end of init(), after params are restored and patches applied.
+  internal_engine.load_sample(
+    1,
+    _path.code .. "EndlessDJ/samples/factory/ui/needle_skate.wav"
+  )
 
   local dev_names = midi_device_names()
 
@@ -4859,6 +4867,17 @@ function init()
   mixer_apply_deck(deck_b, 2)
   acid_sync_seed_param(current_deck())
   redraw()
+  -- Play the startup readiness cue (vinyl needle-skate) once per script load,
+  -- deferred so params:default() and all deck patches are fully applied first.
+  -- The guard flag ensures the cue never fires from a pset restore, a param
+  -- change or a grid reconnect.
+  if not startup_cue_played then
+    startup_cue_played = true
+    clock.run(function()
+      clock.sleep(0.35)
+      internal_engine.sampler(1, 1, 70, {level=0.55, rate=1, pan=0, start=0, finish=1, cutoff=1, choke=0})
+    end)
+  end
 end
 
 function cleanup()
