@@ -36,6 +36,10 @@ local RISER_FAMILIES={
   {first=9,last=16,tags={"tonal","soulful","clean"},energy=0.68,tonal=true,key=0},
   {first=17,last=24,tags={"digital","dark","rave"},energy=0.8,tonal=false},
   {first=25,last=32,tags={"heavy","aggressive","rave"},energy=0.95,tonal=true,key=0},
+  {first=33,last=40,tags={"organic","soulful","classic"},energy=0.62,tonal=false},
+  {first=41,last=48,tags={"tonal","organic","soulful"},energy=0.7,tonal=true,key=0},
+  {first=49,last=56,tags={"organic","rave","broken"},energy=0.78,tonal=false},
+  {first=57,last=64,tags={"tonal","clean","dark"},energy=0.88,tonal=true,key=0},
 }
 
 local function scan(path)
@@ -111,7 +115,7 @@ function SampleLibrary.scan()
       processing={"filter","pitch","reverse"},
     })
   end
-  local next_slot=49
+  local next_slot=81
   for _,role in ipairs(SampleLibrary.ROLES) do
     if role~="riser" then
       local paths=scan(_path.code.."EndlessDJ/samples/factory/oneshots/"..role.."/")
@@ -137,7 +141,7 @@ function SampleLibrary.load_factory(internal_engine)
   local files=SampleLibrary.scan()
   for index,path in ipairs(files) do
     local slot=index+16
-    if slot>48 then break end
+    if slot>80 then break end
     internal_engine.load_sample(slot,path)
   end
   local one_shots=0
