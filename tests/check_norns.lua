@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.130", 1, true) then
-  fail("Script version must match PR #130")
+if not source:find("Endless DJ v1.131", 1, true) then
+  fail("Script version must match PR #131")
 end
-pass("Script version matches PR #130")
+pass("Script version matches PR #131")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -893,7 +893,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.130"', 'sample_library=sample_library',
+    'version="v1.131"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1412,7 +1412,7 @@ if not bass_file then fail("Missing deterministic genre-aware bass engine") end
 local bass_source = bass_file:read("*a")
 bass_file:close()
 for _, required in ipairs({
-  "function M.new(identity, groove)", "function M.event(plan, absolute_bar, step)",
+  "function M.new(identity, groove)", "function M.event(plan, absolute_bar, step, section)",
   "function M.validate(plan)", 'TWO_STEP={"sub","reese","organ","fm"}',
   'ACID={"303"}', "kick_at(groove, bar, step)", "phrase_bars=4",
   "function M.apply_voice_profile(plan, patch)", "VOICE_PROFILES",
@@ -1421,7 +1421,7 @@ for _, required in ipairs({
 end
 for _, required in ipairs({
   'bass_engine = include("EndlessDJ/lib/bass_engine")',
-  "bass = bass_engine.new(identity, groove)", "bass_engine.event(deck.bass, b, s)",
+  "bass = bass_engine.new(identity, groove)", "bass_engine.event(deck.bass, b, s, sec)",
   "internal_engine.bass_voice", "nbass_apply_deck(deck_a)",
 }) do
   if not source:find(required, 1, true) then fail("Genre bass integration missing: " .. required) end
