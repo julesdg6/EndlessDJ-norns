@@ -37,6 +37,18 @@ local LOW = {DUBSTEP=-12,JUNGLE=-12,DNB=-12,LIQUID=-12,JUKE=-12,HARDSTYLE=-12}
 local DENSE = {TWO_STEP=true,BREAKS=true,JUNGLE=true,DNB=true,JUKE=true,SPEED=true,BASSLINE=true}
 local LONG = {DUBSTEP=true,DEEP=true,LIQUID=true,MINIMAL=true,MELODIC=true,PROG=true}
 
+local function low_end_mode(identity, voice_family)
+  if identity.genre == "HARDSTYLE" then
+    if identity.archetype == "rawstyle" then return "pitched_kick" end
+    return "reverse_bass"
+  end
+  if identity.genre == "HARDTECHNO" and identity.archetype == "industrial_rumble" then
+    return "rumble"
+  end
+  if voice_family == "sub" then return "sub_bass" end
+  return "bass"
+end
+
 local function rng_new(seed)
   local rng = {state=math.max(1, seed % 2147483647)}
   function rng:next() self.state=(self.state*48271)%2147483647 return self.state end
@@ -109,19 +121,56 @@ function M.new(identity, groove)
     "bass seed required"))
   local palette = VOICES[identity.genre] or VOICES.HOUSE
   local voice_family = rng:pick(palette)
+  local mode = low_end_mode(identity, voice_family)
   local bars = {}
   for bar = 1, 4 do bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove) end
+  if mode == "reverse_bass" then
+    bars = {}
+    for bar = 1, 4 do
+      bars[bar] = {}
+      for _, step in ipairs({3,7,11,15}) do
+        add_event(bars[bar], step, (bar == 4 and step == 15) and 12 or 0,
+          2, rng:int(92,110), step == 15, false)
+      end
+    end
+  elseif mode == "pitched_kick" then
+    bars = {{},{},{},{}}
+  end
+  local modulation = {
+    base=0.78 + rng:float() * 0.12,
+    drop=1.05 + rng:float() * 0.12,
+    second_drop=1.18 + rng:float() * 0.18,
+    transpose=rng:pick({0,0,0,5,7,12}),
+  }
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,
     voice_family=voice_family, model=MODEL[voice_family], phrase_bars=4,
-    octave=LOW[identity.genre] or 0, bars=bars,
+    octave=LOW[identity.genre] or 0, bars=bars, low_end_mode=mode,
+    low_end_owner=(mode == "pitched_kick") and "kick" or "bass",
+    kick_relationship=(mode == "reverse_bass" and "offbeat") or
+      (mode == "rumble" and "tail") or (mode == "pitched_kick" and "owned") or "gapped",
+    modulation=modulation,
   }
 end
 
-function M.event(plan, absolute_bar, step)
+function M.event(plan, absolute_bar, step, section)
   if not plan or not plan.bars then return nil end
   local bar = ((absolute_bar - 1) % plan.phrase_bars) + 1
-  return plan.bars[bar] and plan.bars[bar][step] or nil
+  local source = plan.bars[bar] and plan.bars[bar][step] or nil
+  if not source then return nil end
+  local event = {}
+  for name, value in pairs(source) do event[name] = value end
+  local second_drop = section == "DROP" and math.floor((absolute_bar - 1) / 8) % 2 == 1
+  if second_drop then
+    event.degree = event.degree + (plan.modulation and plan.modulation.transpose or 0)
+    event.velocity = math.min(127, event.velocity + 8)
+    event.modulation = plan.modulation and plan.modulation.second_drop or 1
+  elseif section == "DROP" then
+    event.modulation = plan.modulation and plan.modulation.drop or 1
+  else
+    event.modulation = plan.modulation and plan.modulation.base or 1
+  end
+  return event
 end
 
 function M.validate(plan)
@@ -137,6 +186,15 @@ function M.validate(plan)
   end
   if type(plan.bars) ~= "table" or #plan.bars ~= plan.phrase_bars then
     return false, "invalid phrase length"
+  end
+  if not contains({"bass","sub_bass","rumble","reverse_bass","pitched_kick"},
+      plan.low_end_mode) then
+    return false, "invalid low-end mode"
+  end
+  local expected_owner = plan.low_end_mode == "pitched_kick" and "kick" or "bass"
+  if plan.low_end_owner ~= expected_owner then return false, "invalid low-end ownership" end
+  if type(plan.modulation) ~= "table" or not plan.modulation.second_drop then
+    return false, "missing phrase modulation"
   end
   return true
 end
@@ -154,6 +212,10 @@ function M.apply_voice_profile(plan, patch)
   for name, target in pairs(profile) do
     local original = result[name] or target
     result[name] = (target * 0.85) + (original * 0.15)
+  end
+  if plan.modulation then
+    result.lfo_depth = math.min(1, result.lfo_depth * plan.modulation.base)
+    result.resonance = math.min(1, result.resonance * (0.92 + plan.modulation.base * 0.08))
   end
   return result
 end
