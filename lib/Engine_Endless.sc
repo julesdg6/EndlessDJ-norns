@@ -191,7 +191,7 @@ Engine_Endless : CroneEngine {
 			SynthDef(n808SynthDefs[kitIndex][voiceIndex], {
 				arg out=0, amp=0.8, voiceLevel=1, toneControl=0.5,
 					decayControl=0.5, driveControl=0.25, variation=0.15;
-				var toneScale, randomPitch, decay, env, pitchEnv, metallic, signal;
+				var toneScale, randomPitch, decay, env, pitchEnv, signal;
 				var kickFreq = #[48, 54, 62, 44, 52][kitIndex];
 				var snareFreq = #[185, 205, 238, 155, 198][kitIndex];
 				var noiseFreq = #[1850, 2450, 3150, 1250, 2200][kitIndex];
@@ -203,10 +203,6 @@ Engine_Endless : CroneEngine {
 					* kitDecay * decayControl.linexp(0, 1, 0.45, 1.8);
 				env = EnvGen.kr(Env.perc(0.001, decay, 1, -5), doneAction: 2);
 				pitchEnv = EnvGen.kr(Env.perc(0.001, 0.06, #[62, 20, 0, 38, 0, 0][voiceIndex], -8));
-				metallic = Mix(Pulse.ar(
-					[4210, 5470, 6250, 7820, 9100, 10300]
-					* toneScale * (1 + randomPitch) * (1 + (kitIndex * 0.035)), 0.5
-				)) / 6;
 				signal = switch(voiceIndex,
 					0, { SinOsc.ar((kickFreq * toneScale * (1 + randomPitch)) + pitchEnv)
 						+ (HPF.ar(WhiteNoise.ar, 5000) * EnvGen.kr(Env.perc(0.001, 0.01)) * 0.12) },
@@ -215,8 +211,20 @@ Engine_Endless : CroneEngine {
 					2, { BPF.ar(WhiteNoise.ar, noiseFreq * 0.78 * toneScale, 0.7)
 						* (1 + (Pulse.kr(#[32,38,26,45,35][kitIndex], 0.35) * 0.35)) },
 					3, { SinOsc.ar((kickFreq * 2.25 * toneScale) + pitchEnv) },
-					4, { HPF.ar(metallic + (WhiteNoise.ar * #[0.18,0.3,0.5,0.24,0.28][kitIndex]), 6100 * toneScale) },
-					5, { HPF.ar(metallic + (WhiteNoise.ar * #[0.22,0.36,0.55,0.3,0.34][kitIndex]), 4600 * toneScale) }
+					4, {
+						var metallic = Mix(Pulse.ar(
+							[4210, 5470, 6250, 7820, 9100, 10300]
+							* toneScale * (1 + randomPitch) * (1 + (kitIndex * 0.035)), 0.5
+						)) / 6;
+						HPF.ar(metallic + (WhiteNoise.ar * #[0.18,0.3,0.5,0.24,0.28][kitIndex]), 6100 * toneScale)
+					},
+					5, {
+						var metallic = Mix(Pulse.ar(
+							[4210, 5470, 6250, 7820, 9100, 10300]
+							* toneScale * (1 + randomPitch) * (1 + (kitIndex * 0.035)), 0.5
+						)) / 6;
+						HPF.ar(metallic + (WhiteNoise.ar * #[0.22,0.36,0.55,0.3,0.34][kitIndex]), 4600 * toneScale)
+					}
 				);
 				signal = (signal * (1 + (driveControl * 7 * kitDrive))).tanh;
 				Out.ar(out, Pan2.ar(signal * env * amp * voiceLevel));
