@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.126
+-- Endless DJ v1.127
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -23,6 +23,7 @@ internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
 song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
+timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
 -- Virtual grid connection (monome or midigrid virtual device).
@@ -411,7 +412,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.126",
+      version="v1.127",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -1050,6 +1051,8 @@ local function quiet_notes()
   notes_off = {}
   notes_pending = {}
   internal_notes_pending = {}
+  timing_scheduler.clear()
+  timing_subpulse = 0
 end
 
 local function apply_transport_message(msg_type)
@@ -3474,13 +3477,22 @@ end
 
 local function play_deck(deck, b, s, mix_fades)
   local sec = section_for_bar(b)
-  play_drums(sec, s, b, mix_fades, deck)
-  play_bass(sec, s, deck, b, mix_fades)
-  play_chords(sec, s, deck, b, mix_fades)
-  play_norns_instrument(sec, s, deck, b, mix_fades)
-  play_nts1(sec, s, deck, b, mix_fades)
-  play_mpx8(sec, s, deck, b, mix_fades)
-  sampler_advanced_tick(deck, internal_engine.deck_id(deck, deck_a), b, s)
+  local function schedule(role, callback)
+    local offset = groove_engine.role_offset(deck.groove, b, s, role)
+    timing_scheduler.schedule(timing_pulse, offset, 6, callback,
+      deck.name .. ":" .. role)
+  end
+  schedule("drums", function() play_drums(sec, s, b, mix_fades, deck) end)
+  schedule("bass", function() play_bass(sec, s, deck, b, mix_fades) end)
+  schedule("chords", function() play_chords(sec, s, deck, b, mix_fades) end)
+  schedule("mono", function()
+    play_norns_instrument(sec, s, deck, b, mix_fades)
+    play_nts1(sec, s, deck, b, mix_fades)
+  end)
+  schedule("samples", function()
+    play_mpx8(sec, s, deck, b, mix_fades)
+    sampler_advanced_tick(deck, internal_engine.deck_id(deck, deck_a), b, s)
+  end)
 end
 
 local function start_mix_if_needed()
@@ -3566,6 +3578,8 @@ local function finish_handover()
 end
 
 local metro_clock
+timing_pulse = 0
+timing_subpulse = 0
 
 local function clock_tick()
   if not playing then return end
@@ -3661,11 +3675,22 @@ local function clock_tick()
   redraw()
 end
 
+timing_clock_pulse = function()
+  if not playing then return end
+  if timing_subpulse == 0 then clock_tick() end
+  local _, errors = timing_scheduler.service(timing_pulse)
+  for _, reason in ipairs(errors) do
+    print("Endless DJ: timing event error: " .. reason)
+  end
+  timing_pulse = timing_pulse + 1
+  timing_subpulse = (timing_subpulse + 1) % 6
+end
+
 local function update_clock()
   if metro_clock then metro_clock:stop() end
   metro_clock = metro.init()
-  metro_clock.time = 60 / bpm / ppqn
-  metro_clock.event = clock_tick
+  metro_clock.time = 60 / bpm / ppqn / 6
+  metro_clock.event = timing_clock_pulse
   metro_clock:start()
 end
 

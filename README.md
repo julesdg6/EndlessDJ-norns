@@ -1012,3 +1012,12 @@ drives generated drums directly; a connected grid keeps its editable pattern
 while inheriting the plan's velocity and phrase metadata. Timing offsets are
 stored for the shared scheduler rather than approximated with random per-hit
 delays.
+
+SHARED MICROTIMING SCHEDULER
+
+Groove offsets are delivered by one bounded six-pulse-per-step queue shared by
+internal instruments and external MIDI. Drums, bass, chords, mono parts and
+samples are scheduled from the same deck plan, so they cannot drift onto
+different swing grids. The scheduler never sleeps inside the transport callback,
+preserves insertion order for simultaneous events, catches callback errors and
+is cleared whenever playback stops.

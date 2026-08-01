@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.126", 1, true) then
-  fail("Script version must match PR #126")
+if not source:find("Endless DJ v1.127", 1, true) then
+  fail("Script version must match PR #127")
 end
-pass("Script version matches PR #126")
+pass("Script version matches PR #127")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -884,7 +884,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.126"', 'sample_library=sample_library',
+    'version="v1.127"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)
@@ -1397,5 +1397,28 @@ if not source:find('groove_engine = include("EndlessDJ/lib/groove_engine")', 1, 
   fail("Groove plan is not integrated into deck generation and playback")
 end
 pass("Deterministic multi-bar groove plans drive generated drum playback")
+
+local timing_file = io.open("lib/timing_scheduler.lua", "r")
+if not timing_file then fail("Missing shared timing scheduler") end
+local timing_source = timing_file:read("*a")
+timing_file:close()
+for _, required in ipairs({
+  "function M.schedule(current_pulse,offset,pulses_per_step,callback,label)",
+  "function M.service(current_pulse)", "function M.clear()",
+  "pcall(event.callback)", "a.sequence<b.sequence",
+}) do
+  if not timing_source:find(required, 1, true) then fail("Timing scheduler missing: " .. required) end
+end
+for _, required in ipairs({
+  'timing_scheduler = include("EndlessDJ/lib/timing_scheduler")',
+  "groove_engine.role_offset(deck.groove, b, s, role)",
+  "metro_clock.time = 60 / bpm / ppqn / 6",
+  "metro_clock.event = timing_clock_pulse",
+  'schedule("drums"', 'schedule("bass"', 'schedule("chords"',
+  'schedule("mono"', 'schedule("samples"', "timing_scheduler.clear()",
+}) do
+  if not source:find(required, 1, true) then fail("Shared microtiming integration missing: " .. required) end
+end
+pass("Shared bounded scheduler applies groove timing to every musical role")
 
 print("All Endless DJ checks passed")
