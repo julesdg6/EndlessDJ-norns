@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.124
+-- Endless DJ v1.125
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -21,6 +21,7 @@ engine.name = "Endless"
 output_router = include("EndlessDJ/lib/output_router")
 internal_engine = include("EndlessDJ/lib/internal_engine")
 local sample_library = include("EndlessDJ/lib/sample_library")
+song_identity = include("EndlessDJ/lib/song_identity")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
 -- Virtual grid connection (monome or midigrid virtual device).
@@ -409,7 +410,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.124",
+      version="v1.125",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -489,7 +490,19 @@ local genres = {
 
 local roots = {45,47,48,50,52,53,55}
 
-n303_patch_for_genre = function(genre)
+identity_random_float = function(rng)
+  return rng and rng:float() or math.random()
+end
+
+identity_random_int = function(rng, first, last)
+  return rng and rng:int(first, last) or math.random(first, last)
+end
+
+identity_random_pick = function(rng, values)
+  return values[identity_random_int(rng, 1, #values)]
+end
+
+n303_patch_for_genre = function(genre, rng)
   local profiles = {
     ACID       = {0.10, 0.50, 0.82, 0.76, 0.53, 0.46, 0.55},
     TECHNO     = {0.15, 0.44, 0.70, 0.62, 0.38, 0.48, 0.38},
@@ -518,10 +531,10 @@ n303_patch_for_genre = function(genre)
   }
   local profile = profiles[genre] or {0.30, 0.42, 0.57, 0.53, 0.45, 0.35, 0.40}
   local function varied(index, spread)
-    return math.max(0, math.min(1, profile[index] + ((math.random() * 2 - 1) * spread)))
+    return math.max(0, math.min(1, profile[index] + ((identity_random_float(rng) * 2 - 1) * spread)))
   end
   return {
-    waveform = math.random() < profile[1] and 1 or 0,
+    waveform = identity_random_float(rng) < profile[1] and 1 or 0,
     cutoff = varied(2, 0.11),
     resonance = varied(3, 0.09),
     env_mod = varied(4, 0.10),
@@ -531,7 +544,7 @@ n303_patch_for_genre = function(genre)
   }
 end
 
-nchord_patch_for_genre = function(genre)
+nchord_patch_for_genre = function(genre, rng)
   local preset_groups = {
     HOUSE={1,2,7}, FUNKY={1,5,7}, DIRTY={1,3,7}, TECHNO={1,3,7},
     GARAGE4={1,2,8}, TWO_STEP={2,5,8}, BREAKS={3,7,8},
@@ -543,16 +556,16 @@ nchord_patch_for_genre = function(genre)
   }
   local choices = preset_groups[genre] or {1,2,7}
   local function varied(base, spread)
-    return math.max(0, math.min(1, base + ((math.random() * 2 - 1) * spread)))
+    return math.max(0, math.min(1, base + ((identity_random_float(rng) * 2 - 1) * spread)))
   end
   local spacious = genre == "DEEP" or genre == "LIQUID" or genre == "MELODIC" or
     genre == "TRANCE" or genre == "PROG"
   return {
-    preset = choices[math.random(#choices)],
-    inversion = math.random(0, 2),
-    spread = spacious and math.random(1, 2) or math.random(0, 1),
+    preset = identity_random_pick(rng, choices),
+    inversion = identity_random_int(rng, 0, 2),
+    spread = spacious and identity_random_int(rng, 1, 2) or identity_random_int(rng, 0, 1),
     strum = (genre == "HOUSE" or genre == "TECHNO" or genre == "HARDTECHNO")
-      and math.random(0, 1) or math.random(0, 2),
+      and identity_random_int(rng, 0, 1) or identity_random_int(rng, 0, 2),
     brightness = varied(spacious and 0.48 or 0.58, 0.14),
     filter_env = varied(spacious and 0.42 or 0.62, 0.13),
     chorus = varied(spacious and 0.68 or 0.34, 0.14),
@@ -601,12 +614,12 @@ nmono_model_palettes = {
   SPEED={1,2,4,5}, BASSLINE={1,2,3,4,5}, HARDSTYLE={1,2,4,5},
 }
 
-nmono_model_for_genre = function(genre)
+nmono_model_for_genre = function(genre, rng)
   local choices = nmono_model_palettes[genre] or {0,1,4}
-  return choices[math.random(1, #choices)]
+  return identity_random_pick(rng, choices)
 end
 
-nmono_patch_for_genre = function(genre)
+nmono_patch_for_genre = function(genre, rng)
   local bass_genres = {
     DUBSTEP=true, DNB=true, JUNGLE=true, BASSLINE=true, HARDSTYLE=true
   }
@@ -619,12 +632,12 @@ nmono_patch_for_genre = function(genre)
   local preset = bass_genres[genre] and 2 or
     (pluck_genres[genre] and 3 or (fx_genres[genre] and 4 or 1))
   local function varied(base, spread)
-    return math.max(0, math.min(1, base + ((math.random() * 2 - 1) * spread)))
+    return math.max(0, math.min(1, base + ((identity_random_float(rng) * 2 - 1) * spread)))
   end
   local base = nmono_role_defaults(preset)
   return {
     preset=preset,
-    model=nmono_model_for_genre(genre),
+    model=nmono_model_for_genre(genre, rng),
     waveform=base.waveform,
     sub=varied(base.sub, 0.10),
     cutoff=varied(base.cutoff, 0.13),
@@ -855,8 +868,8 @@ local function section_for_bar(b)
   return "PLAY"
 end
 
-local function random_pc()
-  return math.random(j6_pc_min, j6_pc_max)
+local function random_pc(rng)
+  return identity_random_int(rng, j6_pc_min, j6_pc_max)
 end
 
 local function j6_program_change(num)
@@ -868,27 +881,34 @@ local function j6_program_change(num)
   chord_midi_out:cc(80, 0, j6_pc_ch)
 end
 
-local function make_deck(letter, excluded_genre)
+local function make_deck(letter, excluded_genre, requested_seed, requested_genre)
   generation = generation + 1
-  local genre = genres[math.random(#genres)]
+  local genre = requested_genre or genres[math.random(#genres)]
   if excluded_genre and #genres > 1 then
     while genre == excluded_genre do
       genre = genres[math.random(#genres)]
     end
   end
   local variation_seed = math.random(1, 65535)
+  if requested_seed then variation_seed = requested_seed end
+  local identity = song_identity.new{
+    seed=variation_seed, deck=letter, genre=genre,
+  }
+  local patch_rng = song_identity.stream(identity, "patches")
+  local deck_rng = song_identity.stream(identity, "motif")
   local deck = {
     name = letter .. "-" .. string.format("%03d", generation),
     genre = genre,
     active = false,
-    angle = math.random() * math.pi * 2,
-    root = roots[math.random(#roots)],
-    pc = random_pc(),
-    norns_preset = math.random(#norns_presets),
+    angle = deck_rng:float() * math.pi * 2,
+    root = deck_rng:pick(roots),
+    pc = random_pc(deck_rng),
+    norns_preset = deck_rng:int(1, #norns_presets),
     variation_seed = variation_seed,
-    n303 = n303_patch_for_genre(genre),
-    nchord = nchord_patch_for_genre(genre),
-    nmono = nmono_patch_for_genre(genre),
+    identity = identity,
+    n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
+    nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
+    nmono = nmono_patch_for_genre(genre, patch_rng:fork("nmono")),
     ngrain = granular_patch_for_genre(genre, variation_seed),
     automix = automix_patch_for_genre(genre, variation_seed),
     nts1_identity = nil,
@@ -918,6 +938,23 @@ end
 
 local function next_deck()
   return deck_a.active and deck_b or deck_a
+end
+
+generate_song_identity = function(seed, deck_letter, genre)
+  return song_identity.new{
+    seed=seed, deck=deck_letter or "preview", genre=genre or "HOUSE",
+  }
+end
+
+print_song_identity = function(deck)
+  local target = deck or current_deck()
+  if not target or not target.identity then
+    print("Endless DJ: no song identity available")
+    return nil
+  end
+  local serialized = song_identity.serialize(target.identity)
+  print("Endless DJ identity: " .. serialized)
+  return serialized
 end
 
 n303_apply_deck = function(deck, sync_params)
