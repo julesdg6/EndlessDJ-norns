@@ -383,10 +383,12 @@ Engine_Endless : CroneEngine {
 
 		SynthDef(\endlessMono, {
 			arg out=0, freq=220, amp=0, sustain=0.2, mode=0, gate=0, t_trig=0,
+				model=0,
 				waveform=0, sub=0.25, cutoffControl=0.55, resonanceControl=0.35,
 				attackControl=0.08, releaseControl=0.35, glideControl=0.15,
 				lfoRateControl=0.2, lfoDepth=0.08, delaySend=0.15;
-			var attack, release, lfoRate, lfo, pitch, osc, subOsc, timedEnv, gatedEnv;
+			var attack, release, lfoRate, lfo, pitch, analog, subVoice, reese;
+			var organ, fm, wobble, osc, subOsc, timedEnv, gatedEnv;
 			var env, cutoff, rq, filtered, dry, delayed, output;
 			attack = attackControl.linexp(0, 1, 0.002, 0.45);
 			release = releaseControl.linexp(0, 1, 0.05, 2.5);
@@ -394,8 +396,24 @@ Engine_Endless : CroneEngine {
 			lfo = SinOsc.kr(lfoRate);
 			pitch = Lag.kr(freq, glideControl.linexp(0, 1, 0.002, 0.35))
 				* (1 + (lfo * lfoDepth * 0.025));
-			osc = SelectX.ar(waveform.clip(0, 2), [
+			analog = SelectX.ar(waveform.clip(0, 2), [
 				Saw.ar(pitch), Pulse.ar(pitch, 0.45), LFTri.ar(pitch)
+			]);
+			subVoice = (SinOsc.ar(pitch) * 0.78) + (LFTri.ar(pitch * 0.5) * 0.22);
+			reese = Mix.ar(Saw.ar(pitch * [0.992, 1.008])) * 0.52;
+			organ = Mix.ar(Pulse.ar(
+				pitch * [0.5, 1, 2, 3], [0.5, 0.46, 0.38, 0.3],
+				[0.22, 0.42, 0.23, 0.13]
+			));
+			fm = SinOsc.ar(
+				pitch,
+				SinOsc.ar(pitch * (2 + (lfoDepth * 2)))
+					* lfoDepth.linlin(0, 1, 0.25, 8)
+			);
+			wobble = (Saw.ar(pitch) * 0.55) +
+				(Pulse.ar(pitch * 0.5, lfo.range(0.2, 0.75)) * 0.45);
+			osc = SelectX.ar(model.clip(0, 5), [
+				analog, subVoice, reese, organ, fm, wobble
 			]);
 			subOsc = SinOsc.ar(pitch * 0.5) * sub;
 			timedEnv = EnvGen.kr(
@@ -862,6 +880,11 @@ Engine_Endless : CroneEngine {
 				\lfoDepth, msg[11].asFloat.clip(0, 1),
 				\delaySend, msg[12].asFloat.clip(0, 1)
 			);
+		});
+
+		this.addCommand(\nmono_model, "ii", { arg msg;
+			var deck = msg[1].asInteger.clip(1, 2) - 1;
+			nmonoVoices[deck].set(\model, msg[2].asInteger.clip(0, 5));
 		});
 
 		this.addCommand(\nsampler_load, "is", { arg msg;

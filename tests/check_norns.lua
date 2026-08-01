@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.118", 1, true) then
-  fail("Script version must match PR #118")
+if not source:find("Endless DJ v1.119", 1, true) then
+  fail("Script version must match PR #119")
 end
-pass("Script version matches PR #118")
+pass("Script version matches PR #119")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -200,7 +200,7 @@ do
   end
   for command, format in pairs({
     nmono_note="iiff", nmono_on="iif", nmono_off="i",
-    nmono_set="iiffffffffff"
+    nmono_set="iiffffffffff", nmono_model="ii"
   }) do
     if not engine_source:find(
         "addCommand(\\" .. command .. ', "' .. format .. '"', 1, true
@@ -481,7 +481,7 @@ if not source:find("nmono_apply_deck(deck_a, false)", 1, true) or
     not source:find("nmono_apply_deck(deck_b, false)", 1, true) then
   fail("Deck A and Deck B n-mono patches must be applied independently")
 end
-for _, param in ipairs({"nmono_preset", "nmono_waveform"}) do
+for _, param in ipairs({"nmono_preset", "nmono_model", "nmono_waveform"}) do
   if not source:find('"' .. param .. '"', 1, true) then
     fail("Missing n-mono parameter " .. param)
   end
@@ -492,6 +492,23 @@ for _, control in ipairs({
 }) do
   if not source:find('{"' .. control .. '", "n-mono ', 1, true) then
     fail("Missing n-mono control " .. control)
+  end
+end
+for _, token in ipairs({
+  "nmono_model_names", "nmono_model_palettes", "nmono_model_for_genre",
+  "TWO_STEP={1,2,3,4}", "DUBSTEP={1,2,4,5}",
+}) do
+  if not source:find(token, 1, true) then
+    fail("Missing deterministic genre-shaped n-mono model token " .. token)
+  end
+end
+local engine_source = read_file("lib/Engine_Endless.sc") or ""
+for _, token in ipairs({
+  "model.clip(0, 5)", "subVoice", "reese", "organ", "fm", "wobble",
+  'addCommand(\\nmono_model, "ii"',
+}) do
+  if not engine_source:find(token, 1, true) then
+    fail("Missing interchangeable n-mono model implementation " .. token)
   end
 end
 pass("Generated persistent n-mono synth and controls exist")
@@ -786,7 +803,7 @@ do
   local harness_source = read_file("lib/norns_harness.lua") or ""
   for _, token in ipairs({
     "run_norns_test_harness", "run_resample_test_harness",
-    'version="v1.118"', 'sample_library=sample_library',
+    'version="v1.119"', 'sample_library=sample_library',
   }) do
     if not source:find(token, 1, true) then
       fail("Norns harness integration is missing " .. token)

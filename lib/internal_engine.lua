@@ -179,6 +179,7 @@ function InternalEngine.mono_off(deck_id)
 end
 
 function InternalEngine.set_nmono(deck_id, settings)
+  call("nmono_model", deck_id, settings.model or 0)
   call(
     "nmono_set",
     deck_id,
