@@ -394,7 +394,7 @@ Engine_Endless : CroneEngine {
 				Saw.ar(pitch), Pulse.ar(pitch, 0.45), LFTri.ar(pitch)
 			]);
 			subVoice = (SinOsc.ar(pitch) * 0.78) + (LFTri.ar(pitch * 0.5) * 0.22);
-			reese = Mix.ar(Saw.ar(pitch * [0.992, 1.008])) * 0.52;
+			reese = Mix.ar(Saw.ar(pitch * [0.985, 0.995, 1.005, 1.015])) * 0.28;
 			organ = Mix.ar(Pulse.ar(
 				pitch * [0.5, 1, 2, 3], [0.5, 0.46, 0.38, 0.3],
 				[0.22, 0.42, 0.23, 0.13]
@@ -404,8 +404,9 @@ Engine_Endless : CroneEngine {
 				SinOsc.ar(pitch * (2 + (lfoDepth * 2)))
 					* lfoDepth.linlin(0, 1, 0.25, 8)
 			);
-			wobble = (Saw.ar(pitch) * 0.55) +
-				(Pulse.ar(pitch * 0.5, lfo.range(0.2, 0.75)) * 0.45);
+			wobble = Mix.ar(VarSaw.ar(
+				pitch * [0.5, 1], 0, lfo.range(0.08, 0.92), [0.48, 0.52]
+			));
 			osc = SelectX.ar(model.clip(0, 5), [
 				analog, subVoice, reese, organ, fm, wobble
 			]);

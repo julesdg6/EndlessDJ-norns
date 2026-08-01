@@ -88,6 +88,13 @@ chooses deep sub, Reese, organ or FM bass and never defaults to acid; 303 is
 eligible only for styles where it is musically intentional. External T-8 bass
 receives the same generated notes, so existing MIDI behaviour is preserved.
 
+Each bass family also has its own synthesis profile rather than sharing one
+generic filter and envelope setting. Reese bass uses wider detuning and darker
+movement, organ bass emphasizes bright stable harmonics, FM bass exposes a
+stronger modulation index, and wobble bass uses deep resonant filter movement.
+Small seeded patch variation remains, but cannot erase those audible family
+differences.
+
 INTERNAL MIXER
 
 Every internal instrument now feeds its own stereo channel before reaching its

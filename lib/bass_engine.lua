@@ -19,6 +19,20 @@ local VOICES = {
 }
 
 local MODEL = {analog=0,sub=1,reese=2,organ=3,fm=4,wobble=5}
+local VOICE_PROFILES = {
+  analog={sub=0.28,cutoff=0.62,resonance=0.24,attack=0.03,release=0.34,
+    glide=0.12,lfo_rate=0.16,lfo_depth=0.09,delay_send=0.08},
+  sub={sub=0.08,cutoff=0.38,resonance=0.12,attack=0.04,release=0.48,
+    glide=0.08,lfo_rate=0.08,lfo_depth=0.03,delay_send=0.01},
+  reese={sub=0.12,cutoff=0.46,resonance=0.34,attack=0.02,release=0.48,
+    glide=0.18,lfo_rate=0.12,lfo_depth=0.22,delay_send=0.04},
+  organ={sub=0.02,cutoff=0.88,resonance=0.08,attack=0.01,release=0.22,
+    glide=0.01,lfo_rate=0.06,lfo_depth=0.01,delay_send=0.02},
+  fm={sub=0.04,cutoff=0.74,resonance=0.18,attack=0.01,release=0.30,
+    glide=0.04,lfo_rate=0.20,lfo_depth=0.58,delay_send=0.04},
+  wobble={sub=0.32,cutoff=0.36,resonance=0.58,attack=0.02,release=0.52,
+    glide=0.10,lfo_rate=0.42,lfo_depth=0.82,delay_send=0.05},
+}
 local LOW = {DUBSTEP=-12,JUNGLE=-12,DNB=-12,LIQUID=-12,JUKE=-12,HARDSTYLE=-12}
 local DENSE = {TWO_STEP=true,BREAKS=true,JUNGLE=true,DNB=true,JUKE=true,SPEED=true,BASSLINE=true}
 local LONG = {DUBSTEP=true,DEEP=true,LIQUID=true,MINIMAL=true,MELODIC=true,PROG=true}
@@ -129,6 +143,19 @@ end
 
 function M.model_for_voice(voice_family)
   return MODEL[voice_family]
+end
+
+function M.apply_voice_profile(plan, patch)
+  local result = {}
+  for name, value in pairs(patch or {}) do result[name] = value end
+  local profile = VOICE_PROFILES[plan and plan.voice_family]
+  if not profile then return result end
+  result.model = MODEL[plan.voice_family]
+  for name, target in pairs(profile) do
+    local original = result[name] or target
+    result[name] = (target * 0.85) + (original * 0.15)
+  end
+  return result
 end
 
 function M.voices_for_genre(genre)
