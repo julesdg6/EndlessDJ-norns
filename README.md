@@ -147,9 +147,11 @@ their audio calculations automatically. They wake before the next note,
 sample, loop, granular voice, effect send, or crossfade-level change, so this
 power saving does not alter sequencing or mixer controls.
 
-The six n-808 voices also use separate synthesis graphs. A hat hit therefore
-calculates only the requested hat rather than simultaneously calculating and
-discarding the kick, snare, clap, tom, and other hat models.
+The internal drum engine provides 808, 909, LinnDrum, industrial and hybrid
+kits. Every generated record stores one genre-compatible kit in its song
+identity; the choice remains stable for the record and is independent between
+decks. Each kit/voice pair has a separate synthesis graph, so a hat hit
+calculates only that selected hat rather than every voice and kit alternative.
 
 The five n-chord synthesis engines and eight musical envelope roles are compiled
 as separate graphs. Each note calculates only its song's selected engine/role
