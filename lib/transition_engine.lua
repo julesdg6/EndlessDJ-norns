@@ -75,7 +75,10 @@ local function stage_levels(strategy, stage)
     local data={
       levels(FULL,{percussion=0.45,samples=0.2,fx=0.2}),
       levels({kick=1,percussion=0.8,chords=0.55,lead=0.25,samples=0.25,fx=0.35},{bass=1,percussion=0.55,fx=0.2}),
-      levels({percussion=0.45,chords=0.3,samples=0.2,fx=0.55},{kick=1,percussion=0.85,bass=1,chords=0.45,lead=0.3,samples=0.35,fx=0.35}),
+      levels(
+        {percussion=0.45,chords=0.3,samples=0.2,fx=0.55},
+        {kick=1,percussion=0.85,bass=1,chords=0.45,lead=0.3,samples=0.35,fx=0.35}
+      ),
       levels({},FULL),
     }
     return data[stage], false
@@ -84,7 +87,10 @@ local function stage_levels(strategy, stage)
     local data={
       levels(FULL,{percussion=0.65,fx=0.18}),
       levels({kick=1,bass=1,chords=0.75,lead=0.45,samples=0.3,fx=0.35},{percussion=1,samples=0.25,fx=0.3}),
-      levels({percussion=0.3,chords=0.35,lead=0.2,samples=0.2,fx=0.5},{kick=1,percussion=1,bass=1,chords=0.5,lead=0.35,samples=0.4,fx=0.35}),
+      levels(
+        {percussion=0.3,chords=0.35,lead=0.2,samples=0.2,fx=0.5},
+        {kick=1,percussion=1,bass=1,chords=0.5,lead=0.35,samples=0.4,fx=0.35}
+      ),
       levels({},FULL),
     }
     return data[stage], false
@@ -93,7 +99,10 @@ local function stage_levels(strategy, stage)
     local data={
       levels(FULL,{samples=0.5,fx=0.25}),
       levels({kick=1,percussion=0.8,bass=1,chords=0.65,lead=0.25,fx=0.4},{samples=0.8,percussion=0.3,fx=0.35}),
-      levels({percussion=0.4,chords=0.25,samples=0.15,fx=0.55},{kick=1,percussion=0.85,bass=1,chords=0.55,lead=0.45,samples=0.75,fx=0.4}),
+      levels(
+        {percussion=0.4,chords=0.25,samples=0.15,fx=0.55},
+        {kick=1,percussion=0.85,bass=1,chords=0.55,lead=0.45,samples=0.75,fx=0.4}
+      ),
       levels({},FULL),
     }
     return data[stage], false
@@ -101,7 +110,10 @@ local function stage_levels(strategy, stage)
   local data={
     levels(FULL,{fx=0.25}),
     levels({kick=1,percussion=0.7,bass=1,chords=0.45,lead=0.2,samples=0.3,fx=1},{samples=0.2,fx=0.4}),
-    levels({percussion=0.25,chords=0.2,samples=0.15,fx=1},{kick=1,percussion=0.8,bass=1,chords=0.55,lead=0.35,samples=0.4,fx=0.55}),
+    levels(
+      {percussion=0.25,chords=0.2,samples=0.15,fx=1},
+      {kick=1,percussion=0.8,bass=1,chords=0.55,lead=0.35,samples=0.4,fx=0.55}
+    ),
     levels({},FULL),
   }
   return data[stage], false
