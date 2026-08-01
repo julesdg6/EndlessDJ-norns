@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.132
+-- Endless DJ v1.133
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -24,6 +24,7 @@ local sample_library = include("EndlessDJ/lib/sample_library")
 song_identity = include("EndlessDJ/lib/song_identity")
 groove_engine = include("EndlessDJ/lib/groove_engine")
 bass_engine = include("EndlessDJ/lib/bass_engine")
+arrangement_engine = include("EndlessDJ/lib/arrangement_engine")
 timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
 norns_harness = include("EndlessDJ/lib/norns_harness")
 
@@ -413,7 +414,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.132",
+      version="v1.133",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -818,16 +819,6 @@ local MIDI_START = 0xFA
 local MIDI_CONTINUE = 0xFB
 local MIDI_STOP = 0xFC
 
-local sections = {
-  {name="INTRO", first=1, last=16},
-  {name="GROOVE", first=17, last=32},
-  {name="MAIN", first=33, last=64},
-  {name="BREAK", first=65, last=80},
-  {name="BUILD", first=81, last=96},
-  {name="DROP", first=97, last=120},
-  {name="MIX", first=121, last=128},
-}
-
 local function clamp(x,a,b)
   return math.max(a, math.min(b,x))
 end
@@ -861,13 +852,8 @@ local function update_mx1_fx()
   end
 end
 
-local function section_for_bar(b)
-  for _,s in ipairs(sections) do
-    if b >= s.first and b <= s.last then
-      return s.name
-    end
-  end
-  return "PLAY"
+local function section_for_bar(b, deck)
+  return arrangement_engine.section_name(deck and deck.arrangement, b)
 end
 
 local function random_pc(rng)
@@ -900,6 +886,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
   local deck_rng = song_identity.stream(identity, "motif")
   local groove = groove_engine.new(identity)
   local bass = bass_engine.new(identity, groove)
+  local arrangement = arrangement_engine.new(identity)
   local nbass = nmono_patch_for_genre(genre, patch_rng:fork("nbass"))
   nbass = bass_engine.apply_voice_profile(bass, nbass)
   local deck = {
@@ -914,6 +901,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     identity = identity,
     groove = groove,
     bass = bass,
+    arrangement = arrangement,
     nbass = nbass,
     n303 = n303_patch_for_genre(genre, patch_rng:fork("n303")),
     nchord = nchord_patch_for_genre(genre, patch_rng:fork("nchord")),
@@ -929,6 +917,7 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     mpx8_riser_fired = false,
     mpx8_impact_fired = false,
     mpx8_drop_accent_fired = false,
+    mpx8_events_fired = {},
   }
   if acid_build_deck_state then
     deck.acid = acid_build_deck_state(deck)
@@ -1266,17 +1255,6 @@ local function service_pending_notes()
       table.remove(internal_notes_pending, i)
     end
   end
-end
-
-local function density_for_section(sec)
-  if sec == "INTRO" then return 0.40 end
-  if sec == "GROOVE" then return 0.60 end
-  if sec == "MAIN" then return 0.78 end
-  if sec == "BREAK" then return 0.45 end
-  if sec == "BUILD" then return 0.75 end
-  if sec == "DROP" then return 0.95 end
-  if sec == "MIX" then return 0.70 end
-  return 0.70
 end
 
 -- ──────────────────────────────────────────────
@@ -2994,7 +2972,7 @@ chord_allow_house = {
 local function play_drums(sec, s, b, mix_fades, deck)
   local gn = deck.genre
   local p = drum_patterns[gn] or drum_patterns.HOUSE
-  local d = density_for_section(sec)
+  local d = arrangement_engine.role_level(deck.arrangement, b, "percussion")
   -- Use grid-editable drum_steps for the active deck; genre pattern for incoming deck during mix
   local use_grid = (deck == current_deck() and g ~= nil)
   local function groove_event(voice)
@@ -3004,10 +2982,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local kick_amount  = mix_fades and mix_fades.kick  or 1
   local drums_amount = mix_fades and mix_fades.drums or 1
 
-  local kick_prob = 1.0
-  if sec == "INTRO" then kick_prob = 0.75 end
-  if sec == "BREAK" then kick_prob = 0.45 end
-  kick_prob = kick_prob * kick_amount
+  local kick_prob=arrangement_engine.role_level(deck.arrangement,b,"kick")*kick_amount
 
   -- Snare and clap always fire when pattern calls for them (base prob 1.0);
   -- scale by drums_amount for a consistent probabilistic fade with kick.
@@ -3018,7 +2993,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local kick_hit
   local kick_event = groove_event("kick")
   if use_grid then kick_hit = drum_steps[1][s] else kick_hit = kick_event ~= nil end
-  if kick_hit and math.random() < kick_prob then
+  if kick_hit and arrangement_engine.gate(deck.arrangement,b,s,"kick",kick_prob) then
     t8_note(KICK, (kick_event and kick_event.velocity) or kick_vel[gn] or 110, drum_ch, 1, deck)
   end
 
@@ -3029,14 +3004,16 @@ local function play_drums(sec, s, b, mix_fades, deck)
   else
     snare_hit = groove_event("snare") ~= nil
   end
-  if snare_hit and sec ~= "INTRO" and math.random() < snare_prob then
+  if snare_hit and sec ~= "INTRO" and
+      arrangement_engine.gate(deck.arrangement,b,s,"snare",snare_prob*d) then
     local event = groove_event("snare")
     t8_note(SNARE, (event and event.velocity) or snare_vel[gn] or 100, drum_ch, 1, deck)
   end
 
   -- Clap (always generative; not on grid)
   local clap_event = groove_event("clap")
-  if clap_event and sec ~= "INTRO" and math.random() < clap_prob then
+  if clap_event and sec ~= "INTRO" and
+      arrangement_engine.gate(deck.arrangement,b,s,"clap",clap_prob*d) then
     if gn ~= "TECHNO" then
       t8_note(CLAP, clap_event.velocity or 110, drum_ch, 1, deck)
     end
@@ -3044,7 +3021,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Tom (always generative)
   local tom_event = groove_event("tom")
-  if tom_event and math.random() < 0.45 * drums_amount then
+  if tom_event and arrangement_engine.gate(deck.arrangement,b,s,"tom",0.45*drums_amount*d) then
     t8_note(TOM, tom_event.velocity or 85, drum_ch, 1, deck)
   end
 
@@ -3055,26 +3032,29 @@ local function play_drums(sec, s, b, mix_fades, deck)
   else
     chh_hit = groove_event("hats") ~= nil
   end
-  if chh_hit and math.random() < (0.45 + d * 0.40) * drums_amount then
+  if chh_hit and arrangement_engine.gate(deck.arrangement,b,s,"hats",
+      (0.45+d*0.40)*drums_amount) then
     local event = groove_event("hats")
     t8_note(CHH, (event and event.velocity) or hat_vel[gn] or 70, drum_ch, 1, deck)
   end
 
   -- Open hi-hat
   if use_grid then
-    if drum_steps[3][s] and math.random() < drums_amount then
+    if drum_steps[3][s] and arrangement_engine.gate(deck.arrangement,b,s,"ohats",drums_amount*d) then
       t8_note(OHH, 70, drum_ch, 1, deck)
     end
-  elseif groove_event("ohats") and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
+  elseif groove_event("ohats") and sec ~= "INTRO" and
+      arrangement_engine.gate(deck.arrangement,b,s,"ohats",d*0.45*drums_amount) then
     t8_note(OHH, groove_event("ohats").velocity or 70, drum_ch, 1, deck)
-  elseif not p.ohats and (s == 7 or s == 15) and sec ~= "INTRO" and math.random() < d * 0.45 * drums_amount then
+  elseif not p.ohats and (s==7 or s==15) and sec~="INTRO" and
+      arrangement_engine.gate(deck.arrangement,b,s,"ohats",d*0.45*drums_amount) then
     t8_note(OHH, 70, drum_ch, 1, deck)
   end
 
   -- Phrase-derived fill: style, placement, voice and velocity belong to the
   -- stored groove plan instead of a universal genre-independent roll.
   local fill = groove_engine.fill_event(deck.groove, b, s)
-  if fill and math.random() < drums_amount then
+  if fill and arrangement_engine.gate(deck.arrangement,b,s,"fill",drums_amount) then
     local notes={kick=KICK,snare=SNARE,clap=CLAP,hats=CHH,ohats=OHH,tom=TOM}
     t8_note(notes[fill.voice] or SNARE, fill.velocity or 96, drum_ch, 1, deck)
   end
@@ -3087,12 +3067,13 @@ local function play_bass(sec, s, deck, b, mix_fades)
   end
   if sec == "INTRO" then return end
   if sec == "BREAK" and (b % 2 == 0 or s ~= 1) then return end
-  local bass_amount = mix_fades and mix_fades.bass or 1
+  local bass_amount=(mix_fades and mix_fades.bass or 1)*
+    arrangement_engine.role_level(deck.arrangement,b,"bass")
   if bass_amount <= 0.02 then return end
   if deck.bass.low_end_owner == "kick" then return end
   local event = bass_engine.event(deck.bass, b, s, sec)
   if not event then return end
-  local velocity = math.floor(event.velocity * bass_amount + 0.5)
+  local velocity = math.floor(event.velocity*math.max(0.45,bass_amount)+0.5)
   if sec == "DROP" then velocity = math.min(127, velocity + 8) end
   local note = deck.root + (deck.bass.octave or 0) + event.degree
   if output_router.sends_external("bass") then
@@ -3108,7 +3089,8 @@ end
 local function play_chords(sec, s, deck, b, mix_fades)
   if sec == "INTRO" then return end
   local melody_amount = mix_fades and mix_fades.melody or 1
-  if math.random() >= melody_amount then return end
+  local chord_level=arrangement_engine.role_level(deck.arrangement,b,"chords")
+  if not arrangement_engine.gate(deck.arrangement,b,s,"chords",melody_amount*chord_level) then return end
 
   -- Determine whether this step is allowed to trigger.
   -- For the active deck: use the grid-editable j6_steps pattern.
@@ -3356,22 +3338,17 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   -- MPX8 is a bar-level device; only act at the start of each bar
   if s ~= 1 then return end
 
-  -- ── One-shot transition samples ────────────────
-  -- Riser fires once at the first bar of BUILD
-  if sec == "BUILD" and b == 81 and not deck.mpx8_riser_fired then
-    deck.mpx8_riser_fired = true
-    mpx8_trigger(6, 100, deck, "riser")
-  end
-
-  -- Impact and drop accent fire once at the first bar of DROP
-  if sec == "DROP" and b == 97 then
-    if not deck.mpx8_impact_fired then
-      deck.mpx8_impact_fired = true
-      mpx8_trigger(5, 110, deck)  -- pad 5: impact
-    end
-    if not deck.mpx8_drop_accent_fired then
-      deck.mpx8_drop_accent_fired = true
-      mpx8_trigger(8, 110, deck)  -- pad 8: drop accent
+  -- One-shot transition samples are emitted by the stored phrase plan rather
+  -- than hard-coded universal bar numbers.  Double-drop plans therefore get a
+  -- distinct second riser/impact without retriggering an earlier event.
+  local planned_event=arrangement_engine.event_at(deck.arrangement,b)
+  if planned_event and not deck.mpx8_events_fired[planned_event] then
+    deck.mpx8_events_fired[planned_event]=true
+    if planned_event:find("riser",1,true) then
+      mpx8_trigger(6,100,deck,"riser")
+    elseif planned_event:find("impact",1,true) then
+      mpx8_trigger(5,110,deck)
+      mpx8_trigger(8,110,deck)
     end
   end
 
@@ -3380,7 +3357,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
   if sec == "INTRO" or sec == "GROOVE" or sec == "BREAK" or sec == "MIX" then return end
 
   local drums_amount = mix_fades and mix_fades.drums or 1
-  if math.random() >= drums_amount then return end
+  if not arrangement_engine.gate(deck.arrangement,b,s,"samples",drums_amount) then return end
 
   -- Derive a per-deck accent offset (0-3) from the variation_seed so accents
   -- land on different bar positions for different tracks.
@@ -3415,7 +3392,7 @@ local function play_mpx8(sec, s, deck, b, mix_fades)
 end
 
 local function play_deck(deck, b, s, mix_fades)
-  local sec = section_for_bar(b)
+  local sec = section_for_bar(b,deck)
   local function schedule(role, callback)
     local offset = groove_engine.role_offset(deck.groove, b, s, role)
     timing_scheduler.schedule(timing_pulse, offset, 6, callback,
@@ -3511,7 +3488,7 @@ local function finish_handover()
       deck.nts1_motif_turn = 1
     end
     if deck then
-      nts1_apply_scene(deck, section_for_bar(current_bar), current_bar, true)
+      nts1_apply_scene(deck, section_for_bar(current_bar,deck), current_bar, true)
     end
   end
   grid_load_pattern(current_deck().genre)
@@ -4910,7 +4887,10 @@ function redraw()
     if mixing then
       screen.text("MIX " .. current_deck().genre .. ">" .. next_deck().genre)
     else
-      screen.text(section_for_bar(current_bar) .. " " .. current_bar .. " " .. current_deck().genre)
+      local deck=current_deck()
+      local phrase=arrangement_engine.phrase(deck.arrangement,current_bar)
+      local phrase_text=phrase and (" P"..phrase.index..":"..phrase.bar) or ""
+      screen.text(section_for_bar(current_bar,deck)..phrase_text.." "..deck.genre)
     end
   else
     screen.text("K2 PLAY  K3 J6 TEST")
