@@ -366,7 +366,16 @@ midigrid setup (two Launchpad Mini MK3)
    this setup.
 5. Colours: distinct instrument colours (kick=red, snare=yellow, open hat=green,
    closed hat=blue, etc.) are applied automatically when the script connects to
-   the grid.  No manual palette selection is required.
+   the grid. No manual palette selection is required. Maiden reports how many
+   attached devices accepted the palette; warnings identify a missing palette,
+   unavailable virtual-grid devices, or a driver without an RGB lookup table.
+
+The Launchpad driver must expose an `rgb_lut` table. The current SysEx RGB
+driver is recommended. If the pads remain a single colour, paste
+`tools/grid_diagnostics.lua` into Maiden. It reports driver/RGB capability,
+injects the Endless DJ palette, forces a complete refresh, and displays levels
+0–15 across the first two rows. Check that midigrid is active, layout is 128,
+and rotation is disabled before running the diagnostic.
 
 16×8 control map
   The left half (x = 1–8) and right half (x = 9–16) are independent sections.

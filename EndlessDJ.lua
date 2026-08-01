@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.114
+-- Endless DJ v1.118
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -409,7 +409,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.114",
+      version="v1.118",
       sample_library=sample_library,
       restore_audio=function()
         mixer_apply_channel()
@@ -1781,23 +1781,40 @@ local function grid_connect()
   g = grid.connect()
   if g then
     g.key = grid_key
-    -- Inject the EndlessDJ colour palette into any attached midigrid Gen 3
-    -- device (e.g. Launchpad Mini MK3) so drum lanes and keyboard zones are
-    -- shown in distinct colours instead of the default amber gradient.
-    -- The check is silent when midigrid is not installed or no device is found.
-    local mg = rawget(_G, "midigrid")
-    if mg and mg.vgrid and mg.vgrid.devices then
+    -- Prefer midigrid state exposed by the connected grid; older releases may
+    -- only expose the global module. A real monome needs neither path.
+    local mg = g.vgrid and g or rawget(_G, "midigrid")
+    local devices = mg and mg.vgrid and mg.vgrid.devices
+    if devices then
       local ok, lut = pcall(include, "EndlessDJ/lib/palettes/endless_dj")
-      if ok and type(lut) == "table" then
-        for _, device in pairs(mg.vgrid.devices) do
-          if device.rgb_lut then
+      if not ok or type(lut) ~= "table" or #lut ~= 16 then
+        print("Endless DJ: grid palette unavailable or invalid")
+      else
+        local attached = 0
+        local accepted = 0
+        for index, device in pairs(devices) do
+          attached = attached + 1
+          if type(device.rgb_lut) == "table" then
             device.rgb_lut = lut
             device.force_full_refresh = true
+            accepted = accepted + 1
+          else
+            print("Endless DJ: grid device " .. tostring(index) ..
+              " has no RGB LUT; update its midigrid driver")
           end
         end
+        print("Endless DJ: grid palette applied to " .. tostring(accepted) ..
+          "/" .. tostring(attached) .. " device(s)")
+        if attached == 0 then
+          print("Endless DJ: midigrid is active but no grid devices are attached")
+        end
       end
+    elseif rawget(_G, "midigrid") then
+      print("Endless DJ: midigrid found but its virtual-grid devices are unavailable")
     end
     grid_load_pattern(current_deck().genre)
+    -- grid_redraw calls refresh after force_full_refresh is set, immediately
+    -- sending the complete RGB state to every attached device.
     grid_redraw(step)
   end
 end
