@@ -2,7 +2,7 @@ You are helping develop a Monome Norns script called Endless DJ.
 
 FINAL PHYSICAL ACCEPTANCE
 
-After installing v1.145, stop normal playback and run this once in Maiden:
+After installing v1.147, stop normal playback and run this once in Maiden:
 
 ```lua
 run_norns_test_harness("acceptance")
