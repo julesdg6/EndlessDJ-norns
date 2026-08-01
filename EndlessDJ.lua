@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.139
+-- Endless DJ v1.140
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -417,7 +417,7 @@ physical_harness = nil
 function run_norns_test_harness(mode)
   if not physical_harness then
     physical_harness = norns_harness.new({
-      version="v1.139",
+      version="v1.140",
       sample_library=sample_library,
       generation_fixtures=generation_fixtures.build(song_identity),
       restore_audio=function()
