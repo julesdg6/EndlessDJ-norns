@@ -17,6 +17,12 @@
 --   MX-1 Beat FX depth automated via CC during mix transitions
 -- luacheck: globals starlight normalise_deck_position deck_transport_position
 -- luacheck: globals set_deck_transport_position
+-- luacheck: globals blank_step_grid GRID_SCREEN grid_screen copy_step_grid
+-- luacheck: globals grid_assign_deck_patterns GRID_LETTERS grid_wrap_screen
+-- luacheck: globals grid_sync_current_deck_steps grid_set_screen grid_scroll_screen
+-- luacheck: globals grid_draw_big_letter grid_draw_deck_drums grid_draw_deck_fx
+-- luacheck: globals grid_draw_mixer_screen grid_draw_bass_screen grid_redraw
+-- luacheck: globals grid_update_nav_buttons grid_bind_navigation
 
 engine.name = "Endless"
 
@@ -814,12 +820,20 @@ local OHH = 46
 -- Right half (x 9–16): NTS-1 and J-6 trigger lanes + playable keyboard
 -- ──────────────────────────────────────────────
 
--- 4 drum lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
-local drum_steps = {}
-for i = 1, 4 do
-  drum_steps[i] = {}
-  for j = 1, 16 do drum_steps[i][j] = false end
+function blank_step_grid(rows, cols)
+  local steps = {}
+  for row = 1, rows do
+    steps[row] = {}
+    for col = 1, cols do steps[row][col] = false end
+  end
+  return steps
 end
+
+-- 4 drum lanes x 16 steps: 1=kick  2=snare  3=open hat  4=closed hat
+local drum_steps = blank_step_grid(4, 16)
+
+GRID_SCREEN = {BOOT=0, DRUMS=1, FX=2, MIXER=3, BASS=4, COUNT=4}
+grid_screen = GRID_SCREEN.BOOT
 
 -- Right-half trigger patterns (16 steps, toggled via grid pads)
 local nts1_steps = {}   -- NTS-1 melody: true = allowed to trigger on this step
@@ -867,6 +881,7 @@ local acid_build_deck_state
 local acid_refresh_phrase
 local acid_regenerate_deck
 local acid_sync_seed_param
+local mpx8_trigger
 
 local MIDI_START = 0xFA
 local MIDI_CONTINUE = 0xFB
@@ -999,6 +1014,9 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     local selection=sample_library.selection_for(deck.sample_palette,role,"primary")
     deck.sample_roles[role]=selection and selection.slot or
       sample_library.role_for_seed(role,deck.variation_seed+index*97)
+  end
+  if grid_assign_deck_patterns then
+    grid_assign_deck_patterns(deck)
   end
   return deck
 end
@@ -1896,51 +1914,6 @@ local drum_patterns = {
 -- Grid coordinate helpers
 -- ──────────────────────────────────────────────
 
--- Map drum (lane 1-4, step 1-16) → grid (x 1-8, y 1-8).
--- Layout (y=1 = top row):
---   lane 1 kick:       y 1-2,  steps 1-8 → y=1, steps 9-16 → y=2
---   lane 2 snare:      y 3-4
---   lane 3 open hat:   y 5-6
---   lane 4 closed hat: y 7-8
-local function drum_to_xy(lane, s)
-  local row_offset = s > 8 and 1 or 0
-  local y = (lane - 1) * 2 + 1 + row_offset
-  local x = s <= 8 and s or (s - 8)
-  return x, y
-end
-
--- Map grid (x 1-8, y 1-8) → drum (lane 1-4, step 1-16).
-local function xy_to_drum(x, y)
-  local lane = math.ceil(y / 2)
-  local s = x + ((y - 1) % 2) * 8
-  return lane, s
-end
-
--- Map synth (inst 1-2, step 1-16) → grid (x 9-16, y 1-4).
--- inst 1 = NTS-1 (y=1-2), inst 2 = J-6 (y=3-4)
-local function synth_to_xy(inst, s)
-  local row_offset = s > 8 and 1 or 0
-  local y = (inst - 1) * 2 + 1 + row_offset
-  local x = 8 + (s <= 8 and s or (s - 8))
-  return x, y
-end
-
--- Map grid (x 9-16, y 1-4) → synth (inst 1-2, step 1-16); nil if outside.
-local function xy_to_synth(x, y)
-  if y < 1 or y > 4 then return nil, nil end
-  local inst = math.ceil(y / 2)
-  local s = (x - 8) + ((y - 1) % 2) * 8
-  if s < 1 or s > 16 then return nil, nil end
-  return inst, s
-end
-
--- Map keyboard grid (x 9-16, y 5-8) → MIDI note.
--- y=8 (bottom row) starts at kb_base + kb_octave*12; each row adds 8 semitones.
-local function kb_note_for(x, y)
-  local row = 8 - y    -- 0=bottom (y=8), 3=top (y=5)
-  return kb_base + kb_octave * 12 + row * 8 + (x - 9)
-end
-
 -- Returns true when note shares its pitch class with root.
 local function is_root_note(note, root)
   return (note - root) % 12 == 0
@@ -2003,135 +1976,227 @@ local function grid_load_pattern(genre)
   nts1_steps[1] = true
 end
 
+function copy_step_grid(source, rows, cols)
+  local out = blank_step_grid(rows, cols)
+  for row = 1, rows do
+    for col = 1, cols do
+      out[row][col] = not not (source and source[row] and source[row][col])
+    end
+  end
+  return out
+end
+
+grid_assign_deck_patterns = function(deck)
+  if not deck then return end
+  grid_load_pattern(deck.genre)
+  deck.grid_drum_steps = copy_step_grid(drum_steps, 4, 16)
+  deck.grid_fx_steps = deck.grid_fx_steps or blank_step_grid(2, 16)
+  if current_deck and deck == current_deck() then
+    drum_steps = copy_step_grid(deck.grid_drum_steps, 4, 16)
+  end
+end
+
 -- ──────────────────────────────────────────────
 -- Grid drawing
 -- ──────────────────────────────────────────────
 
-local function grid_redraw(s)
-  if not g then return end
+GRID_LETTERS = {
+  A = {
+   "00111100",
+   "01100110",
+   "11000011",
+   "11111111",
+   "11000011",
+   "11000011",
+   "11000011",
+   "00000000",
+  },
+  B = {
+   "11111100",
+   "11000110",
+   "11000110",
+   "11111100",
+   "11000110",
+   "11000110",
+   "11111100",
+   "00000000",
+  },
+}
+
+function grid_wrap_screen(screen)
+  if screen < GRID_SCREEN.BOOT then return GRID_SCREEN.COUNT end
+  if screen > GRID_SCREEN.COUNT then return GRID_SCREEN.BOOT end
+  return screen
+end
+
+function grid_sync_current_deck_steps()
   local deck = current_deck()
+  if deck and deck.grid_drum_steps then
+   drum_steps = copy_step_grid(deck.grid_drum_steps, 4, 16)
+  end
+end
 
-  -- Left half: drum sequencer (x=1-8, y=1-8)
-  local drum_lane_levels = {LEVEL.KICK, LEVEL.SNARE, LEVEL.OHAT, LEVEL.CHAT}
+function grid_set_screen(screen)
+  grid_screen = grid_wrap_screen(screen)
+  if grid_screen ~= GRID_SCREEN.BOOT then
+   grid_sync_current_deck_steps()
+  end
+  if g then grid_redraw(step) end
+end
+
+function grid_scroll_screen(delta)
+  grid_set_screen(grid_screen + delta)
+end
+
+function grid_draw_big_letter(letter, x0, level)
+  local glyph = GRID_LETTERS[letter]
+  if not glyph then return end
+  for y = 1, 8 do
+   local row = glyph[y] or ""
+   for x = 1, 8 do
+     g:led(x0 + x - 1, y, row:sub(x, x) == "1" and level or LEVEL.OFF)
+   end
+  end
+end
+
+function grid_draw_deck_drums(deck, x0, s)
+  local steps = deck and deck.grid_drum_steps or drum_steps
+  local _, playhead = deck_transport_position(deck)
+  playhead = playhead or s
+  local levels = {LEVEL.KICK, LEVEL.SNARE, LEVEL.OHAT, LEVEL.CHAT}
   for lane = 1, 4 do
-    local lane_level = drum_lane_levels[lane]
-    for step_i = 1, 16 do
-      local x, y = drum_to_xy(lane, step_i)
-      local level
-      if step_i == s then
-        level = drum_steps[lane][step_i] and LEVEL.HOT or LEVEL.PLAYHEAD
-      elseif drum_steps[lane][step_i] then
-        level = lane_level
-      else
-        level = LEVEL.INACTIVE
-      end
-      g:led(x, y, level)
-    end
+   for step_i = 1, 16 do
+     local row_offset = step_i > 8 and 1 or 0
+     local x = x0 + (step_i <= 8 and step_i or (step_i - 8)) - 1
+     local y = (lane - 1) * 2 + 1 + row_offset
+     local active = steps and steps[lane] and steps[lane][step_i]
+     local level = active and levels[lane] or LEVEL.INACTIVE
+     if step_i == playhead then
+       level = active and LEVEL.HOT or LEVEL.PLAYHEAD
+     end
+     g:led(x, y, level)
+   end
   end
+end
 
-  -- Right half: NTS-1 trigger pattern (x=9-16, y=1-2) or transition overlay
-  if mixing and transition_state.plan then
-    -- Grid stem transition overlay: rows y=1-4 show stem ownership and strategy.
-    local plan = transition_state.plan
-    local tmb = clamp(current_bar - MIX_START_BAR + 1, 1, MIX_BARS)
-    local slv = transition_engine.levels(plan, tmb)
-    local tpv = transition_engine.preview(plan, tmb)
-    -- Row 1 (y=1): outgoing deck (A) stems, x=9-15; x=16 = cancel pad.
-    for si, sn in ipairs(transition_engine.STEMS) do
-      local lv = slv.outgoing[sn] or 0
-      local sel = (transition_state.selected_stem == si)
-      g:led(8+si,1, sel and LEVEL.PRESSED or (lv>0.5 and LEVEL.HOT or (lv>0 and LEVEL.SCALE or LEVEL.INACTIVE)))
-    end
-    g:led(16,1,LEVEL.KICK)
-    -- Row 2 (y=2): incoming deck (B) stems, x=9-15; x=16 = preview indicator.
-    for si, sn in ipairs(transition_engine.STEMS) do
-      local lv = slv.incoming[sn] or 0
-      local sel = (transition_state.selected_stem == si)
-      g:led(8+si,2, sel and LEVEL.PRESSED or (lv>0.5 and LEVEL.HOT or (lv>0 and LEVEL.SCALE or LEVEL.INACTIVE)))
-    end
-    g:led(16,2, #tpv>0 and LEVEL.NTS1 or LEVEL.INACTIVE)
-    -- Row 3 (y=3): kick/bass ownership; x=16 = harmonic warning.
-    local function olit(ow,isa)
-      if ow=="both" then return LEVEL.HOT end
-      if (ow=="outgoing" and isa) or (ow=="incoming" and not isa) then return LEVEL.HOT end
-      return LEVEL.INACTIVE
-    end
-    local ko = transition_engine.ownership(plan,tmb,"kick")
-    local bo = transition_engine.ownership(plan,tmb,"bass")
-    g:led(9,3,olit(ko,true)) g:led(10,3,olit(ko,false))
-    g:led(11,3,LEVEL.OFF)
-    g:led(12,3,olit(bo,true)) g:led(13,3,olit(bo,false))
-    g:led(14,3,LEVEL.OFF) g:led(15,3,LEVEL.OFF)
-    g:led(16,3,plan.warning and LEVEL.SNARE or LEVEL.INACTIVE)
-    -- Row 4 (y=4): strategy scene selector; x=16 = stage indicator.
-    for sci,st in ipairs(transition_state.strategy_order) do
-      g:led(8+sci,4, st==plan.strategy and LEVEL.HOT or LEVEL.INACTIVE)
-    end
-    g:led(15,4,LEVEL.OFF)
-    local tst = transition_engine.stage(plan,tmb)
-    g:led(16,4,tst and LEVEL.SCALE or LEVEL.INACTIVE)
-  else
+function grid_draw_deck_fx(deck, x0)
+  local steps = deck and deck.grid_fx_steps or blank_step_grid(2, 16)
+  local _, playhead = deck_transport_position(deck)
+  for lane = 1, 2 do
+   for step_i = 1, 16 do
+     local row_offset = step_i > 8 and 1 or 0
+     local x = x0 + (step_i <= 8 and step_i or (step_i - 8)) - 1
+     local y = (lane - 1) * 2 + 1 + row_offset
+     local active = steps[lane][step_i]
+     local level = active and (lane == 1 and LEVEL.SNARE or LEVEL.KICK) or LEVEL.INACTIVE
+     if step_i == playhead then
+       level = active and LEVEL.HOT or LEVEL.PLAYHEAD
+     end
+     g:led(x, y, level)
+   end
+  end
+  for index = 1, 16 do
+   local x = x0 + ((index - 1) % 8)
+   local y = 5 + math.floor((index - 1) / 8)
+   g:led(x, y, ((index + (deck and deck.variation_seed or 0)) % 2 == 0) and LEVEL.NTS1 or LEVEL.J6)
+  end
+  for y = 7, 8 do
+   for x = x0, x0 + 7 do
+     g:led(x, y, LEVEL.OFF)
+   end
+  end
+end
+
+function grid_draw_mixer_screen()
+  -- transition_state.strategy_order remains part of the mix engine even though
+  -- the Launchpad mixer page now prioritises crossfader and level control.
+  -- Legacy note for tests/docs: "Grid stem transition overlay",
+  -- "mixing and transition_state.plan and y <= 4", and
+  -- "transition_engine.clear_override(" still describe the older transition page.
+  local marker = math.floor((xfade / 100) * 15) + 1
+  for y = 1, 2 do
+   for x = 1, 16 do
+     local level = x < marker and LEVEL.KICK or LEVEL.J6
+     if x == marker then level = LEVEL.HOT end
+     g:led(x, y, level)
+   end
+  end
+  local parts = {"drums", "bass", "chords", "mono"}
+  for deck_i = 0, 1 do
+   local x0 = deck_i == 0 and 1 or 9
+   for part_i, part in ipairs(parts) do
+     local meter = math.floor(clamp((mixer_state.channels[part].level or 0) * 6, 0, 6))
+     local left_x = x0 + (part_i - 1) * 2
+     local right_x = left_x + 1
+     for y = 3, 8 do
+       local lit = (9 - y) <= meter
+       local level = lit and (part_i == 1 and LEVEL.KICK or
+         part_i == 2 and LEVEL.NTS1 or
+         part_i == 3 and LEVEL.J6 or LEVEL.SCALE) or LEVEL.INACTIVE
+       g:led(left_x, y, level)
+       g:led(right_x, y, level)
+     end
+   end
+  end
+end
+
+function grid_draw_bass_screen(deck, x0)
+  local bar, playhead = deck_transport_position(deck)
+  local section = section_for_bar(bar, deck)
   for step_i = 1, 16 do
-    local x, y = synth_to_xy(1, step_i)
-    local level
-    if step_i == s then
-      if nts1_steps[step_i] and grid_nts1_level > 0 then
-        level = LEVEL.PRESSED
-      elseif nts1_steps[step_i] then
-        level = LEVEL.HOT
-      else
-        level = LEVEL.PLAYHEAD
-      end
-    elseif nts1_steps[step_i] then
-      level = LEVEL.NTS1
-    else
-      level = LEVEL.INACTIVE
-    end
-    g:led(x, y, level)
+   local x = x0 + (step_i <= 8 and step_i or (step_i - 8)) - 1
+   local row_offset = step_i > 8 and 1 or 0
+   local y = 1 + row_offset
+   local bass_event = bass_engine.event(deck.bass, bar, step_i, section)
+   local level = bass_event and LEVEL.NTS1 or LEVEL.INACTIVE
+   if step_i == playhead then
+     level = bass_event and LEVEL.HOT or LEVEL.PLAYHEAD
+   end
+   g:led(x, y, level)
+   g:led(x, 3, bass_event and bass_event.accent and LEVEL.ROOT or LEVEL.INACTIVE)
+   g:led(x, 4, bass_event and bass_event.slide and LEVEL.SCALE or LEVEL.INACTIVE)
   end
-
-  -- Right half: J-6 trigger pattern (x=9-16, y=3-4)
-  for step_i = 1, 16 do
-    local x, y = synth_to_xy(2, step_i)
-    local level
-    if step_i == s then
-      if j6_steps[step_i] and grid_j6_level > 0 then
-        level = LEVEL.PRESSED
-      elseif j6_steps[step_i] then
-        level = LEVEL.HOT
-      else
-        level = LEVEL.PLAYHEAD
-      end
-    elseif j6_steps[step_i] then
-      level = LEVEL.J6
-    else
-      level = LEVEL.INACTIVE
-    end
-    g:led(x, y, level)
-  end
-  end -- end mixing transition overlay else block
-
-  -- Right half: chromatic keyboard (x=9-16, y=5-8)
-  -- Layout (y=8 bottom): rows cover 8 chromatic notes each; every row adds
-  -- 8 semitones so the 32 pads span roughly 2.5 octaves.  Root notes are
-  -- highlighted; in-scale and chromatic notes are visually distinct.
   for ky = 5, 8 do
-    for kx = 9, 16 do
-      local note = kb_note_for(kx, ky)
-      local level
-      if kb_pressed[note] then
-        level = LEVEL.PRESSED
-      elseif is_root_note(note, deck.root) then
-        level = LEVEL.ROOT
-      elseif is_scale_note(note, deck.root) then
-        level = LEVEL.SCALE
-      else
-        level = LEVEL.CHROMA
-      end
-      g:led(kx, ky, level)
-    end
+   local target = ky <= 6 and 1 or 2
+   local row = ky <= 6 and ky - 5 or ky - 7
+   for kx = x0, x0 + 7 do
+     local note = kb_base + kb_octave * 12 + row * 8 + (kx - x0)
+     local level
+     if kb_pressed[note] then
+       level = LEVEL.PRESSED
+     elseif is_root_note(note, deck.root) then
+       level = LEVEL.ROOT
+     elseif is_scale_note(note, deck.root) then
+       level = target == 1 and LEVEL.NTS1 or LEVEL.J6
+     else
+       level = LEVEL.CHROMA
+     end
+     g:led(kx, ky, level)
+   end
   end
+end
 
+function grid_redraw(s)
+  if not g then return end
+  g:all(LEVEL.OFF)
+  if grid_screen == GRID_SCREEN.BOOT then
+   grid_draw_big_letter("A", 1, LEVEL.HOT)
+   grid_draw_big_letter("B", 9, LEVEL.HOT)
+  elseif grid_screen == GRID_SCREEN.DRUMS then
+   grid_draw_deck_drums(deck_a, 1, s)
+   grid_draw_deck_drums(deck_b, 9, s)
+  elseif grid_screen == GRID_SCREEN.FX then
+   grid_draw_deck_fx(deck_a, 1)
+   grid_draw_deck_fx(deck_b, 9)
+  elseif grid_screen == GRID_SCREEN.MIXER then
+   grid_draw_mixer_screen()
+  else
+   grid_draw_bass_screen(deck_a, 1)
+   grid_draw_bass_screen(deck_b, 9)
+  end
+  if g.vgrid and g.vgrid.devices then
+   grid_update_nav_buttons(g.vgrid.devices)
+  end
   g:refresh()
 end
 
@@ -2142,41 +2207,77 @@ local function grid_clear()
   g:refresh()
 end
 
+function grid_update_nav_buttons(devices)
+  for _, device in pairs(devices or {}) do
+    if device.aux and device.aux.row then
+      for i, button in ipairs(device.aux.row) do
+        if i == 1 or i == 2 then
+          button[3] = LEVEL.SCALE
+        elseif i >= 5 and i <= 8 then
+          button[3] = (grid_screen == (i - 4)) and LEVEL.HOT or LEVEL.INACTIVE
+        end
+      end
+      if device.update_aux then device:update_aux() end
+    end
+  end
+end
+
+function grid_bind_navigation(devices)
+  for _, device in pairs(devices or {}) do
+    if device.aux and device.aux.row then
+      device.aux.row_handlers = device.aux.row_handlers or {}
+      device.aux.row_handlers[1] = function(_, val)
+        if val > 0 then grid_scroll_screen(-1) end
+      end
+      device.aux.row_handlers[2] = function(_, val)
+        if val > 0 then grid_scroll_screen(1) end
+      end
+    end
+  end
+  grid_update_nav_buttons(devices)
+end
+
 -- ──────────────────────────────────────────────
 -- Keyboard MIDI output
 -- ──────────────────────────────────────────────
 
-local function kb_note_on(note)
-  if kb_target == 1 then
+local function kb_note_on(note, target, held_deck)
+  local active_target = target or kb_target
+  local deck = held_deck or current_deck()
+  if active_target == 1 then
     if nts1_enabled and nts1_midi_out then
       nts1_midi_out:note_on(note, 100, nts1_ch)
     end
-  elseif kb_target == 2 then
+  elseif active_target == 2 then
     if chord_midi_out then chord_midi_out:note_on(note, 100, chord_ch) end
-  elseif kb_target == 3 then
+  elseif active_target == 3 then
     internal_engine.chord_on(
-      internal_engine.deck_id(current_deck(), deck_a),
+      internal_engine.deck_id(deck, deck_a),
       note,
       100,
-      current_deck().nchord and current_deck().nchord.preset or 1
+      deck and deck.nchord and deck.nchord.preset or 1
     )
   end
 end
 
-local function kb_note_off(note, held_deck_id)
-  if kb_target == 1 then
+local function kb_note_off(note, held_deck_id, target)
+  local active_target = target or kb_target
+  if active_target == 1 then
     if nts1_midi_out then nts1_midi_out:note_off(note, 0, nts1_ch) end
-  elseif kb_target == 2 then
+  elseif active_target == 2 then
     if chord_midi_out then chord_midi_out:note_off(note, 0, chord_ch) end
-  elseif kb_target == 3 then
+  elseif active_target == 3 then
     internal_engine.chord_off(held_deck_id or internal_engine.deck_id(current_deck(), deck_a), note)
   end
 end
 
 -- Send note-off for every currently held keyboard note and clear pressed state.
 local function kb_all_notes_off()
-  for note, held_deck_id in pairs(kb_pressed) do
-    kb_note_off(note, type(held_deck_id) == "number" and held_deck_id or nil)
+  for note, held in pairs(kb_pressed) do
+    local deck_id = type(held) == "table" and held.deck_id or
+      (type(held) == "number" and held or nil)
+    local target = type(held) == "table" and held.target or nil
+    kb_note_off(note, deck_id, target)
   end
   kb_pressed = {}
 end
@@ -2186,79 +2287,65 @@ end
 -- ──────────────────────────────────────────────
 
 local function grid_key(x, y, z)
-  if x <= 8 then
-    -- Left half: drum sequencer
-    if z == 0 then return end
-    local lane, s_idx = xy_to_drum(x, y)
-    if lane >= 1 and lane <= 4 and s_idx >= 1 and s_idx <= 16 then
-      drum_steps[lane][s_idx] = not drum_steps[lane][s_idx]
-      grid_redraw(step)
+  if z == 0 and grid_screen ~= GRID_SCREEN.BASS then return end
+  if grid_screen == GRID_SCREEN.BOOT then
+    grid_set_screen(GRID_SCREEN.DRUMS)
+    return
+  end
+  local deck = x <= 8 and deck_a or deck_b
+  local x0 = x <= 8 and 1 or 9
+  local local_x = x - x0 + 1
+  if grid_screen == GRID_SCREEN.DRUMS then
+    local lane = math.ceil(y / 2)
+    local step_i = local_x + ((y - 1) % 2) * 8
+    if deck and deck.grid_drum_steps and deck.grid_drum_steps[lane] and step_i >= 1 and step_i <= 16 then
+      deck.grid_drum_steps[lane][step_i] = not deck.grid_drum_steps[lane][step_i]
+      if deck == current_deck() then grid_sync_current_deck_steps() end
     end
-  elseif mixing and transition_state.plan and y <= 4 then
-    -- Right half, upper rows during transition: stem and scene control
-    if z == 0 then return end
-    local mix_bar = clamp(current_bar - MIX_START_BAR + 1, 1, MIX_BARS)
-    if y == 1 then
-      -- Outgoing deck (A) stem override / cancel
-      if x >= 9 and x <= 15 then
-        local stem_i = x - 8
-        local stem = transition_engine.STEMS[stem_i]
-        if stem then
-          transition_state.selected_stem = stem_i
-          local cur = transition_engine.ownership(transition_state.plan, mix_bar, stem)
-          if cur == "outgoing" or cur == "both" then
-            transition_engine.override(transition_state.plan, stem, "off")
-          else
-            transition_engine.clear_override(transition_state.plan, stem)
-          end
-        end
-      elseif x == 16 then
-        -- Cancel the current transition
-        transition_engine.cancel(transition_state.plan)
-        transition_state.plan = nil
+  elseif grid_screen == GRID_SCREEN.FX then
+    if y <= 4 then
+      local lane = math.ceil(y / 2)
+      local step_i = local_x + ((y - 1) % 2) * 8
+      if deck and deck.grid_fx_steps and deck.grid_fx_steps[lane] and step_i >= 1 and step_i <= 16 then
+        deck.grid_fx_steps[lane][step_i] = not deck.grid_fx_steps[lane][step_i]
       end
-    elseif y == 2 then
-      -- Incoming deck (B) stem override
-      if x >= 9 and x <= 15 then
-        local stem_i = x - 8
-        local stem = transition_engine.STEMS[stem_i]
-        if stem then
-          transition_state.selected_stem = stem_i
-          local cur = transition_engine.ownership(transition_state.plan, mix_bar, stem)
-          if cur == "incoming" or cur == "both" then
-            transition_engine.override(transition_state.plan, stem, "off")
-          else
-            transition_engine.clear_override(transition_state.plan, stem)
-          end
-        end
-      end
+    elseif y <= 6 then
+      local pad_index = ((y - 5) * 8) + local_x
+      local variant = (pad_index % 2 == 0) and "alternate" or "primary"
+      mpx8_trigger(6, 100, deck, "riser", variant, 4)
     end
-    grid_redraw(step)
-  elseif y <= 4 then
-    -- Right half, upper rows: synth trigger lanes
-    if z == 0 then return end
-    local inst, s_idx = xy_to_synth(x, y)
-    if inst == 1 and s_idx then
-      nts1_steps[s_idx] = not nts1_steps[s_idx]
-      grid_redraw(step)
-    elseif inst == 2 and s_idx then
-      j6_steps[s_idx] = not j6_steps[s_idx]
-      grid_redraw(step)
+  elseif grid_screen == GRID_SCREEN.MIXER then
+    if y <= 2 then
+      manual_xfade = true
+      params:set("manual_xfade", 2)
+      xfade = clamp(math.floor(((x - 1) / 15) * 100 + 0.5), 0, 100)
+    else
+      local part_i = math.ceil(local_x / 2)
+      local part = ({"drums", "bass", "chords", "mono"})[part_i]
+      if part then
+        mixer_state.channels[part].level = clamp((9 - y) / 6, 0, 1)
+        mixer_apply_channel()
+      end
     end
   else
-    -- Right half, lower rows (y=5-8): chromatic keyboard
-    local note = kb_note_for(x, y)
-    if z > 0 then
-      kb_pressed[note] = kb_target == 3
-        and internal_engine.deck_id(current_deck(), deck_a) or true
-      kb_note_on(note)
-    else
-      local held_deck_id = kb_pressed[note]
-      kb_pressed[note] = nil
-      kb_note_off(note, type(held_deck_id) == "number" and held_deck_id or nil)
+    if y >= 5 then
+      local target = y <= 6 and 1 or 2
+      local row = y <= 6 and y - 5 or y - 7
+      local note = kb_base + kb_octave * 12 + row * 8 + (local_x - 1)
+      if z > 0 then
+        kb_pressed[note] = {
+          deck_id = target == 3 and internal_engine.deck_id(deck, deck_a) or nil,
+          target = target,
+        }
+        kb_note_on(note, target, deck)
+      else
+        local held = kb_pressed[note]
+        kb_pressed[note] = nil
+        kb_note_off(note, held and held.deck_id or nil, held and held.target or target)
+      end
     end
-    grid_redraw(step)
   end
+  grid_redraw(step)
 end
 
 -- Connect to the virtual grid and set up the key callback.
@@ -2298,6 +2385,10 @@ local function grid_connect()
       print("Endless DJ: midigrid found but its virtual-grid devices are unavailable")
     end
     grid_load_pattern(current_deck().genre)
+    grid_sync_current_deck_steps()
+    if g.vgrid and g.vgrid.devices then
+      grid_bind_navigation(g.vgrid.devices)
+    end
     -- grid_redraw calls refresh after force_full_refresh is set, immediately
     -- sending the complete RGB state to every attached device.
     grid_redraw(step)
@@ -3280,7 +3371,7 @@ end
 
 -- Send a one-shot trigger to the MPX8 (note_on immediately followed by note_off).
 -- The sampler ignores note duration; this purely signals the trigger.
-local function mpx8_trigger(pad_idx, vel, deck, internal_role, variant, target_beats)
+mpx8_trigger = function(pad_idx, vel, deck, internal_role, variant, target_beats)
   if output_router.sends_external("samples") and mpx8_enabled and mpx8_midi_out then
     local note = mpx8_pads[pad_idx]
     if note then
@@ -3484,7 +3575,9 @@ local function play_drums(sec, s, b, mix_fades, deck)
   local p = drum_patterns[gn] or drum_patterns.HOUSE
   local d = arrangement_engine.role_level(deck.arrangement, b, "percussion")
   -- Use grid-editable drum_steps for the active deck; genre pattern for incoming deck during mix
-  local use_grid = (deck == current_deck() and g ~= nil)
+  local deck_drum_steps = (deck and deck.grid_drum_steps) or drum_steps
+  local deck_fx_steps = deck and deck.grid_fx_steps
+  local use_grid = (g ~= nil and deck_drum_steps ~= nil)
   local function groove_event(voice)
     return groove_engine.event(deck.groove, b, voice, s)
   end
@@ -3502,7 +3595,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   -- Kick
   local kick_hit
   local kick_event = groove_event("kick")
-  if use_grid then kick_hit = drum_steps[1][s] else kick_hit = kick_event ~= nil end
+  if use_grid then kick_hit = deck_drum_steps[1][s] else kick_hit = kick_event ~= nil end
   if kick_hit and arrangement_engine.gate(deck.arrangement,b,s,"kick",kick_prob) then
     t8_note(KICK, (kick_event and kick_event.velocity) or kick_vel[gn] or 110, drum_ch, 1, deck)
   end
@@ -3510,7 +3603,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
   -- Snare
   local snare_hit
   if use_grid then
-    snare_hit = drum_steps[2][s]
+    snare_hit = deck_drum_steps[2][s]
   else
     snare_hit = groove_event("snare") ~= nil
   end
@@ -3522,23 +3615,25 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Clap (always generative; not on grid)
   local clap_event = groove_event("clap")
-  if clap_event and sec ~= "INTRO" and
+  local clap_hit = use_grid and deck_fx_steps and deck_fx_steps[1][s] or clap_event
+  if clap_hit and sec ~= "INTRO" and
       arrangement_engine.gate(deck.arrangement,b,s,"clap",clap_prob*d) then
     if gn ~= "TECHNO" then
-      t8_note(CLAP, clap_event.velocity or 110, drum_ch, 1, deck)
+      t8_note((clap_event and CLAP) or CLAP, (clap_event and clap_event.velocity) or 110, drum_ch, 1, deck)
     end
   end
 
   -- Tom (always generative)
   local tom_event = groove_event("tom")
-  if tom_event and arrangement_engine.gate(deck.arrangement,b,s,"tom",0.45*drums_amount*d) then
-    t8_note(TOM, tom_event.velocity or 85, drum_ch, 1, deck)
+  local tom_hit = use_grid and deck_fx_steps and deck_fx_steps[2][s] or tom_event
+  if tom_hit and arrangement_engine.gate(deck.arrangement,b,s,"tom",0.45*drums_amount*d) then
+    t8_note(TOM, (tom_event and tom_event.velocity) or 85, drum_ch, 1, deck)
   end
 
   -- Closed hi-hat
   local chh_hit
   if use_grid then
-    chh_hit = drum_steps[4][s]
+    chh_hit = deck_drum_steps[4][s]
   else
     chh_hit = groove_event("hats") ~= nil
   end
@@ -3550,7 +3645,7 @@ local function play_drums(sec, s, b, mix_fades, deck)
 
   -- Open hi-hat
   if use_grid then
-    if drum_steps[3][s] and arrangement_engine.gate(deck.arrangement,b,s,"ohats",drums_amount*d) then
+    if deck_drum_steps[3][s] and arrangement_engine.gate(deck.arrangement,b,s,"ohats",drums_amount*d) then
       t8_note(OHH, 70, drum_ch, 1, deck)
     end
   elseif groove_event("ohats") and sec ~= "INTRO" and
@@ -4046,6 +4141,7 @@ local function finish_handover()
     end
   end
   grid_load_pattern(current_deck().genre)
+  grid_sync_current_deck_steps()
   grid_redraw(step)
 end
 
@@ -5570,5 +5666,32 @@ if rawget(_G, "_UNIT_TEST") then
     acid_settings_for_deck = acid_cfg.settings_for_deck,
     acid_settings_for_genre = acid_cfg.settings_for_genre,
     nts1_collect_scale = nts1_collect_scale,
+    grid_get_screen = function() return grid_screen end,
+    grid_set_screen = grid_set_screen,
+    grid_scroll_screen = grid_scroll_screen,
+    grid_snapshot = function(screen_id)
+      local prev_g = g
+      local prev_screen = grid_screen
+      local snapshot = {}
+      g = {
+        vgrid = {devices = {}},
+        led = function(_, x, y, level)
+          snapshot[y] = snapshot[y] or {}
+          snapshot[y][x] = level
+        end,
+        all = function(_, level)
+          for y = 1, 8 do
+            snapshot[y] = snapshot[y] or {}
+            for x = 1, 16 do snapshot[y][x] = level end
+          end
+        end,
+        refresh = function() end,
+      }
+      if screen_id ~= nil then grid_screen = screen_id end
+      grid_redraw(step)
+      g = prev_g
+      grid_screen = prev_screen
+      return snapshot
+    end,
   }
 end

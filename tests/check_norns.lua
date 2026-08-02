@@ -1139,6 +1139,11 @@ pass("Unified grid interface (grid.connect, grid_redraw, nts1_steps, j6_steps)")
 for _, token in ipairs({
   'g.vgrid and g or rawget(_G, "midigrid")',
   'device.force_full_refresh = true',
+  'device.aux.row_handlers[1] = function(_, val)',
+  'device.aux.row_handlers[2] = function(_, val)',
+  'GRID_SCREEN = {BOOT=0, DRUMS=1, FX=2, MIXER=3, BASS=4, COUNT=4}',
+  'grid_draw_big_letter("A", 1, LEVEL.HOT)',
+  'grid_draw_big_letter("B", 9, LEVEL.HOT)',
   'grid palette unavailable or invalid',
   'has no RGB LUT',
   'grid palette applied to',
@@ -1414,6 +1419,23 @@ do
   if not ok then fail("Could not execute " .. path .. " for acid generator tests: " .. tostring(load_err)) end
   local api = _G.ENDLESS_DJ_TEST_API
   if type(api) ~= "table" then fail("Missing ENDLESS_DJ_TEST_API test hooks") end
+
+  do
+    local boot = api.grid_snapshot(0)
+    if not (boot[1] and boot[1][3] == 15 and boot[1][13] == 15) then
+      fail("Boot Launchpad screen must render bright A/B deck labels")
+    end
+    api.grid_set_screen(0)
+    api.grid_scroll_screen(1)
+    if api.grid_get_screen() ~= 1 then
+      fail("Launchpad page down must advance from boot to drum screen")
+    end
+    api.grid_scroll_screen(-1)
+    if api.grid_get_screen() ~= 0 then
+      fail("Launchpad page up must return from drum screen to boot")
+    end
+  end
+  pass("Launchpad boot labels and screen paging work")
 
   local function make_pattern(seed, length, variety)
     local deck = {name = "T-001", genre = "ACID", root = 45}
