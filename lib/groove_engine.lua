@@ -174,6 +174,71 @@ local ELECTRO_GROOVES = {
 -- that breathe between chord hits.  The feel (timing) is fixed per archetype
 -- so the groove character is deterministic regardless of the groove_family
 -- selected in the song identity.
+-- Per-archetype groove plans for UK Garage 4x4.  Each pattern captures the
+-- genre's four-on-floor core while expressing the characteristic UKG shuffle:
+-- dense swung hats, ghost snares between the backbeat, clipped claps, rimshot
+-- toms, and archetype-specific kick displacements.  The feel is fixed per
+-- archetype so the shuffle character is deterministic regardless of the
+-- groove_family selected in the song identity.
+local GARAGE4_GROOVES = {
+  organ_4x4 = {
+    -- Classic UKG four-floor: dense shuffle hats (8th+16th pairs at 3-4, 7-8,
+    -- 10, 12, 14, 16), ghost snares between the backbeat, rimshot toms at 10/14.
+    feel = "swung", phrase_bars = 4,
+    pattern = {
+      kick  = {1, 5, 9, 13},
+      snare = {5, 13},
+      clap  = {5, 13},
+      hats  = {3, 4, 7, 8, 10, 12, 14, 16},
+      ohats = {4, 12},
+      tom   = {10, 14},
+    },
+    fill = {{12, "ohats"}, {14, "tom"}, {15, "snare"}, {16, "clap"}},
+  },
+  soulful_vocal = {
+    -- Vocal-friendly eight-bar phrase: swung offbeat hats leave space for R&B
+    -- ad-libs; a late-16th kick pickup at step 16 anticipates the next bar.
+    feel = "swung", phrase_bars = 8,
+    pattern = {
+      kick  = {1, 5, 9, 13, 16},
+      snare = {5, 13},
+      clap  = {5, 13},
+      hats  = {3, 4, 7, 10, 12, 15},
+      ohats = {4, 12},
+      tom   = {8, 16},
+    },
+    fill = {{12, "ohats"}, {14, "tom"}, {15, "snare"}, {16, "clap"}},
+  },
+  dark_sub = {
+    -- Heavy syncopated groove: kick displaced to step 4 (UKG kick pickup),
+    -- straight 8th hats for a driving feel, rimshot toms at 7/15.
+    feel = "syncopated", phrase_bars = 4,
+    pattern = {
+      kick  = {1, 4, 9, 13},
+      snare = {5, 13},
+      clap  = {5, 13},
+      hats  = {2, 4, 6, 8, 10, 12, 14, 16},
+      ohats = {4, 11},
+      tom   = {7, 15},
+    },
+    fill = {{11, "tom"}, {14, "snare"}, {15, "tom"}, {16, "clap"}},
+  },
+  ravey_speed = {
+    -- Speed-garage precursor: kick pickup at step 4, very dense 16th-note hats
+    -- for rave energy, and percussion accents at 8/16 for phrase punctuation.
+    feel = "swung", phrase_bars = 4,
+    pattern = {
+      kick  = {1, 4, 9, 13},
+      snare = {5, 13},
+      clap  = {5, 13},
+      hats  = {2, 3, 4, 6, 7, 8, 10, 11, 14, 15, 16},
+      ohats = {4, 8, 12},
+      tom   = {8, 16},
+    },
+    fill = {{12, "ohats"}, {14, "snare"}, {15, "tom"}, {16, "clap"}},
+  },
+}
+
 local MELODIC_GROOVES = {
   melodic_techno = {
     -- Controlled four-floor techno: precise kick, restrained open hats on
@@ -319,11 +384,14 @@ function M.new(identity)
   local funky_spec=identity.genre=="FUNKY" and FUNKY_GROOVES[identity.archetype] or nil
   local electro_spec=identity.genre=="ELECTRO" and ELECTRO_GROOVES[identity.archetype] or nil
   local melodic_spec=identity.genre=="MELODIC" and MELODIC_GROOVES[identity.archetype] or nil
+  local garage4_spec=identity.genre=="GARAGE4" and GARAGE4_GROOVES[identity.archetype] or nil
   local feel=(acid_spec and acid_spec.feel) or (melodic_spec and melodic_spec.feel)
+    or (garage4_spec and garage4_spec.feel)
     or identity.groove_family or rng:pick(compatible)
   local pattern=(acid_spec and acid_spec.pattern) or (funky_spec and funky_spec.pattern)
     or (electro_spec and electro_spec.pattern)
-    or (melodic_spec and melodic_spec.pattern) or PATTERNS[feel]
+    or (melodic_spec and melodic_spec.pattern)
+    or (garage4_spec and garage4_spec.pattern) or PATTERNS[feel]
   assert(pattern,"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
@@ -331,6 +399,7 @@ function M.new(identity)
   if funky_spec then phrase_bars=funky_spec.phrase_bars end
   if electro_spec then phrase_bars=electro_spec.phrase_bars end
   if melodic_spec then phrase_bars=melodic_spec.phrase_bars end
+  if garage4_spec then phrase_bars=garage4_spec.phrase_bars end
   local bars={}
   for bar_number=1,phrase_bars do
     bars[bar_number]=make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
@@ -338,10 +407,12 @@ function M.new(identity)
   local fill_recipe=(acid_spec and acid_spec.fill) or (funky_spec and funky_spec.fill)
     or (electro_spec and electro_spec.fill)
     or (melodic_spec and melodic_spec.fill)
+    or (garage4_spec and garage4_spec.fill)
   local fill_style=acid_spec and (identity.archetype.."_fill") or
     (funky_spec and (identity.archetype.."_funky")) or
     (electro_spec and (identity.archetype.."_electro")) or
-    (melodic_spec and (identity.archetype.."_melodic")) or nil
+    (melodic_spec and (identity.archetype.."_melodic")) or
+    (garage4_spec and (identity.archetype.."_garage4")) or nil
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,
     family=feel, swing=swing, phrase_bars=phrase_bars, bars=bars,

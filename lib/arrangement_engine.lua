@@ -277,6 +277,86 @@ local function melodic_envelope(archetype, name)
 end
 
 
+-- Per-archetype arrangement grammars for UK Garage 4x4.  Each section plan
+-- totals exactly 96 performance bars so the shared MIX section always begins
+-- at bar 97.  The grammars follow the genre's DJ-friendly conventions: a
+-- percussion/FX intro that hides the bass, a groove reveal that opens the
+-- low end, verse-like MAIN sections, a spacious vocal BREAK, a shuffled
+-- rebuild, and a bass-drop return.
+local GARAGE4_GRAMMARS = {
+  organ_4x4 = {
+    -- Organ-led 4x4: long DJ-friendly intro with organ stabs, full groove
+    -- reveal, hook structure, and extended drop for maximum dancefloor impact.
+    -- 16+16+16+8+8+24+8 = 96
+    {"INTRO",16},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",24},{"DEVELOP",8},
+  },
+  soulful_vocal = {
+    -- Soulful vocal: short intro then 16-bar bass reveal, vocal-led break,
+    -- re-drop with development, and a clean drum outro for mixing out.
+    -- 8+16+16+8+8+16+16+8 = 96
+    {"INTRO",8},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+  dark_sub = {
+    -- Dark sub: extended percussion intro and long groove reveal let the sub
+    -- bass build slowly before the full arrangement arrives; no outro so the
+    -- track ends hard on the second drop.
+    -- 16+24+16+16+8+16 = 96
+    {"INTRO",16},{"GROOVE",24},{"MAIN",16},{"BREAK",16},
+    {"BUILD",8},{"DROP",16},
+  },
+  ravey_speed = {
+    -- Ravey double-drop: two full drops with a spacious vocal break between
+    -- them; the rave energy means no outro, ending with a development section.
+    -- 8+16+8+8+16+8+8+16+8 = 96
+    {"INTRO",8},{"GROOVE",16},{"MAIN",8},{"BUILD",8},
+    {"DROP",16},{"BREAK",8},{"BUILD",8},{"DROP",16},{"DEVELOP",8},
+  },
+}
+
+-- UK Garage 4x4 stem energy envelopes.  Vocal samples (chops, ad-libs, rave
+-- references) sit higher than the generic template throughout; the INTRO is
+-- percussion- and sample-led with no bass (DJ-friendly start); the BREAK
+-- exposes vocals and chord stabs; the BUILD peaks the filter FX.
+local function garage4_envelope(archetype, name)
+  local envelope = {
+    INTRO   = {kick=0.72,percussion=0.50,bass=0,    chords=0.14,mono=0,    samples=0.48,fx=0.18},
+    GROOVE  = {kick=1,   percussion=0.78,bass=0.72, chords=0.32,mono=0.22, samples=0.42,fx=0.10},
+    MAIN    = {kick=1,   percussion=0.88,bass=0.90, chords=0.68,mono=0.58, samples=0.62,fx=0.18},
+    BREAK   = {kick=0.10,percussion=0.22,bass=0.15, chords=0.72,mono=0.62, samples=0.82,fx=0.52},
+    BUILD   = {kick=0.72,percussion=0.92,bass=0.42, chords=0.55,mono=0.75, samples=0.65,fx=0.92},
+    DROP    = {kick=1,   percussion=1,   bass=1,    chords=0.75,mono=0.85, samples=0.72,fx=0.38},
+    DEVELOP = {kick=1,   percussion=0.80,bass=0.88, chords=0.48,mono=0.45, samples=0.52,fx=0.18},
+    OUTRO   = {kick=0.92,percussion=0.72,bass=0.22, chords=0.08,mono=0,    samples=0.18,fx=0.12},
+    MIX     = {kick=1,   percussion=0.70,bass=0.60, chords=0.32,mono=0.22, samples=0.35,fx=0.32},
+  }
+  local result = {}
+  for role, value in pairs(envelope[name] or envelope.GROOVE) do result[role] = value end
+  if archetype == "organ_4x4" then
+    -- Organ stabs and mono hooks are prominent; elevated chords in MAIN/DROP.
+    if name == "MAIN" then result.chords = math.min(1, result.chords + 0.10) end
+    if name == "DROP" then result.mono   = math.min(1, result.mono   + 0.08) end
+  elseif archetype == "soulful_vocal" then
+    -- Vocal samples elevated throughout; BREAK spotlights vocal chops.
+    if name == "GROOVE" then result.samples = math.min(1, result.samples + 0.08) end
+    if name == "MAIN"   then result.samples = math.min(1, result.samples + 0.10) end
+    if name == "BREAK"  then result.samples = math.min(1, result.samples + 0.12) end
+  elseif archetype == "dark_sub" then
+    -- Sub bass dominates; fewer samples but vocals still present, deeper FX.
+    result.samples = math.max(0.42, result.samples - 0.08)
+    if name == "DROP"  then result.bass = math.min(1, result.bass + 0.02) end
+    if name == "BUILD" then result.fx   = math.min(1, result.fx   + 0.06) end
+  elseif archetype == "ravey_speed" then
+    -- Rave references and FX elevated; samples in both BUILDs and DROPs.
+    if name == "BUILD"  then result.fx      = math.min(1, result.fx      + 0.06) end
+    if name == "DROP"   then result.samples = math.min(1, result.samples + 0.08) end
+    if name == "DEVELOP" then result.mono   = math.min(1, result.mono    + 0.10) end
+  end
+  return result
+end
+
+
 local function rng_new(seed)
   local rng={state=math.max(1,seed%2147483647)}
   function rng:next() self.state=(self.state*48271)%2147483647 return self.state end
@@ -297,10 +377,12 @@ function M.new(identity)
     "arrangement seed required")
   local family=identity.arrangement_family or "club_linear"
   local is_melodic=identity.genre=="MELODIC"
+  local is_garage4=identity.genre=="GARAGE4"
   local grammar=(identity.genre=="ACID" and ACID_GRAMMARS[identity.archetype]) or
     (identity.genre=="FUNKY" and FUNKY_GRAMMARS[identity.archetype]) or
     (identity.genre=="ELECTRO" and ELECTRO_GRAMMARS[identity.archetype]) or
     (is_melodic and MELODIC_GRAMMARS[identity.archetype]) or
+    (is_garage4 and GARAGE4_GRAMMARS[identity.archetype]) or
     assert(GRAMMARS[family],"unknown arrangement family")
   local rng=rng_new(identity.stream_seeds.arrangement)
   local sections={}
@@ -318,11 +400,13 @@ function M.new(identity)
         (is_funky and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_electro and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_melodic and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
+        (is_garage4 and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         ((length>=16 and rng:float()>0.48) and 8 or 4),
       energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,name)) or
         (is_funky and funky_envelope(identity.archetype,name)) or
         (is_electro and electro_envelope(identity.archetype,name)) or
         (is_melodic and melodic_envelope(identity.archetype,name)) or
+        (is_garage4 and garage4_envelope(identity.archetype,name)) or
         copy_envelope(name), index=index, occurrence=occurrences[name],
     }
     sections[#sections+1]=section
@@ -337,6 +421,7 @@ function M.new(identity)
       (identity.genre=="FUNKY" and funky_envelope(identity.archetype,"MIX")) or
       (identity.genre=="ELECTRO" and electro_envelope(identity.archetype,"MIX")) or
       (identity.genre=="MELODIC" and melodic_envelope(identity.archetype,"MIX")) or
+      (identity.genre=="GARAGE4" and garage4_envelope(identity.archetype,"MIX")) or
       copy_envelope("MIX"),index=#sections+1,occurrence=1,
   }
   return {
