@@ -138,6 +138,8 @@ do
     "t8_midi_device", "drum_ch", "bass_ch",
     "j6_midi_device", "chord_ch", "mx1_midi_device", "mx1_ch",
     "nts1_midi_device", "nts1_ch", "mpx8_midi_device", "mpx8_ch",
+    "starlight_mode", "starlight_hid_device", "starlight_wheel_sensitivity",
+    "starlight_a_offset", "starlight_b_offset", "starlight_calibrate",
   }) do
     if not hardware:find('"' .. id .. '"', 1, true) then
       fail("Hardware mapping must be at the top of PARAMS: " .. id)
@@ -155,10 +157,14 @@ if not source:find("j6_midi_device", 1, true) then
 end
 pass("Separate J-6 MIDI routing exists")
 
-if not source:find("current_bar = MIX_BARS + 1", 1, true) then
-  fail("Incoming deck should continue from bar MIX_BARS+1 after the 32-bar mix")
+if not source:find(
+    "current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)",
+    1,
+    true
+  ) then
+  fail("Incoming deck handover must preserve the queued deck position after the 32-bar mix")
 end
-pass("32-bar mix handover continues at bar MIX_BARS+1")
+pass("32-bar mix handover preserves the queued deck position")
 
 -- Calling quiet_notes() inside finish_handover() sends 4096 MIDI note-off
 -- messages (128 notes × 16 channels × 2 devices) in a tight Lua loop,
@@ -1278,6 +1284,32 @@ if not source:find('for i = 1, 8 do', 1, true) then
   fail("Missing 8-pad loop for MPX8 tests")
 end
 pass("MPX8 support exists (mpx8_midi_device, play_mpx8, mpx8_pads, one-shot guards)")
+
+-- ── Hercules DJControl Starlight checks ───────────────────────────────────
+for _, token in ipairs({
+  "starlight = {",
+  'params:add_option("starlight_mode"',
+  'params:add_number("starlight_hid_device"',
+  'params:add_number("starlight_wheel_sensitivity"',
+  'params:add_number("starlight_a_offset"',
+  'params:add_number("starlight_b_offset"',
+  'params:add_trigger("starlight_calibrate"',
+  'rawget(_G, "hid")',
+  "starlight.handle_event",
+  "starlight.refresh_connection",
+  "starlight.disconnect",
+  "starlight.update_leds",
+  "next_bar = next_deck().cue_bar or 1",
+  "next_step = next_deck().cue_step or 1",
+  "current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)",
+  "cue_bar = 1",
+  "cue_step = 1",
+}) do
+  if not source:find(token, 1, true) then
+    fail("Missing Starlight controller support token: " .. token)
+  end
+end
+pass("Starlight HID support exists with cueing, calibration, reconnect, and mixer integration")
 
 local function serialize_pattern(pattern)
   local parts = {}

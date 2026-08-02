@@ -956,6 +956,15 @@ Norns params should expose at least:
 - J-6 maximum program
 - automatic/manual crossfader mode
 - Launchpad MIDI device
+- Hercules DJControl Starlight HID mode (auto/off)
+- Hercules DJControl Starlight HID slot override and wheel calibration offsets
+
+Hercules DJControl Starlight support is optional and non-blocking. When enabled,
+Endless DJ auto-detects a connected Starlight HID device when the norns `hid`
+API exposes it, falls back to a manual HID slot override when needed, maps the
+jog wheels to deck cue/search nudging, uses the hardware crossfader and channel
+faders for manual mixing, and preserves playback if the controller is
+disconnected and later reconnected.
 
 LAUNCHPAD / GRID
 
