@@ -42,7 +42,7 @@ Install the complete repository, not only `EndlessDJ.lua` or the files in
 `samples/factory/risers`, so partial updates will leave the sampler silent.
 
 From Maiden's command line, this command downloads merged `main`, including all
-32 riser WAV files, and copies it over the installed script:
+64 riser WAV files, and copies it over the installed script:
 
 ```lua
 os.execute("cd /tmp && curl -fL https://github.com/julesdg6/EndlessDJ-norns/archive/refs/heads/main.tar.gz -o EndlessDJ-main.tar.gz && tar -xzf EndlessDJ-main.tar.gz && mkdir -p /home/we/dust/code/EndlessDJ && rm -f /home/we/dust/code/EndlessDJ/endless_dj.lua && cp -R EndlessDJ-norns-main/. /home/we/dust/code/EndlessDJ/")
@@ -63,10 +63,10 @@ Verify that the complete factory library arrived:
 os.execute("find /home/we/dust/code/EndlessDJ/samples/factory/risers -maxdepth 1 -type f -name '*.wav' | wc -l")
 ```
 
-The result must be `32`. After loading Endless DJ, Maiden should also print:
+The result must be `64`. After loading Endless DJ, Maiden should also print:
 
 ```text
-Endless DJ: loaded 32 factory risers
+Endless DJ: loaded 64 factory risers
 ```
 
 For an immediate sound test, set `samples output` to `internal`, then enter:
@@ -367,7 +367,7 @@ run_norns_test_harness("interactive")
 ```
 
 The harness reports the script version and registered engine commands, confirms
-the 32 factory risers and 28 role one-shots, exercises n-808, n-303, n-chord,
+the 64 factory risers and 28 role one-shots, exercises n-808, n-303, n-chord,
 n-mono, n-sampler, both decks, mixer, FX, mastering, sampler modes and live
 resampling, records maximum CPU average/peak, and scans only the fresh test
 window for XRuns, overruns, or underruns. Every run stops its polls, notes,

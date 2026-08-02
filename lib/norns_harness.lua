@@ -120,7 +120,7 @@ function Harness.new(options)
 
     local risers = #(instance.sample_library.factory_risers or {})
     local roles = count_role_samples(instance.sample_library)
-    report(risers == 32 and "PASS" or "FAIL", "factory risers " .. risers .. "/32")
+    report(risers == 64 and "PASS" or "FAIL", "factory risers " .. risers .. "/64")
     report(roles == 28 and "PASS" or "FAIL", "role one-shots " .. roles .. "/28")
     local listening = instance.generation_fixtures.listening or {}
     report(#listening == 96 and "PASS" or "FAIL",
