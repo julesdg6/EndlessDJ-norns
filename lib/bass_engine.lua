@@ -276,6 +276,89 @@ local ELECTRO_SPECS = {
   },
 }
 
+-- UK Garage 4x4 bass: syncopated answers around the four-floor kicks with
+-- octave flips, late-16th pickups, and chord-tone walks.  Notes on the kick
+-- beats (step 1, 5, 9, 13) are limited to root/fifth to avoid masking the
+-- drum; syncopated off-steps carry melody and interest.
+local GARAGE4_SPECS = {
+  organ_4x4 = {
+    -- Organ bass: chord-tone stabs between kicks, decisive octave jumps.
+    steps = {
+      {1, 3, 7, 9, 13},
+      {1, 5, 9, 11, 13},
+      {1, 3, 7, 13, 15},
+      {1, 7, 9, 13, 16},
+    },
+    degrees      = {0, 7, 0, 5, 3, 12},
+    accents      = {1, 9, 13},
+    endings      = {5, 12},
+    octave_chance = 0.22,
+  },
+  soulful_vocal = {
+    -- Soulful sub-bass: long anchors on beats 1/3, late pickup answers.
+    steps = {
+      {1, 5, 9, 13},
+      {1, 4, 9, 11, 15},
+      {1, 5, 9, 12, 13},
+      {1, 7, 9, 13, 16},
+    },
+    degrees      = {0, 0, 7, 3, 5, 12},
+    accents      = {1, 9},
+    endings      = {7, 12},
+    octave_chance = 0.16,
+  },
+  dark_sub = {
+    -- Reese/sub bass: follows the displaced kick at step 4, dark sparse motion.
+    steps = {
+      {1, 4, 7, 11, 13},
+      {1, 3, 7, 9, 12},
+      {1, 4, 9, 11, 15},
+      {1, 3, 7, 11, 13, 16},
+    },
+    degrees      = {0, 0, 3, 7, 10, 12},
+    accents      = {1, 7, 13},
+    endings      = {7, 12},
+    octave_chance = 0.12,
+  },
+  ravey_speed = {
+    -- FM/organ bass: rapid 16th pickups and octave flips for rave energy.
+    steps = {
+      {1, 3, 7, 9, 13},
+      {1, 4, 7, 10, 13, 16},
+      {1, 3, 7, 9, 12, 15},
+      {1, 4, 9, 11, 13, 16},
+    },
+    degrees      = {0, 12, 7, 0, 3, 5},
+    accents      = {1, 7, 9, 13},
+    endings      = {5, 12},
+    octave_chance = 0.24,
+  },
+}
+
+local function garage4_bar(archetype, bar, rng, groove)
+  local spec = GARAGE4_SPECS[archetype] or GARAGE4_SPECS.organ_4x4
+  local events = {}
+  local steps = spec.steps[((bar - 1) % #spec.steps) + 1]
+  for index, step in ipairs(steps) do
+    local avoid_kick = kick_at(groove, bar, step) and step ~= 1
+    if not avoid_kick or rng:chance(0.15) then
+      local degree = spec.degrees[((index + bar - 2) % #spec.degrees) + 1]
+      if index == 1 then degree = 0 end
+      if bar == 4 and step == steps[#steps] then
+        degree = spec.endings[rng:int(1, #spec.endings)]
+      end
+      if step ~= 1 and rng:chance(spec.octave_chance) then degree = degree + 12 end
+      local accent = contains(spec.accents, step) and rng:chance(0.82)
+      local length = (step % 4 == 1) and rng:int(2, 3) or 1
+      add_event(events, step, degree, length, rng:int(82, 110), accent, false)
+    end
+  end
+  if next(events) == nil then
+    add_event(events, 1, 0, 2, rng:int(92, 108), true, false)
+  end
+  return events
+end
+
 local function electro_bar(archetype, voice_family, bar, rng, groove)
   local spec = ELECTRO_SPECS[archetype] or ELECTRO_SPECS.classic_808
   local events = {}
@@ -363,6 +446,8 @@ function M.new(identity, groove)
       bars[bar] = funky_bar(identity.archetype, bar, rng, groove)
     elseif identity.genre == "ELECTRO" then
       bars[bar] = electro_bar(identity.archetype, voice_family, bar, rng, groove)
+    elseif identity.genre == "GARAGE4" then
+      bars[bar] = garage4_bar(identity.archetype, bar, rng, groove)
     else
       bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove)
     end
