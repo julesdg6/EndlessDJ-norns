@@ -130,6 +130,35 @@ for archetype,seed in pairs({classic_303=6,jack_acid=8,deep_acid=1,rave_acid=4})
 end
 assert(acid_signatures.classic_303~=acid_signatures.deep_acid,"Acid archetypes collapsed to one 303 phrase")
 assert(acid_signatures.jack_acid~=acid_signatures.rave_acid,"Acid archetypes need distinct 303 grammar")
+local electro_signatures={}
+for archetype,seed in pairs({classic_808=6,detroit_electro=8,vocoder_robot=1,acid_electro=4}) do
+  local identity = identity_engine.new{seed=seed,deck="A",genre="ELECTRO"}
+  local plan = bass_engine.new(identity, groove_engine.new(identity))
+  assert(plan.voice_family ~= "sub", "Electro must not default to a sub-only bass voice")
+  if archetype ~= "acid_electro" then
+    assert(plan.voice_family ~= "303", "Default Electro archetypes must not select 303")
+  end
+  electro_signatures[archetype]=encode(plan)
+end
+assert(electro_signatures.classic_808~=electro_signatures.detroit_electro,
+  "Electro archetypes collapsed to one bass phrase")
+assert(electro_signatures.vocoder_robot~=electro_signatures.acid_electro,
+  "Acid Electro crossover needs distinct bass grammar")
+local acid_electro_found=false
+for seed = 1, 256 do
+  local identity = identity_engine.new{seed=seed,deck="A",genre="ELECTRO"}
+  local plan = bass_engine.new(identity, groove_engine.new(identity))
+  if identity.archetype=="acid_electro" and plan.voice_family=="303" then
+    acid_electro_found=true
+    local expressive=false
+    for bar=1,4 do
+      for _,event in pairs(plan.bars[bar]) do expressive=expressive or event.slide or event.accent end
+    end
+    assert(expressive,"Acid Electro 303 phrase lacks expression")
+    break
+  end
+end
+assert(acid_electro_found,"Electro fixtures never selected the explicit acid crossover bass")
 
 for seed = 1, 512 do
   local identity = identity_engine.new{seed=seed,deck="A",genre="HOUSE"}

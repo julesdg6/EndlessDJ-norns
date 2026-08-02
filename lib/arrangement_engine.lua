@@ -49,6 +49,25 @@ local FUNKY_GRAMMARS = {
   },
 }
 
+local ELECTRO_GRAMMARS = {
+  classic_808 = {
+    {"INTRO",16},{"GROOVE",16},{"MAIN",8},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+  detroit_electro = {
+    {"INTRO",16},{"GROOVE",24},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",8},
+  },
+  vocoder_robot = {
+    {"INTRO",8},{"GROOVE",16},{"MAIN",16},{"BREAK",16},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",8},{"OUTRO",8},
+  },
+  acid_electro = {
+    {"INTRO",8},{"GROOVE",16},{"MAIN",8},{"BUILD",8},
+    {"DROP",16},{"BREAK",8},{"BUILD",8},{"DROP",16},{"OUTRO",8},
+  },
+}
+
 local ACID_GRAMMARS={
   classic_303={
     {"INTRO",16},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
@@ -153,6 +172,40 @@ local function funky_envelope(archetype, name)
   return result
 end
 
+local function electro_envelope(archetype, name)
+  local envelope = {
+    INTRO   = {kick=0.86,percussion=0.42,bass=0,    chords=0.08,mono=0.10,samples=0.12,fx=0.12},
+    GROOVE  = {kick=1,   percussion=0.76,bass=0.84, chords=0.18,mono=0.22,samples=0.22,fx=0.10},
+    MAIN    = {kick=1,   percussion=0.92,bass=0.94, chords=0.38,mono=0.56,samples=0.34,fx=0.16},
+    BREAK   = {kick=0.10,percussion=0.26,bass=0.18, chords=0.54,mono=0.76,samples=0.62,fx=0.52},
+    BUILD   = {kick=0.68,percussion=0.86,bass=0.52, chords=0.28,mono=0.80,samples=0.56,fx=0.92},
+    DROP    = {kick=1,   percussion=1,   bass=1,    chords=0.34,mono=0.82,samples=0.46,fx=0.32},
+    DEVELOP = {kick=1,   percussion=0.82,bass=0.90, chords=0.26,mono=0.48,samples=0.30,fx=0.18},
+    OUTRO   = {kick=1,   percussion=0.72,bass=0.32, chords=0.06,mono=0.12,samples=0.10,fx=0.10},
+    MIX     = {kick=1,   percussion=0.68,bass=0.58, chords=0.14,mono=0.22,samples=0.16,fx=0.24},
+  }
+  local result = {}
+  for role, value in pairs(envelope[name] or envelope.GROOVE) do result[role] = value end
+  if archetype == "classic_808" then
+    if name == "GROOVE" then result.percussion = math.min(1, result.percussion + 0.08) end
+    if name == "BREAK" then result.samples = math.max(0.20, result.samples - 0.14) end
+  elseif archetype == "detroit_electro" then
+    if name == "MAIN" or name == "BREAK" then
+      result.chords = math.min(0.68, result.chords + 0.14)
+    end
+    if name == "BREAK" then result.fx = math.min(1, result.fx + 0.10) end
+  elseif archetype == "vocoder_robot" then
+    if name == "BREAK" or name == "BUILD" then
+      result.samples = math.min(1, result.samples + 0.14)
+      result.mono = math.min(1, result.mono + 0.10)
+    end
+  elseif archetype == "acid_electro" then
+    result.chords = math.max(0, result.chords - 0.12)
+    if name == "DROP" or name == "BUILD" then result.fx = math.min(1, result.fx + 0.08) end
+  end
+  return result
+end
+
 local MELODIC_GRAMMARS = {
   melodic_techno = {
     -- Deep evolving techno: long intro and groove establish the hypnotic
@@ -246,6 +299,7 @@ function M.new(identity)
   local is_melodic=identity.genre=="MELODIC"
   local grammar=(identity.genre=="ACID" and ACID_GRAMMARS[identity.archetype]) or
     (identity.genre=="FUNKY" and FUNKY_GRAMMARS[identity.archetype]) or
+    (identity.genre=="ELECTRO" and ELECTRO_GRAMMARS[identity.archetype]) or
     (is_melodic and MELODIC_GRAMMARS[identity.archetype]) or
     assert(GRAMMARS[family],"unknown arrangement family")
   local rng=rng_new(identity.stream_seeds.arrangement)
@@ -257,14 +311,17 @@ function M.new(identity)
     local name,length=item[1],item[2]
     occurrences[name]=(occurrences[name] or 0)+1
     local is_funky=identity.genre=="FUNKY"
+    local is_electro=identity.genre=="ELECTRO"
     local section={
       name=name, first=first, last=first+length-1, length=length,
       phrase_bars=(identity.genre=="ACID" and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_funky and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
+        (is_electro and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_melodic and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         ((length>=16 and rng:float()>0.48) and 8 or 4),
       energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,name)) or
         (is_funky and funky_envelope(identity.archetype,name)) or
+        (is_electro and electro_envelope(identity.archetype,name)) or
         (is_melodic and melodic_envelope(identity.archetype,name)) or
         copy_envelope(name), index=index, occurrence=occurrences[name],
     }
@@ -278,6 +335,7 @@ function M.new(identity)
     name="MIX",first=97,last=128,length=32,phrase_bars=8,
     energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,"MIX")) or
       (identity.genre=="FUNKY" and funky_envelope(identity.archetype,"MIX")) or
+      (identity.genre=="ELECTRO" and electro_envelope(identity.archetype,"MIX")) or
       (identity.genre=="MELODIC" and melodic_envelope(identity.archetype,"MIX")) or
       copy_envelope("MIX"),index=#sections+1,occurrence=1,
   }

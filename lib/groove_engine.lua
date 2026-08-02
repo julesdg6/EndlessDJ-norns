@@ -9,7 +9,7 @@ local FEELS = {
   ACID={"straight","syncopated"}, TRANCE={"straight","double_time"}, PROG={"straight","polymetric"},
   JUNGLE={"broken","double_time"}, DNB={"broken","double_time"}, LIQUID={"broken","swung"},
   HARDTECHNO={"straight","double_time"}, ELECTRO={"broken","syncopated"}, JUKE={"syncopated","double_time"},
-  AFRO={"polymetric","syncopated"}, MINIMAL={"straight","polymetric"},   MELODIC={"straight","polymetric","swung"},
+  AFRO={"polymetric","syncopated"}, MINIMAL={"straight","polymetric"}, MELODIC={"straight","polymetric"},
   SPEED={"swung","broken"}, BASSLINE={"swung","syncopated"}, HARDSTYLE={"straight","double_time"},
 }
 
@@ -115,6 +115,57 @@ local FUNKY_GROOVES = {
       tom   = {8},
     },
     fill = {{14,"tom"},{15,"snare"},{16,"clap"}},
+  },
+}
+
+local ELECTRO_GROOVES = {
+  classic_808 = {
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,7,11,15},
+      snare = {5,13},
+      clap  = {13},
+      hats  = {2,4,6,8,10,12,14,16},
+      ohats = {6,14},
+      tom   = {3,8,12,16},
+    },
+    fill = {{12,"tom"},{14,"snare"},{15,"tom"},{16,"clap"}},
+  },
+  detroit_electro = {
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,4,10,15},
+      snare = {5,13},
+      clap  = {},
+      hats  = {3,6,8,11,14,16},
+      ohats = {8,16},
+      tom   = {7,12},
+    },
+    fill = {{11,"tom"},{13,"snare"},{15,"tom"},{16,"snare"}},
+  },
+  vocoder_robot = {
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,4,7,11,13},
+      snare = {5,13},
+      clap  = {5,13},
+      hats  = {2,4,6,8,10,12,14,16},
+      ohats = {4,12},
+      tom   = {3,10,15},
+    },
+    fill = {{12,"tom"},{14,"snare"},{15,"tom"},{16,"clap"}},
+  },
+  acid_electro = {
+    phrase_bars = 8,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {5,13},
+      clap  = {5,13},
+      hats  = {2,4,7,10,12,15},
+      ohats = {4,11,15},
+      tom   = {8,16},
+    },
+    fill = {{11,"tom"},{14,"snare"},{15,"tom"},{16,"clap"}},
   },
 }
 
@@ -266,25 +317,30 @@ function M.new(identity)
   local compatible=FEELS[identity.genre] or {"straight"}
   local acid_spec=identity.genre=="ACID" and ACID_GROOVES[identity.archetype] or nil
   local funky_spec=identity.genre=="FUNKY" and FUNKY_GROOVES[identity.archetype] or nil
+  local electro_spec=identity.genre=="ELECTRO" and ELECTRO_GROOVES[identity.archetype] or nil
   local melodic_spec=identity.genre=="MELODIC" and MELODIC_GROOVES[identity.archetype] or nil
   local feel=(acid_spec and acid_spec.feel) or (melodic_spec and melodic_spec.feel)
     or identity.groove_family or rng:pick(compatible)
   local pattern=(acid_spec and acid_spec.pattern) or (funky_spec and funky_spec.pattern)
+    or (electro_spec and electro_spec.pattern)
     or (melodic_spec and melodic_spec.pattern) or PATTERNS[feel]
   assert(pattern,"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
   if acid_spec then phrase_bars=acid_spec.phrase_bars end
   if funky_spec then phrase_bars=funky_spec.phrase_bars end
+  if electro_spec then phrase_bars=electro_spec.phrase_bars end
   if melodic_spec then phrase_bars=melodic_spec.phrase_bars end
   local bars={}
   for bar_number=1,phrase_bars do
     bars[bar_number]=make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
   end
   local fill_recipe=(acid_spec and acid_spec.fill) or (funky_spec and funky_spec.fill)
+    or (electro_spec and electro_spec.fill)
     or (melodic_spec and melodic_spec.fill)
   local fill_style=acid_spec and (identity.archetype.."_fill") or
     (funky_spec and (identity.archetype.."_funky")) or
+    (electro_spec and (identity.archetype.."_electro")) or
     (melodic_spec and (identity.archetype.."_melodic")) or nil
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,

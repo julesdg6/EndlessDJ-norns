@@ -31,6 +31,19 @@ for _, archetype in ipairs(profiles.archetypes("ACID")) do
   assert(profiles.supports("ACID", archetype, "bass", "303"),
     "Acid archetypes must use expressive 303")
 end
+for _, archetype in ipairs(profiles.archetypes("ELECTRO")) do
+  if archetype == "acid_electro" then
+    assert(profiles.supports("ELECTRO", archetype, "bass", "303"),
+      "Acid Electro must opt into 303")
+    assert(profiles.supports("ELECTRO", archetype, "kits", "909"),
+      "Acid Electro crossover must allow a four-floor compatible kit")
+  else
+    assert(not profiles.supports("ELECTRO", archetype, "bass", "303"),
+      "Default Electro archetypes must not route through 303")
+    assert(profiles.supports("ELECTRO", archetype, "kits", "808"),
+      "Default Electro archetypes must be anchored by 808-style drums")
+  end
+end
 
 for _, row in ipairs(rows) do
   local found = false

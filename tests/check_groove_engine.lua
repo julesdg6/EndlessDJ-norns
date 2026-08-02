@@ -35,6 +35,29 @@ for archetype,fixture in pairs(acid_fixtures) do
 end
 assert(acid_signatures.classic_303~=acid_signatures.deep_acid,"acid archetypes collapsed to one groove")
 assert(acid_signatures.jack_acid~=acid_signatures.rave_acid,"acid archetypes need distinct drum language")
+local electro_fixtures={
+  classic_808={seed=6,phrase_bars=8},
+  detroit_electro={seed=8,phrase_bars=8},
+  vocoder_robot={seed=1,phrase_bars=8},
+  acid_electro={seed=4,phrase_bars=8},
+}
+local electro_signatures={}
+for archetype,fixture in pairs(electro_fixtures) do
+  local plan=groove.new(identity.new{seed=fixture.seed,deck="A",genre="ELECTRO"})
+  assert(plan.archetype==archetype,"wrong electro archetype fixture selected")
+  assert(plan.phrase_bars==fixture.phrase_bars,"electro archetype phrase length mismatch")
+  electro_signatures[archetype]=signature(plan)
+end
+assert(electro_signatures.classic_808~=electro_signatures.detroit_electro,
+  "Electro archetypes collapsed to one groove")
+assert(electro_signatures.vocoder_robot~=electro_signatures.acid_electro,
+  "Electro crossover groove needs a distinct drum language")
+local acid_electro=groove.new(identity.new{seed=4,deck="A",genre="ELECTRO"})
+for bar=1,acid_electro.phrase_bars do
+  assert(groove.event(acid_electro,bar,"kick",1) and groove.event(acid_electro,bar,"kick",5) and
+    groove.event(acid_electro,bar,"kick",9) and groove.event(acid_electro,bar,"kick",13),
+    "Acid Electro crossover must expose the explicit four-floor kick pattern")
+end
 local house=groove.new(identity.new{seed=1,deck="A",genre="HOUSE"})
 local two_step=groove.new(identity.new{seed=1,deck="A",genre="TWO_STEP"})
 assert(signature(house)~=signature(two_step),"contrasting genres collapsed to one groove")
