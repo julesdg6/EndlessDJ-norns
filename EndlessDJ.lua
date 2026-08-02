@@ -1193,7 +1193,11 @@ end
 
 starlight.matches_device = function(device)
   local name = string.lower(tostring(
-    (device and (device.name or device.dev or device.description or device.port)) or ""
+    (device and (
+      device.name or device.dev or device.description or device.port or
+      device.product or device.model or device.manufacturer or device.vendor or
+      device.serial or device.path or device.id or device
+    )) or ""
   ))
   return name:find("starlight", 1, true) or
     (name:find("hercules", 1, true) and name:find("djcontrol", 1, true))
