@@ -968,49 +968,21 @@ disconnected and later reconnected.
 
 LAUNCHPAD / GRID
 
-Two Launchpad Mini MK3s are connected to the Norns.
+With the midigrid mod enabled, two Launchpad Mini MK3s appear as one 16×8
+virtual grid. The left 8 columns represent deck A and the right 8 columns
+represent deck B.
 
-The first launchpad functions as a live drum step sequencer.
-The second launchpad is a real-time instrument activity monitor.
+On boot the pads show a large `A` on deck A and a large `B` on deck B. Use the
+Launchpad's top-row up/down buttons to scroll through the performance pages:
 
-Layout of the first launchpad (8×8 grid, top row = row 8):
+1. Drum page — each deck gets its own 4-lane, 16-step drum grid.
+2. FX page — clap/tom step lanes plus a bank of riser triggers per deck.
+3. Mixer page — crossfader on the top two rows, four mixer strips below.
+4. Bass page — bassline overview plus two compact keyboard rows per deck.
 
-  Row 8-7: Kick       (red)
-  Row 6-5: Snare      (yellow)
-  Row 4-3: Open Hat   (green)
-  Row 2-1: Closed Hat (blue)
-
-Each pair of rows covers 16 steps: the upper row holds steps 1-8, the lower
-row holds steps 9-16.
-
-Pressing a pad toggles that step on or off.
-
-A moving playhead cursor (brighter shade of the lane colour) shows the
-currently playing step.
-
-When a Launchpad is connected:
-- Kick, snare, open hat and closed hat are driven by the pad pattern.
-- Clap, tom and bar fills remain generative as before.
-
-On deck handover the launchpad pattern is reinitialised from the incoming
-deck's genre base pattern so the grid immediately reflects the new track.
-
-Layout of the second launchpad (8×8 grid, programmer mode):
-
-  Top 4-row block (rows 8-5): BASS
-    Rows 8-7: bass 16-step display (row 8 = steps 1-8, row 7 = steps 9-16)
-    Rows 6-5: bass activity on the current step
-
-  Bottom 4-row block (rows 4-1): CHORDS
-    Rows 4-3: chord trigger-step display (row 4 = steps 1-8, row 3 = steps 9-16)
-    Rows 2-1: chord/norns activity on the current step
-
-Current step uses brighter colours (amber for bass, purple for chords).
-
-Both Launchpads must be in programmer mode (sent automatically on connect via
-SysEx).  The LAUNCHPAD section in PARAMS lets you choose which MIDI device
-number is assigned to each pad ("launchpad device" for LP1, "lp2 device" for
-LP2).
+When a Launchpad is connected, kick/snare/open-hat/closed-hat patterns follow
+the per-deck grid pages, while the FX page exposes the extra clap/tom lanes and
+riser triggers for each deck.
 
 LAUNCHPAD CONNECTION (MIDI vs HID)
 
