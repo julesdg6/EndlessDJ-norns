@@ -15,6 +15,8 @@
 --   T-8 bass   ch8  on t8 midi device
 --   J-6 chords ch6  on j6 midi device  (default device 1 via MX-1)
 --   MX-1 Beat FX depth automated via CC during mix transitions
+-- luacheck: globals starlight normalise_deck_position deck_transport_position
+-- luacheck: globals set_deck_transport_position
 
 engine.name = "Endless"
 
@@ -97,6 +99,8 @@ local acapella_index = 1
 local acapella_loaded = false
 local ACAPELLA_VOICE  = 1
 local ACAPELLA_BUFFER = 1
+local start_acapella
+local stop_acapella
 local mx1_ch = 1
 local mx1_fx_enabled = true
 local mx1_fx_cc = 12
@@ -1698,7 +1702,7 @@ local function load_acapella(idx)
   acapella_loaded = true
 end
 
-local function start_acapella()
+start_acapella = function()
   if not acapella_enabled then return end
   if not acapella_loaded then return end
   if #acapella_files == 0 then return end
@@ -1710,7 +1714,7 @@ local function start_acapella()
   softcut.play(ACAPELLA_VOICE, 1)
 end
 
-local function stop_acapella()
+stop_acapella = function()
   softcut.play(ACAPELLA_VOICE, 0)
 end
 

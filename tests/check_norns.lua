@@ -157,7 +157,11 @@ if not source:find("j6_midi_device", 1, true) then
 end
 pass("Separate J-6 MIDI routing exists")
 
-if not source:find("current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)", 1, true) then
+if not source:find(
+    "current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)",
+    1,
+    true
+  ) then
   fail("Incoming deck handover must preserve the queued deck position after the 32-bar mix")
 end
 pass("32-bar mix handover preserves the queued deck position")
