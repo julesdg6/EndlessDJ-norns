@@ -46,6 +46,29 @@ local mx1_midi_out
 local mdev = 1
 local chord_mdev = 1
 local mx1_mdev = 1
+starlight = {
+  mode = 2, -- 1=off, 2=auto/manual HID detection
+  device_slot = 0, -- 0=auto-detect by name, >0=force a HID slot
+  connected = false,
+  device = nil,
+  device_index = nil,
+  status = "off",
+  wheel_sensitivity = 1,
+  channel_levels = {1, 1},
+  calibration = {A = 0, B = 0},
+  last_raw = {A = nil, B = nil},
+  led_supported = false,
+  mapping = {
+    jog_a = {0, "abs_x", "jog_a", "wheel_a", "platter_a"},
+    jog_b = {1, "abs_y", "jog_b", "wheel_b", "platter_b"},
+    crossfader = {3, 8, "abs_rx", "crossfader", "xfader"},
+    channel_a = {2, 6, "abs_z", "channel_a", "line_a"},
+    channel_b = {5, 7, "abs_rz", "channel_b", "line_b"},
+    play = {304, "play", "start_stop", "btn_south"},
+    cue_a = {305, "cue_a", "search_a", "btn_west"},
+    cue_b = {306, "cue_b", "search_b", "btn_east"},
+  },
+}
 
 -- ──────────────────────────────────────────────
 -- Norns instrument (n-chord voice in the Endless SuperCollider engine)
@@ -728,6 +751,7 @@ local deck_a = {name="A-001", genre="HOUSE",    active=true,  angle=0, root=45, 
                 nmono=nmono_patch_for_genre("HOUSE"),
                 ngrain=granular_patch_for_genre("HOUSE", 12345),
                 automix=automix_patch_for_genre("HOUSE", 12345),
+                cue_bar=1, cue_step=1,
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, pc=1, norns_preset=2,
                 variation_seed=54321, n303=n303_patch_for_genre("TWO_STEP"),
@@ -735,6 +759,7 @@ local deck_b = {name="B-002", genre="TWO_STEP", active=false, angle=0, root=50, 
                 nmono=nmono_patch_for_genre("TWO_STEP"),
                 ngrain=granular_patch_for_genre("TWO_STEP", 54321),
                 automix=automix_patch_for_genre("TWO_STEP", 54321),
+                cue_bar=1, cue_step=1,
                 mpx8_riser_fired=false, mpx8_impact_fired=false, mpx8_drop_accent_fired=false}
 
 function mixer_apply_deck(deck, deck_id)
@@ -948,6 +973,8 @@ local function make_deck(letter, excluded_genre, requested_seed, requested_genre
     nmono = nmono,
     ngrain = granular_patch_for_genre(genre, variation_seed),
     automix = automix_patch_for_genre(genre, variation_seed),
+    cue_bar = 1,
+    cue_step = 1,
     nts1_identity = nil,
     nts1_motif = nil,
     nts1_phrase = nil,
@@ -978,6 +1005,31 @@ end
 
 local function next_deck()
   return deck_a.active and deck_b or deck_a
+end
+
+function normalise_deck_position(bar, s)
+  local index = clamp((((bar or 1) - 1) * 16) + ((s or 1) - 1), 0, phrase_bars * 16 - 1)
+  return math.floor(index / 16) + 1, (index % 16) + 1
+end
+
+function deck_transport_position(deck)
+  if deck == current_deck() then return current_bar, step end
+  if mixing and deck == next_deck() and next_bar then return next_bar, next_step end
+  return deck.cue_bar or 1, deck.cue_step or 1
+end
+
+function set_deck_transport_position(deck, bar, s)
+  local target_bar, target_step = normalise_deck_position(bar, s)
+  if deck == current_deck() then
+    current_bar = target_bar
+    step = target_step
+  elseif mixing and deck == next_deck() then
+    next_bar = target_bar
+    next_step = target_step
+  else
+    deck.cue_bar = target_bar
+    deck.cue_step = target_step
+  end
 end
 
 generate_song_identity = function(seed, deck_letter, genre)
@@ -1117,8 +1169,242 @@ local function quiet_notes()
   timing_subpulse = 0
 end
 
+starlight.matches_device = function(device)
+  local name = string.lower(tostring(
+    (device and (device.name or device.dev or device.description or device.port)) or ""
+  ))
+  return name:find("starlight", 1, true) or
+    (name:find("hercules", 1, true) and name:find("djcontrol", 1, true))
+end
+
+starlight.find_device = function(devices)
+  if starlight.device_slot > 0 then
+    return starlight.device_slot, devices and devices[starlight.device_slot]
+  end
+  for index, device in pairs(devices or {}) do
+    if starlight.matches_device(device) then return index, device end
+  end
+end
+
+starlight.event_type = function(event)
+  return event and (event.type or event.ev_type or event[1])
+end
+
+starlight.event_code = function(event)
+  return event and (event.code or event.control or event.number or event.id or event[2])
+end
+
+starlight.event_name = function(event)
+  return string.lower(tostring(
+    event and (event.code_name or event.control_name or event.name or event.key) or ""
+  ))
+end
+
+starlight.event_value = function(event)
+  return tonumber(event and (event.value or event.val or event[3])) or 0
+end
+
+starlight.event_matches = function(event, controls)
+  local code = starlight.event_code(event)
+  local name = starlight.event_name(event)
+  for _, control in ipairs(controls or {}) do
+    if type(control) == "number" and code == control then return true end
+    if type(control) == "string" and name == control then return true end
+  end
+  return false
+end
+
+starlight.is_relative_event = function(event)
+  local event_type = starlight.event_type(event)
+  if tonumber(event_type) == 2 then return true end
+  local lowered = string.lower(tostring(event_type or ""))
+  return lowered == "rel" or lowered == "ev_rel"
+end
+
+starlight.is_button_event = function(event)
+  local event_type = starlight.event_type(event)
+  if tonumber(event_type) == 1 then return true end
+  local lowered = string.lower(tostring(event_type or ""))
+  return lowered == "key" or lowered == "btn" or lowered == "button" or lowered == "ev_key"
+end
+
+starlight.normalise_level = function(value)
+  local number = tonumber(value) or 0
+  if number <= 1 then return clamp(number, 0, 1) end
+  if number <= 127 then return clamp(number / 127, 0, 1) end
+  if number <= 255 then return clamp(number / 255, 0, 1) end
+  return clamp(number / 1023, 0, 1)
+end
+
+starlight.disconnect = function(reason)
+  if starlight.device then starlight.device.event = nil end
+  starlight.device = nil
+  starlight.device_index = nil
+  starlight.connected = false
+  starlight.led_supported = false
+  starlight.status = reason or "disconnected"
+end
+
+starlight.nudge_deck = function(deck, delta)
+  local bar, s = deck_transport_position(deck)
+  local amount = math.max(1, math.min(4, math.floor(math.abs(delta) / 2) + 1))
+  local direction = delta > 0 and 1 or -1
+  set_deck_transport_position(
+    deck,
+    bar,
+    s + (direction * amount)
+  )
+  deck.angle = (deck.angle or 0) + (direction * amount * math.pi / 64)
+end
+
+starlight.cue_button = function(deck)
+  if deck == current_deck() and playing then
+    deck.cue_bar = current_bar
+    deck.cue_step = step
+    playing = false
+    quiet_notes()
+    stop_acapella()
+    return
+  end
+  set_deck_transport_position(deck, deck.cue_bar or 1, deck.cue_step or 1)
+end
+
+starlight.led_level = function(deck)
+  local bar, s = deck_transport_position(deck)
+  local progress = (((bar - 1) * 16) + (s - 1)) / (phrase_bars * 16 - 1)
+  return math.floor(clamp(progress, 0, 1) * 127 + 0.5)
+end
+
+starlight.update_leds = function()
+  local device = starlight.device
+  if not starlight.connected or not device then return end
+  local left = starlight.led_level(deck_a)
+  local right = starlight.led_level(deck_b)
+  local ok = false
+  if type(device.set_led_position) == "function" then
+    ok = pcall(device.set_led_position, device, left, right)
+  elseif type(device.led) == "function" then
+    ok = pcall(device.led, device, 1, left)
+    pcall(device.led, device, 2, right)
+  end
+  starlight.led_supported = ok or starlight.led_supported
+end
+
+starlight.toggle_playback = function()
+  playing = not playing
+  if not playing then
+    quiet_notes()
+    stop_acapella()
+  else
+    start_acapella()
+  end
+end
+
+starlight.handle_event = function(...)
+  local event
+  if select("#", ...) == 1 and type((...)) == "table" then
+    event = ...
+  elseif select("#", ...) == 3 then
+    event = {type = select(1, ...), code = select(2, ...), value = select(3, ...)}
+  elseif select("#", ...) >= 4 then
+    event = {type = select(2, ...), code = select(3, ...), value = select(4, ...)}
+  else
+    return
+  end
+
+  local value = starlight.event_value(event)
+  if starlight.is_button_event(event) and value > 0 then
+    if starlight.event_matches(event, starlight.mapping.play) then
+      starlight.toggle_playback()
+    elseif starlight.event_matches(event, starlight.mapping.cue_a) then
+      starlight.cue_button(deck_a)
+    elseif starlight.event_matches(event, starlight.mapping.cue_b) then
+      starlight.cue_button(deck_b)
+    end
+    redraw()
+    return
+  end
+
+  if starlight.event_matches(event, starlight.mapping.crossfader) then
+    manual_xfade = true
+    params:set("manual_xfade", 2)
+    xfade = math.floor(starlight.normalise_level(value) * 100 + 0.5)
+  elseif starlight.event_matches(event, starlight.mapping.channel_a) then
+    starlight.channel_levels[1] = starlight.normalise_level(value)
+  elseif starlight.event_matches(event, starlight.mapping.channel_b) then
+    starlight.channel_levels[2] = starlight.normalise_level(value)
+  elseif starlight.event_matches(event, starlight.mapping.jog_a) or
+      starlight.event_matches(event, starlight.mapping.jog_b) then
+    local side = starlight.event_matches(event, starlight.mapping.jog_a) and "A" or "B"
+    local delta = value
+    if not starlight.is_relative_event(event) then
+      local previous = starlight.last_raw[side]
+      starlight.last_raw[side] = value
+      if previous == nil then
+        local deck = side == "A" and deck_a or deck_b
+        local offset = starlight.calibration[side] or 0
+        deck.angle = (((value - offset) % 128) / 128) * math.pi * 2
+        redraw()
+        return
+      end
+      delta = value - previous
+      if math.abs(delta) > 64 then
+        delta = delta > 0 and (delta - 128) or (delta + 128)
+      end
+      local deck = side == "A" and deck_a or deck_b
+      local offset = starlight.calibration[side] or 0
+      deck.angle = (((value - offset) % 128) / 128) * math.pi * 2
+    end
+    delta = delta * starlight.wheel_sensitivity
+    if delta ~= 0 then
+      starlight.nudge_deck(side == "A" and deck_a or deck_b, delta)
+    end
+  end
+
+  starlight.update_leds()
+  redraw()
+end
+
+starlight.refresh_connection = function()
+  if starlight.mode == 1 then
+    if starlight.connected then starlight.disconnect("off") end
+    return
+  end
+  local hid_api = rawget(_G, "hid")
+  if type(hid_api) ~= "table" or type(hid_api.connect) ~= "function" or
+      type(hid_api.devices) ~= "table" then
+    starlight.status = "hid unavailable"
+    return
+  end
+  if starlight.connected then
+    local still_present = starlight.device_index and hid_api.devices[starlight.device_index]
+    if still_present then return end
+    starlight.disconnect("disconnected")
+  end
+  local index, device_info = starlight.find_device(hid_api.devices)
+  if not index or not device_info then
+    starlight.status = starlight.device_slot > 0 and
+      ("waiting for HID " .. starlight.device_slot) or
+      "waiting for Hercules DJControl Starlight"
+    return
+  end
+  local ok, device = pcall(hid_api.connect, index)
+  if not ok or not device then
+    starlight.status = "connect failed"
+    return
+  end
+  starlight.device = device
+  starlight.device_index = index
+  starlight.connected = true
+  starlight.status = "connected"
+  starlight.device.event = starlight.handle_event
+  starlight.update_leds()
+end
+
 local function apply_transport_message(msg_type)
   if msg_type == "start" or msg_type == "continue" then
+    timing_scheduler.clear()
+    timing_subpulse = 0
     playing = true
     redraw()
     return true
@@ -3664,8 +3950,8 @@ end
 local function start_mix_if_needed()
   if current_bar == MIX_START_BAR and step == 1 and not mixing then
     mixing = true
-    next_bar = 1
-    next_step = 1
+    next_bar = next_deck().cue_bar or 1
+    next_step = next_deck().cue_step or 1
     transition_state.plan=transition_engine.new(
       current_deck().identity,next_deck().identity,
       {mode=transition_state.mode,energy=current_bar}
@@ -3692,10 +3978,14 @@ local function update_xfade()
     mixer_state.auto_mode == 1 and 0 or mixer_state.auto_transition
   )
   if mixing and transition_state.plan and transition_state.mode~="classic" then
-    internal_engine.set_deck_levels(1,1)
+    internal_engine.set_deck_levels(starlight.channel_levels[1], starlight.channel_levels[2])
   else
-    internal_engine.set_deck_levels(math.sqrt(1 - position), math.sqrt(position))
+    internal_engine.set_deck_levels(
+      math.sqrt(1 - position) * starlight.channel_levels[1],
+      math.sqrt(position) * starlight.channel_levels[2]
+    )
   end
+  starlight.update_leds()
 end
 
 local function finish_handover()
@@ -3724,8 +4014,7 @@ local function finish_handover()
   nbass_apply_deck(deck_b)
   mixer_apply_deck(deck_a, 1)
   mixer_apply_deck(deck_b, 2)
-  current_bar = MIX_BARS + 1
-  step = 1
+  current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)
   next_bar = nil
   next_step = 1
   mixing = false
@@ -3835,6 +4124,7 @@ local function clock_tick()
 end
 
 timing_clock_pulse = function()
+  starlight.refresh_connection()
   if not playing then return end
   if timing_subpulse == 0 then clock_tick() end
   local _, errors = timing_scheduler.service(timing_pulse)
@@ -4033,6 +4323,31 @@ function init()
       for n=0,127 do mpx8_midi_out:note_off(n, 0, mpx8_ch) end
     end
     mpx8_ch = v
+  end)
+
+  params:add_option("starlight_mode", "starlight controller", {"off","auto"}, starlight.mode)
+  params:set_action("starlight_mode", function(v)
+    starlight.mode = v
+    starlight.refresh_connection()
+  end)
+  params:add_number("starlight_hid_device", "starlight hid slot", 0, 16, starlight.device_slot)
+  params:set_action("starlight_hid_device", function(v)
+    starlight.device_slot = v
+    if starlight.connected then starlight.disconnect("reconfigure") end
+    starlight.refresh_connection()
+  end)
+  params:add_number("starlight_wheel_sensitivity", "starlight wheel sensitivity", 1, 8, starlight.wheel_sensitivity)
+  params:set_action("starlight_wheel_sensitivity", function(v) starlight.wheel_sensitivity = v end)
+  params:add_number("starlight_a_offset", "starlight deck a offset", 0, 127, starlight.calibration.A)
+  params:set_action("starlight_a_offset", function(v) starlight.calibration.A = v end)
+  params:add_number("starlight_b_offset", "starlight deck b offset", 0, 127, starlight.calibration.B)
+  params:set_action("starlight_b_offset", function(v) starlight.calibration.B = v end)
+  params:add_trigger("starlight_calibrate", "starlight calibrate")
+  params:set_action("starlight_calibrate", function()
+    if starlight.last_raw.A ~= nil then params:set("starlight_a_offset", starlight.last_raw.A % 128) end
+    if starlight.last_raw.B ~= nil then params:set("starlight_b_offset", starlight.last_raw.B % 128) end
+    starlight.status = "calibrated"
+    starlight.update_leds()
   end)
 
   params:add_separator("output_routes_sep", "OUTPUT ROUTING")
@@ -4925,6 +5240,7 @@ function init()
   -- bangs all parameters so routing, mixer, devices, samples, and synth state
   -- are actually applied to the running script.
   params:default()
+  starlight.refresh_connection()
   grid_connect()
   n808_apply_deck(deck_a)
   n808_apply_deck(deck_b)
@@ -4963,6 +5279,7 @@ function cleanup()
   kb_all_notes_off()
   grid_clear()
   stop_acapella()
+  starlight.disconnect("cleanup")
   if metro_clock then metro_clock:stop() end
 end
 
@@ -4970,13 +5287,7 @@ function key(n,z)
   if z == 0 then return end
 
   if n == 2 then
-    playing = not playing
-    if not playing then
-      quiet_notes()
-      stop_acapella()
-    else
-      start_acapella()
-    end
+    starlight.toggle_playback()
   elseif n == 3 then
     if playing and mixing then
       if transition_state.plan then transition_engine.cancel(transition_state.plan) end
