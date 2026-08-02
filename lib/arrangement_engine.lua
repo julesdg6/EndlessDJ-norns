@@ -206,6 +206,77 @@ local function electro_envelope(archetype, name)
   return result
 end
 
+local MELODIC_GRAMMARS = {
+  melodic_techno = {
+    -- Deep evolving techno: long intro and groove establish the hypnotic
+    -- identity; an extended drop carries the full melodic arc.
+    {"INTRO",16},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",24},{"DEVELOP",8},
+  },
+  melodic_house = {
+    -- House hook structure: DJ-friendly intro, hook A/B alternation,
+    -- chord breakdown, and an atmospheric outro for mixing out.
+    {"INTRO",8},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+  cinematic_prog = {
+    -- Cinematic slow-burn: extended groove and emotional breakdown let
+    -- strings and pads breathe before the single full-energy climax.
+    {"INTRO",16},{"GROOVE",24},{"MAIN",16},{"BREAK",16},
+    {"BUILD",8},{"DROP",16},
+  },
+  vocal_melodic = {
+    -- Vocal hook structure: hook reveal in MAIN, vocal spotlight in BREAK,
+    -- re-drop, development, and DJ-friendly outro.
+    {"INTRO",8},{"GROOVE",16},{"MAIN",16},{"BREAK",8},
+    {"BUILD",8},{"DROP",16},{"DEVELOP",16},{"OUTRO",8},
+  },
+}
+
+-- Melodic stem energy envelopes.  The lead melody (mono) is the primary
+-- hook so it sits higher than in the generic template throughout; chords
+-- (pads/strings) support without overpowering; the break spotlights the
+-- melodic lead; the build peaks the FX riser; the intro has no bass so
+-- it is DJ-friendly.
+local function melodic_envelope(archetype, name)
+  local envelope = {
+    INTRO  = {kick=0.65,percussion=0.32,bass=0,    chords=0.22,mono=0.12,samples=0.10,fx=0.22},
+    GROOVE = {kick=1,   percussion=0.65,bass=0.72, chords=0.38,mono=0.32,samples=0.18,fx=0.12},
+    MAIN   = {kick=1,   percussion=0.82,bass=0.88, chords=0.60,mono=0.78,samples=0.42,fx=0.18},
+    BREAK  = {kick=0.06,percussion=0.15,bass=0.10, chords=0.75,mono=0.90,samples=0.52,fx=0.68},
+    BUILD  = {kick=0.62,percussion=0.80,bass=0.38, chords=0.52,mono=0.92,samples=0.55,fx=0.96},
+    DROP   = {kick=1,   percussion=0.95,bass=0.95, chords=0.65,mono=0.95,samples=0.62,fx=0.36},
+    DEVELOP= {kick=1,   percussion=0.70,bass=0.80, chords=0.42,mono=0.60,samples=0.32,fx=0.16},
+    OUTRO  = {kick=0.88,percussion=0.52,bass=0.25, chords=0.15,mono=0.06,samples=0.10,fx=0.10},
+    MIX    = {kick=1,   percussion=0.62,bass=0.55, chords=0.30,mono=0.25,samples=0.20,fx=0.30},
+  }
+  local result = {}
+  for role, value in pairs(envelope[name] or envelope.GROOVE) do result[role] = value end
+  if archetype == "melodic_techno" then
+    -- Techno: suppress chords in MAIN, amplify mono in BREAK, peak FX in BUILD.
+    if name == "MAIN"  then result.chords = math.max(0.38, result.chords - 0.14) end
+    if name == "BREAK" then result.mono   = math.min(1,    result.mono   + 0.06) end
+    if name == "BUILD" then result.fx     = math.min(1,    result.fx     + 0.04) end
+  elseif archetype == "melodic_house" then
+    -- House: chords more prominent in MAIN and DROP; groove samples up.
+    if name == "MAIN"   then result.chords  = math.min(1, result.chords  + 0.10) end
+    if name == "BREAK"  then result.samples = math.min(1, result.samples + 0.08) end
+    if name == "DROP"   then result.chords  = math.min(1, result.chords  + 0.10) end
+  elseif archetype == "cinematic_prog" then
+    -- Cinematic: strings/pads prominent in BREAK; extra mono depth in DROP.
+    if name == "BREAK" then result.chords = math.min(1, result.chords + 0.10) end
+    if name == "BREAK" then result.mono   = math.min(1, result.mono   + 0.05) end
+    if name == "DROP"  then result.mono   = math.min(1, result.mono   + 0.05) end
+  elseif archetype == "vocal_melodic" then
+    -- Vocal: sample (vocal) energy elevated throughout; BREAK exposes vocal.
+    if name == "GROOVE" then result.samples = math.min(1, result.samples + 0.10) end
+    if name == "MAIN"   then result.samples = math.min(1, result.samples + 0.12) end
+    if name == "BREAK"  then result.samples = math.min(1, result.samples + 0.18) end
+  end
+  return result
+end
+
+
 local function rng_new(seed)
   local rng={state=math.max(1,seed%2147483647)}
   function rng:next() self.state=(self.state*48271)%2147483647 return self.state end
@@ -225,9 +296,11 @@ function M.new(identity)
   assert(identity and identity.stream_seeds and identity.stream_seeds.arrangement,
     "arrangement seed required")
   local family=identity.arrangement_family or "club_linear"
+  local is_melodic=identity.genre=="MELODIC"
   local grammar=(identity.genre=="ACID" and ACID_GRAMMARS[identity.archetype]) or
     (identity.genre=="FUNKY" and FUNKY_GRAMMARS[identity.archetype]) or
     (identity.genre=="ELECTRO" and ELECTRO_GRAMMARS[identity.archetype]) or
+    (is_melodic and MELODIC_GRAMMARS[identity.archetype]) or
     assert(GRAMMARS[family],"unknown arrangement family")
   local rng=rng_new(identity.stream_seeds.arrangement)
   local sections={}
@@ -244,10 +317,12 @@ function M.new(identity)
       phrase_bars=(identity.genre=="ACID" and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_funky and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         (is_electro and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
+        (is_melodic and ((name=="BREAK" or name=="BUILD") and 4 or 8)) or
         ((length>=16 and rng:float()>0.48) and 8 or 4),
       energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,name)) or
         (is_funky and funky_envelope(identity.archetype,name)) or
         (is_electro and electro_envelope(identity.archetype,name)) or
+        (is_melodic and melodic_envelope(identity.archetype,name)) or
         copy_envelope(name), index=index, occurrence=occurrences[name],
     }
     sections[#sections+1]=section
@@ -261,6 +336,7 @@ function M.new(identity)
     energy=(identity.genre=="ACID" and acid_envelope(identity.archetype,"MIX")) or
       (identity.genre=="FUNKY" and funky_envelope(identity.archetype,"MIX")) or
       (identity.genre=="ELECTRO" and electro_envelope(identity.archetype,"MIX")) or
+      (identity.genre=="MELODIC" and melodic_envelope(identity.archetype,"MIX")) or
       copy_envelope("MIX"),index=#sections+1,occurrence=1,
   }
   return {

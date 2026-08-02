@@ -169,6 +169,70 @@ local ELECTRO_GROOVES = {
   },
 }
 
+-- Per-archetype groove plans for Melodic genres.  Patterns open space for
+-- the harmonic lead and pads: controlled kick, restrained toms, and open hats
+-- that breathe between chord hits.  The feel (timing) is fixed per archetype
+-- so the groove character is deterministic regardless of the groove_family
+-- selected in the song identity.
+local MELODIC_GROOVES = {
+  melodic_techno = {
+    -- Controlled four-floor techno: precise kick, restrained open hats on
+    -- off-beats 7/15, no toms so the harmonic lead has space to breathe.
+    feel = "straight", phrase_bars = 8,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {9,13},
+      clap  = {5,13},
+      hats  = {3,7,11,15},
+      ohats = {7,15},
+      tom   = {},
+    },
+    fill = {{14,"hats"},{15,"snare"},{16,"clap"}},
+  },
+  melodic_house = {
+    -- House four-floor with swung offbeat hats and space for chord pads.
+    -- Ghost snares on 3/11 keep the groove warm without burying the melody.
+    feel = "swung", phrase_bars = 8,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {5,13},
+      clap  = {5,13},
+      hats  = {3,4,7,10,12,15},
+      ohats = {4,12},
+      tom   = {},
+    },
+    fill = {{12,"ohats"},{14,"snare"},{16,"clap"}},
+  },
+  cinematic_prog = {
+    -- Spacious 16-bar phrase: minimal snare and toms let strings and pads
+    -- dominate; single open hat on 7/15 marks the half-bar with restraint.
+    feel = "straight", phrase_bars = 16,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {9},
+      clap  = {5,13},
+      hats  = {3,7,11,15},
+      ohats = {7,15},
+      tom   = {11},
+    },
+    fill = {{13,"tom"},{15,"snare"},{16,"clap"}},
+  },
+  vocal_melodic = {
+    -- Open straight groove with a single mid-phrase tom accent to punctuate
+    -- vocal phrases; open hats on 7/15 keep energy without crowding vocals.
+    feel = "straight", phrase_bars = 8,
+    pattern = {
+      kick  = {1,5,9,13},
+      snare = {5,13},
+      clap  = {5,13},
+      hats  = {3,7,11,15},
+      ohats = {7,15},
+      tom   = {8},
+    },
+    fill = {{12,"hats"},{15,"tom"},{16,"clap"}},
+  },
+}
+
 local FILL_RECIPES = {
   straight={{14,"tom"},{15,"snare"},{16,"clap"}},
   swung={{12,"hats"},{15,"tom"},{16,"clap"}},
@@ -254,25 +318,30 @@ function M.new(identity)
   local acid_spec=identity.genre=="ACID" and ACID_GROOVES[identity.archetype] or nil
   local funky_spec=identity.genre=="FUNKY" and FUNKY_GROOVES[identity.archetype] or nil
   local electro_spec=identity.genre=="ELECTRO" and ELECTRO_GROOVES[identity.archetype] or nil
-  local feel=(acid_spec and acid_spec.feel) or identity.groove_family or rng:pick(compatible)
+  local melodic_spec=identity.genre=="MELODIC" and MELODIC_GROOVES[identity.archetype] or nil
+  local feel=(acid_spec and acid_spec.feel) or (melodic_spec and melodic_spec.feel)
+    or identity.groove_family or rng:pick(compatible)
   local pattern=(acid_spec and acid_spec.pattern) or (funky_spec and funky_spec.pattern)
     or (electro_spec and electro_spec.pattern)
-    or PATTERNS[feel]
+    or (melodic_spec and melodic_spec.pattern) or PATTERNS[feel]
   assert(pattern,"identity selected unknown groove")
   local swing=(feel=="swung") and (0.12+rng:float()*0.16) or 0
   local phrase_bars=rng:pick(PHRASE_LENGTHS[identity.genre] or {4})
   if acid_spec then phrase_bars=acid_spec.phrase_bars end
   if funky_spec then phrase_bars=funky_spec.phrase_bars end
   if electro_spec then phrase_bars=electro_spec.phrase_bars end
+  if melodic_spec then phrase_bars=melodic_spec.phrase_bars end
   local bars={}
   for bar_number=1,phrase_bars do
     bars[bar_number]=make_bar(pattern,bar_number,phrase_bars,rng,feel,swing)
   end
   local fill_recipe=(acid_spec and acid_spec.fill) or (funky_spec and funky_spec.fill)
     or (electro_spec and electro_spec.fill)
+    or (melodic_spec and melodic_spec.fill)
   local fill_style=acid_spec and (identity.archetype.."_fill") or
     (funky_spec and (identity.archetype.."_funky")) or
-    (electro_spec and (identity.archetype.."_electro")) or nil
+    (electro_spec and (identity.archetype.."_electro")) or
+    (melodic_spec and (identity.archetype.."_melodic")) or nil
   return {
     schema_version=1, genre=identity.genre, archetype=identity.archetype,
     family=feel, swing=swing, phrase_bars=phrase_bars, bars=bars,

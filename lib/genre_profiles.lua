@@ -359,21 +359,21 @@ MINIMAL={
     "club_linear","digital|clean","click_hook"),},
 MELODIC={
  melodic_techno=p(
-    "909|hybrid","straight|polymetric","analog|reese",
-    "pad","analog|reese","borrowed_motion",
-    "double_drop","tonal|clean","melodic_theme"),
- deep_melodic=p(
-    "808|909","polymetric|straight","sub|analog",
-    "pad|organ","analog","minor_modal|borrowed_motion",
-    "slow_burn","dark|tonal","deep_theme"),
- arpeggiated=p(
-    "909|hybrid","straight","analog|sub",
-    "pad|analog","fm|analog","borrowed_motion",
-    "hook_ab","tonal|digital","arp_hook"),
- cinematic=p(
-    "hybrid|industrial","straight|polymetric","reese|sub",
-    "pad|rave","analog|reese","minor_modal|borrowed_motion",
-    "slow_burn","tonal|rave","cinematic_arc"),},
+    "909|hybrid","straight|polymetric","analog|sub",
+    "pad","analog|fm","borrowed_motion|minor_modal",
+    "slow_burn|double_drop","tonal|dark","melodic_phrase"),
+ melodic_house=p(
+    "909|hybrid","swung|straight","analog|sub",
+    "pad|organ","analog","seventh_ninth|borrowed_motion",
+    "hook_ab|double_drop","soulful|tonal","house_theme"),
+ cinematic_prog=p(
+    "hybrid|909","straight|polymetric","sub|analog",
+    "pad","analog|fm","minor_modal|borrowed_motion",
+    "slow_burn","tonal|clean","cinematic_theme"),
+ vocal_melodic=p(
+    "909|linn","straight|swung","analog|sub",
+    "pad|organ","analog","borrowed_motion|seventh_ninth",
+    "hook_ab","soulful|tonal","vocal_phrase"),},
 SPEED={
  speed_garage=p(
     "909|linn","swung|broken","organ|reese",
