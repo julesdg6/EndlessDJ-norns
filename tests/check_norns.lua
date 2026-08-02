@@ -39,10 +39,10 @@ local source = read_file(path)
 if not source then fail("Could not read " .. path) end
 pass("Found script: " .. path)
 
-if not source:find("Endless DJ v1.150", 1, true) then
-  fail("Script version must match PR #150")
+if not source:find("Endless DJ v1.151", 1, true) then
+  fail("Script version must match PR #151")
 end
-pass("Script version matches PR #150")
+pass("Script version matches PR #151")
 
 for _, name in ipairs({"init","redraw","key","enc","cleanup"}) do
   if not source:match("function%s+" .. name .. "%s*%(") then
@@ -1304,8 +1304,11 @@ for _, token in ipairs({
   "starlight.refresh_connection",
   "starlight.disconnect",
   "starlight.update_leds",
-  "device.product or device.model or device.manufacturer or device.vendor",
-  "device.serial or device.path or device.id or device",
+  "device.name, device.dev, device.description, device.port,",
+  "device.product, device.model, device.manufacturer, device.vendor,",
+  "device.serial, device.path, device.id,",
+  's:find("starlight", 1, true)',
+  's:find("guillemot", 1, true)',
   "next_bar = next_deck().cue_bar or 1",
   "next_step = next_deck().cue_step or 1",
   "current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)",
