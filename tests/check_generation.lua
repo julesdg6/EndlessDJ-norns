@@ -89,7 +89,8 @@ for _, genre in ipairs(fixtures.genres) do
       fail(genre, context, seed, "unsafe bass density " .. bass_events)
     end
     if bass.voice_family == "303" and
-        not ({ACID=true, TRANCE=true, HARDTECHNO=true})[genre] then
+        not ({ACID=true, TRANCE=true, HARDTECHNO=true})[genre] and
+        not (genre == "ELECTRO" and song.archetype == "acid_electro") then
       fail(genre, context, seed, "stylistically invalid 303")
     end
     if genre == "TWO_STEP" and bass.voice_family == "303" then

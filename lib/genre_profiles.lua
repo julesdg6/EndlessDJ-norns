@@ -290,22 +290,22 @@ HARDTECHNO={
     "rave","fm|analog","minor_modal",
     "double_drop","rave|aggressive","hard_acid"),},
 ELECTRO={
- robot_funk=p(
-    "808|linn","broken|syncopated","fm|analog",
-    "fm|rave","fm","pedal_tone",
-    "hook_ab","digital|classic","robot_call"),
+ classic_808=p(
+    "808","broken|swung","fm|analog",
+    "organ|fm","fm|analog","minor_modal|pedal_tone",
+    "hook_ab","classic|broken","electro_808"),
  detroit_electro=p(
-    "808","broken","analog|reese",
-    "analog|pad","analog|reese","minor_modal",
+    "808","broken|syncopated","analog|fm",
+    "analog|pad","analog|fm","minor_modal|borrowed_motion",
     "slow_burn","classic|dark","detroit_theme"),
- breakdance=p(
-    "linn|808","broken|syncopated","fm|reese",
-    "rave|fm","fm|wobble","minor_modal",
-    "double_drop","rave|broken","battle_hook"),
- dark_electro=p(
-    "industrial|808","broken|polymetric","reese",
-    "fm|analog","reese|fm","pedal_tone",
-    "double_drop","dark|digital","dark_sequence"),},
+ vocoder_robot=p(
+    "808|linn","broken|syncopated","fm|analog",
+    "fm|pad","fm|analog","pedal_tone|minor_modal",
+    "hook_ab","digital|classic","robot_vocoder"),
+ acid_electro=p(
+    "808|909","straight|syncopated","303|fm",
+    "rave|fm","fm|wobble","minor_modal|pedal_tone",
+    "double_drop","digital|rave","acid_sequence"),},
 JUKE={
  classic_juke=p(
     "808|linn","syncopated|double_time","sub|fm",

@@ -77,4 +77,27 @@ for archetype,fixture in pairs(acid_fixtures) do
   assert(arrangement.role_level(plan,1,"chords")<0.2,"acid intro chords must stay sparse")
   assert(arrangement.role_level(plan,97,"bass")<0.5,"acid mix section should simplify the bass")
 end
+local electro_fixtures={
+  classic_808={seed=6,first="INTRO",last="OUTRO"},
+  detroit_electro={seed=8,first="INTRO",last="DEVELOP"},
+  vocoder_robot={seed=1,first="INTRO",last="OUTRO"},
+  acid_electro={seed=4,first="INTRO",last="OUTRO"},
+}
+for archetype,fixture in pairs(electro_fixtures) do
+  local plan=arrangement.new(identity.new{seed=fixture.seed,deck="A",genre="ELECTRO"})
+  assert(plan.archetype==archetype,"wrong electro arrangement fixture selected")
+  assert(plan.sections[1].name==fixture.first,"electro intro missing")
+  assert(plan.sections[#plan.sections-1].name==fixture.last,"electro ending section mismatch")
+  assert(arrangement.role_level(plan,1,"bass")==0,"electro intro should begin DJ-friendly without bass")
+  assert(arrangement.role_level(plan,97,"bass")<0.65,"electro mix section should simplify the bass")
+  if archetype=="vocoder_robot" then
+    local break_bar=plan.sections[4].first
+    assert(arrangement.role_level(plan,break_bar,"samples")>0.70,
+      "Vocoder Electro break must feature robot vocal/sample material")
+  elseif archetype=="acid_electro" then
+    local drop_bar=plan.sections[5].first
+    assert(arrangement.role_level(plan,drop_bar,"chords")<0.30,
+      "Acid Electro drop must keep harmony sparse")
+  end
+end
 print("All arrangement engine checks passed")

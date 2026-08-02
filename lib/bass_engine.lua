@@ -12,7 +12,7 @@ local VOICES = {
   TRANCE={"analog","reese","303"}, PROG={"analog","sub","reese"},
   JUNGLE={"sub","reese"}, DNB={"reese","sub","fm"},
   LIQUID={"sub","reese","organ"}, HARDTECHNO={"reese","analog","303"},
-  ELECTRO={"fm","analog","reese"}, JUKE={"sub","fm"},
+  ELECTRO={"fm","analog","303"}, JUKE={"sub","fm"},
   AFRO={"sub","organ","analog"}, MINIMAL={"sub","analog"},
   MELODIC={"analog","sub","reese"}, SPEED={"reese","organ","sub"},
   BASSLINE={"organ","reese","wobble","fm"}, HARDSTYLE={"analog","reese"},
@@ -224,6 +224,85 @@ local FUNKY_SPECS = {
   },
 }
 
+local ELECTRO_SPECS = {
+  classic_808 = {
+    steps = {
+      {1,7,11,15},
+      {1,4,9,11,15},
+      {1,7,10,13},
+      {1,4,11,15,16},
+    },
+    degrees = {0,12,7,0,3,10},
+    accents = {1,11,15},
+    endings = {7,12},
+    octave_chance = 0.28,
+  },
+  detroit_electro = {
+    steps = {
+      {1,6,11,15},
+      {1,4,8,12,15},
+      {1,6,10,13},
+      {1,4,11,15},
+    },
+    degrees = {0,0,3,7,10,12},
+    accents = {1,6,11},
+    endings = {5,10},
+    octave_chance = 0.18,
+  },
+  vocoder_robot = {
+    steps = {
+      {1,4,7,11,14},
+      {1,6,9,12,15},
+      {1,4,8,11,15},
+      {1,6,10,13,16},
+    },
+    degrees = {0,12,0,7,3,10},
+    accents = {1,7,11,15},
+    endings = {7,12},
+    octave_chance = 0.24,
+  },
+  acid_electro = {
+    steps = {
+      {1,4,7,10,12,15},
+      {1,3,6,9,11,14},
+      {1,4,7,10,13,15},
+      {1,3,7,10,12,16},
+    },
+    degrees = {0,0,3,7,10,12},
+    accents = {1,7,10,15},
+    slides = {3,6,10,14},
+    endings = {7,12},
+    octave_chance = 0.10,
+  },
+}
+
+local function electro_bar(archetype, voice_family, bar, rng, groove)
+  local spec = ELECTRO_SPECS[archetype] or ELECTRO_SPECS.classic_808
+  local events = {}
+  local steps = spec.steps[((bar - 1) % #spec.steps) + 1]
+  for index, step in ipairs(steps) do
+    local avoid_kick = kick_at(groove, bar, step) and step ~= 1
+    local allow_overlap = (voice_family == "303") and rng:chance(0.22)
+    if not avoid_kick or allow_overlap then
+      local degree = spec.degrees[((index + bar - 2) % #spec.degrees) + 1]
+      if index == 1 then degree = 0 end
+      if bar == 4 and step == steps[#steps] then
+        degree = spec.endings[rng:int(1, #spec.endings)]
+      end
+      if step ~= 1 and rng:chance(spec.octave_chance or 0) then degree = degree + 12 end
+      local accent = contains(spec.accents, step) and rng:chance(0.84)
+      local slide = voice_family == "303" and contains(spec.slides, step) and
+        index < #steps and rng:chance(0.68)
+      local length = (step % 4 == 1) and rng:int(2, 3) or 1
+      add_event(events, step, degree, slide and 2 or length, rng:int(84, 112), accent, slide)
+    end
+  end
+  if next(events) == nil then
+    add_event(events, 1, 0, 2, rng:int(92, 108), true, false)
+  end
+  return events
+end
+
 local function funky_bar(archetype, bar, rng, groove)
   local spec = FUNKY_SPECS[archetype] or FUNKY_SPECS.filtered_disco
   local events = {}
@@ -282,6 +361,8 @@ function M.new(identity, groove)
       bars[bar] = acid_bar(identity.archetype, bar, rng)
     elseif identity.genre == "FUNKY" then
       bars[bar] = funky_bar(identity.archetype, bar, rng, groove)
+    elseif identity.genre == "ELECTRO" then
+      bars[bar] = electro_bar(identity.archetype, voice_family, bar, rng, groove)
     else
       bars[bar] = make_bar(identity.genre, voice_family, bar, rng, groove)
     end
