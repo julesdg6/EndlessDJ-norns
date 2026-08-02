@@ -18,19 +18,19 @@
 
 engine.name = "Endless"
 
-output_router = include("EndlessDJ/lib/output_router")
-internal_engine = include("EndlessDJ/lib/internal_engine")
-local sample_library = include("EndlessDJ/lib/sample_library")
-genre_profiles = include("EndlessDJ/lib/genre_profiles")
-song_identity = include("EndlessDJ/lib/song_identity")
-groove_engine = include("EndlessDJ/lib/groove_engine")
-bass_engine = include("EndlessDJ/lib/bass_engine")
-arrangement_engine = include("EndlessDJ/lib/arrangement_engine")
-transition_engine = include("EndlessDJ/lib/transition_engine")
-timing_scheduler = include("EndlessDJ/lib/timing_scheduler")
-norns_harness = include("EndlessDJ/lib/norns_harness")
-generation_fixtures = include("EndlessDJ/lib/generation_fixtures")
-engine_registry = include("EndlessDJ/lib/engine_registry")
+output_router = include("EndlessDJ/lib/output_router") or require("output_router")
+internal_engine = include("EndlessDJ/lib/internal_engine") or require("internal_engine")
+local sample_library = include("EndlessDJ/lib/sample_library") or require("sample_library")
+genre_profiles = include("EndlessDJ/lib/genre_profiles") or require("genre_profiles")
+song_identity = include("EndlessDJ/lib/song_identity") or require("song_identity")
+groove_engine = include("EndlessDJ/lib/groove_engine") or require("groove_engine")
+bass_engine = include("EndlessDJ/lib/bass_engine") or require("bass_engine")
+arrangement_engine = include("EndlessDJ/lib/arrangement_engine") or require("arrangement_engine")
+transition_engine = include("EndlessDJ/lib/transition_engine") or require("transition_engine")
+timing_scheduler = include("EndlessDJ/lib/timing_scheduler") or require("timing_scheduler")
+norns_harness = include("EndlessDJ/lib/norns_harness") or require("norns_harness")
+generation_fixtures = include("EndlessDJ/lib/generation_fixtures") or require("generation_fixtures")
+engine_registry = include("EndlessDJ/lib/engine_registry") or require("engine_registry")
 
 -- Virtual grid connection (monome or midigrid virtual device).
 -- With the midigrid mod enabled (SYSTEM → MODS → MIDIGRID), two Launchpad
