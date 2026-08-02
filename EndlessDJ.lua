@@ -1,5 +1,5 @@
 -- EndlessDJ.lua
--- Endless DJ v1.150
+-- Endless DJ v1.151
 -- Turntable-style animated decks + Roland AIRA MX-1 integration
 --
 -- T-8 drum map used here:
@@ -1192,15 +1192,24 @@ local function quiet_notes()
 end
 
 starlight.matches_device = function(device)
-  local name = string.lower(tostring(
-    (device and (
-      device.name or device.dev or device.description or device.port or
-      device.product or device.model or device.manufacturer or device.vendor or
-      device.serial or device.path or device.id or device
-    )) or ""
-  ))
-  return name:find("starlight", 1, true) or
-    (name:find("hercules", 1, true) and name:find("djcontrol", 1, true))
+  if not device then return false end
+  local fields = {
+    device.name, device.dev, device.description, device.port,
+    device.product, device.model, device.manufacturer, device.vendor,
+    device.serial, device.path, device.id,
+  }
+  if type(device) ~= "table" then fields[#fields + 1] = tostring(device) end
+  for _, v in ipairs(fields) do
+    if v then
+      local s = string.lower(tostring(v))
+      if s:find("starlight", 1, true) then return true end
+      if s:find("djcontrol", 1, true) and
+          (s:find("hercules", 1, true) or s:find("guillemot", 1, true)) then
+        return true
+      end
+    end
+  end
+  return false
 end
 
 starlight.find_device = function(devices)
