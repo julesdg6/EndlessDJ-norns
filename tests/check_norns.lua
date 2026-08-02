@@ -1304,6 +1304,8 @@ for _, token in ipairs({
   "starlight.refresh_connection",
   "starlight.disconnect",
   "starlight.update_leds",
+  "device.product or device.model or device.manufacturer or device.vendor",
+  "device.serial or device.path or device.id or device",
   "next_bar = next_deck().cue_bar or 1",
   "next_step = next_deck().cue_step or 1",
   "current_bar, step = normalise_deck_position(next_bar or (MIX_BARS + 1), next_step or 1)",
